@@ -1,0 +1,1 @@
+- [Personal email client project](project_email_client.md) — Next.js JMAP email client for Fastmail
