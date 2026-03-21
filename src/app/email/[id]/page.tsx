@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getSession, getAccountId, getEmail } from "@/lib/jmap";
+import { getSession, getAccountId, getEmail, markAsRead } from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import EmailBody from "@/components/EmailBody";
@@ -17,6 +17,11 @@ export default async function EmailPage({ params }: Props) {
   const email = await getEmail(session.apiUrl, accountId, id);
 
   if (!email) return notFound();
+
+  // Mark as read if not already seen — fire-and-forget, don't block render
+  if (!email.keywords?.["$seen"]) {
+    void markAsRead(session.apiUrl, accountId, id);
+  }
 
   let body: string | null = null;
   let bodyType: "html" | "text" = "text";

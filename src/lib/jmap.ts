@@ -153,6 +153,23 @@ export async function getIdentities(
   return (result.list as Identity[]) ?? [];
 }
 
+export async function markAsRead(
+  apiUrl: string,
+  accountId: string,
+  emailId: string
+): Promise<void> {
+  await jmapCall(apiUrl, [
+    [
+      "Email/set",
+      {
+        accountId,
+        update: { [emailId]: { "keywords/$seen": true } },
+      },
+      "0",
+    ],
+  ]);
+}
+
 export async function sendEmail(
   apiUrl: string,
   accountId: string,
