@@ -1,4 +1,5 @@
-import { getSession, getAccountId, getMailboxes, listEmails } from "@/lib/jmap";
+import { getSession, getAccountId, getMailboxes, listEmails, listDrafts } from "@/lib/jmap";
+import { Email } from "@/lib/types";
 import EmailListPanel from "@/components/EmailListPanel";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +13,16 @@ export default async function InboxLayout({
   const accountId = getAccountId(session);
   const mailboxes = await getMailboxes(session.apiUrl, accountId);
   const inbox = mailboxes.find((m) => m.role === "inbox");
-  const { emails, total } = inbox
-    ? await listEmails(session.apiUrl, accountId, inbox.id)
-    : { emails: [], total: 0 };
+  const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
+
+  const [{ emails, total }, drafts] = await Promise.all([
+    inbox
+      ? listEmails(session.apiUrl, accountId, inbox.id)
+      : Promise.resolve({ emails: [] as Email[], total: 0 }),
+    draftsMailbox
+      ? listDrafts(session.apiUrl, accountId, draftsMailbox.id)
+      : Promise.resolve([] as Email[]),
+  ]);
 
   return (
     <div className="flex h-full">
@@ -23,6 +31,7 @@ export default async function InboxLayout({
         inboxId={inbox?.id ?? ""}
         initialTotal={total}
         unreadCount={inbox?.unreadEmails ?? 0}
+        drafts={drafts}
       />
       <div className="flex-1 overflow-hidden min-w-0 h-full">{children}</div>
     </div>

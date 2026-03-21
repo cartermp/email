@@ -13,17 +13,16 @@ import Composer from "@/components/Composer";
 export const dynamic = "force-dynamic";
 
 interface Props {
-  searchParams: Promise<{ mode?: string; id?: string }>;
+  searchParams: Promise<{ mode?: string; id?: string; draftId?: string }>;
 }
 
 export default async function ComposePage({ searchParams }: Props) {
-  const { mode, id } = await searchParams;
+  const { mode, id, draftId } = await searchParams;
 
   const session = await getSession();
   const accountId = getAccountId(session);
   const identities = await getIdentities(session.apiUrl, accountId);
 
-  // Sort: primary (non-deletable) identities first
   const sorted = identities.sort((a, b) => {
     if (a.mayDelete === false && b.mayDelete !== false) return -1;
     if (b.mayDelete === false && a.mayDelete !== false) return 1;
@@ -37,13 +36,32 @@ export default async function ComposePage({ searchParams }: Props) {
   let initialBody = "";
   let inReplyToId: string | undefined;
   let title = "New Message";
+  let initialDraftId: string | undefined;
 
-  if (id && (mode === "reply" || mode === "reply-all" || mode === "forward")) {
+  // Resume a saved draft
+  if (draftId) {
+    const draft = await getEmail(session.apiUrl, accountId, draftId);
+    if (draft) {
+      initialDraftId = draftId;
+      initialTo = draft.to?.map(formatAddressRFC).join(", ") ?? "";
+      initialCc = draft.cc?.map(formatAddressRFC).join(", ") ?? "";
+      // bcc is visible on drafts since they live in the sender's mailbox
+      initialBcc = (draft as { bcc?: typeof draft.to })?.bcc
+        ?.map(formatAddressRFC)
+        .join(", ") ?? "";
+      initialSubject = draft.subject ?? "";
+      if (draft.textBody?.length > 0) {
+        const part = draft.textBody[0];
+        if (part.partId && draft.bodyValues?.[part.partId]) {
+          initialBody = draft.bodyValues[part.partId].value;
+        }
+      }
+      title = "Draft";
+    }
+  } else if (id && (mode === "reply" || mode === "reply-all" || mode === "forward")) {
     const email = await getEmail(session.apiUrl, accountId, id);
 
     if (email) {
-      // Extract plain text body for quoting.
-      // Prefer text/plain; fall back to HTML→plain conversion; last resort: preview.
       let bodyText = "";
       if (email.textBody?.length > 0) {
         const part = email.textBody[0];
@@ -73,7 +91,6 @@ export default async function ComposePage({ searchParams }: Props) {
       } else if (mode === "reply-all") {
         title = "Reply All";
         initialTo = fromStr;
-        // CC = all To + CC recipients except yourself
         const others = [...(email.to ?? []), ...(email.cc ?? [])].filter(
           (a) => !myEmails.has(a.email.toLowerCase())
         );
@@ -98,7 +115,9 @@ export default async function ComposePage({ searchParams }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="sticky top-0 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-6 py-4">
-        <h1 className="text-sm font-semibold text-stone-900 dark:text-stone-100">{title}</h1>
+        <h1 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+          {title}
+        </h1>
       </div>
       <div className="flex-1 min-h-0" style={{ height: "calc(100vh - 57px)" }}>
         <Composer
@@ -109,6 +128,7 @@ export default async function ComposePage({ searchParams }: Props) {
           initialSubject={initialSubject}
           initialBody={initialBody}
           inReplyToId={inReplyToId}
+          initialDraftId={initialDraftId}
         />
       </div>
     </div>

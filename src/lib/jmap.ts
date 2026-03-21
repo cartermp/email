@@ -213,6 +213,96 @@ export async function setPin(
   ]);
 }
 
+export async function listDrafts(
+  apiUrl: string,
+  accountId: string,
+  draftsMailboxId: string
+): Promise<Email[]> {
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/query",
+      {
+        accountId,
+        filter: { inMailbox: draftsMailboxId },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        limit: 50,
+      },
+      "0",
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
+        properties: EMAIL_LIST_PROPERTIES,
+      },
+      "1",
+    ],
+  ]);
+  const [, result] = data.methodResponses[1];
+  return (result.list as Email[]) ?? [];
+}
+
+export async function saveDraft(
+  apiUrl: string,
+  accountId: string,
+  draftsMailboxId: string,
+  fields: {
+    from: { name: string; email: string };
+    to: { name: string | null; email: string }[];
+    cc: { name: string | null; email: string }[];
+    bcc: { name: string | null; email: string }[];
+    subject: string;
+    body: string;
+  },
+  existingDraftId?: string | null
+): Promise<string> {
+  const draftEmail: Record<string, unknown> = {
+    mailboxIds: { [draftsMailboxId]: true },
+    keywords: { "$draft": true },
+    from: [fields.from],
+    subject: fields.subject || "(no subject)",
+    bodyStructure: { partId: "body", type: "text/plain" },
+    bodyValues: { body: { value: fields.body, charset: "utf-8" } },
+  };
+  if (fields.to.length) draftEmail.to = fields.to;
+  if (fields.cc.length) draftEmail.cc = fields.cc;
+  if (fields.bcc.length) draftEmail.bcc = fields.bcc;
+
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/set",
+      {
+        accountId,
+        create: { draft: draftEmail },
+        ...(existingDraftId ? { destroy: [existingDraftId] } : {}),
+      },
+      "0",
+    ],
+  ]);
+
+  const [, result] = data.methodResponses[0];
+  const created = (result.created as Record<string, { id: string }> | null)
+    ?.draft;
+  if (!created?.id) {
+    const err = result.notCreated as Record<string, unknown>;
+    throw new Error(
+      `Draft save failed: ${JSON.stringify(err?.draft ?? result)}`
+    );
+  }
+  return created.id;
+}
+
+export async function deleteDraft(
+  apiUrl: string,
+  accountId: string,
+  draftId: string
+): Promise<void> {
+  await jmapCall(apiUrl, [
+    ["Email/set", { accountId, destroy: [draftId] }, "0"],
+  ]);
+}
+
 export async function markAsRead(
   apiUrl: string,
   accountId: string,
@@ -252,7 +342,7 @@ export interface InlineImage {
   type: string;
 }
 
-function parseAddresses(addrs: string[]): { name: string | null; email: string }[] {
+export function parseAddresses(addrs: string[]): { name: string | null; email: string }[] {
   return addrs.map((addr) => {
     const m = addr.match(/^(.+?)\s*<(.+?)>$/);
     if (m) return { name: m[1].trim(), email: m[2].trim() };

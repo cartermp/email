@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { marked } from "marked";
+import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 
 interface Identity {
   id: string;
@@ -24,6 +25,7 @@ interface Props {
   initialSubject?: string;
   initialBody?: string;
   inReplyToId?: string;
+  initialDraftId?: string;
 }
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -41,6 +43,8 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+type SaveStatus = "idle" | "saving" | "saved" | "error";
+
 export default function Composer({
   identities,
   initialTo = "",
@@ -49,6 +53,7 @@ export default function Composer({
   initialSubject = "",
   initialBody = "",
   inReplyToId,
+  initialDraftId,
 }: Props) {
   const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
   const [to, setTo] = useState(initialTo);
@@ -65,10 +70,27 @@ export default function Composer({
   const [sent, setSent] = useState(false);
   const [inlineImages, setInlineImages] = useState<InlineImage[]>([]);
   const [uploading, setUploading] = useState(0);
+
+  // Draft state
+  const [draftId, setDraftId] = useState<string | null>(initialDraftId ?? null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const draftIdRef = useRef<string | null>(initialDraftId ?? null);
+  const savingRef = useRef(false);
+  const isInitialRender = useRef(true);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inlineImagesRef = useRef(inlineImages);
-  useEffect(() => { inlineImagesRef.current = inlineImages; }, [inlineImages]);
+  useEffect(() => {
+    inlineImagesRef.current = inlineImages;
+  }, [inlineImages]);
 
+  // Keep draftId ref in sync
+  useEffect(() => {
+    draftIdRef.current = draftId;
+  }, [draftId]);
+
+  // Preview rendering
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -78,8 +100,61 @@ export default function Composer({
       });
       if (!cancelled) setPreview(wrapEmailHtml(withImages));
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [markdown, inlineImages]);
+
+  // Auto-save: debounce 2s after any content change
+  useEffect(() => {
+    if (isInitialRender.current) {
+      isInitialRender.current = false;
+      return;
+    }
+    // Nothing worth saving yet
+    if (!to && !subject && !markdown) return;
+
+    const timer = setTimeout(async () => {
+      if (savingRef.current) return;
+      savingRef.current = true;
+      setSaveStatus("saving");
+
+      const identity = identities.find((i) => i.id === identityId) ?? identities[0];
+      try {
+        const result = await saveDraftAction({
+          draftId: draftIdRef.current,
+          fromName: identity?.name ?? "",
+          fromEmail: identity?.email ?? "",
+          to,
+          cc: showCc ? cc : "",
+          bcc: showBcc ? bcc : "",
+          subject,
+          body: markdown,
+        });
+
+        const isFirstSave = !draftIdRef.current;
+        draftIdRef.current = result.draftId;
+        setDraftId(result.draftId);
+
+        if (isFirstSave) {
+          window.history.replaceState(
+            {},
+            "",
+            `/compose?draftId=${result.draftId}`
+          );
+        }
+
+        setSaveStatus("saved");
+        setLastSaved(new Date());
+      } catch {
+        setSaveStatus("error");
+      } finally {
+        savingRef.current = false;
+      }
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [to, cc, bcc, showCc, showBcc, subject, markdown, identityId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -140,6 +215,20 @@ export default function Composer({
     [markdown]
   );
 
+  const handleDiscard = useCallback(async () => {
+    if (!draftIdRef.current) {
+      window.history.back();
+      return;
+    }
+    try {
+      await deleteDraftAction(draftIdRef.current);
+    } catch {
+      // best-effort
+    }
+    window.history.replaceState({}, "", "/compose");
+    window.history.back();
+  }, []);
+
   const handleSend = useCallback(async () => {
     if (!to.trim() || !subject.trim() || !markdown.trim()) {
       setError("To, subject, and body are required.");
@@ -153,10 +242,16 @@ export default function Composer({
     setSending(true);
     try {
       const rawHtml = await marked.parse(markdown);
-      const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
+      const htmlWithCids = replacePlaceholders(
+        rawHtml,
+        (id) => `cid:${id}@mail`
+      );
 
       const splitAddrs = (val: string) =>
-        val.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+        val
+          .split(/[,;]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
 
       const res = await fetch("/api/send", {
         method: "POST",
@@ -182,13 +277,32 @@ export default function Composer({
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Send failed (${res.status})`);
       }
+
+      // Clean up the draft now that it's sent
+      if (draftIdRef.current) {
+        deleteDraftAction(draftIdRef.current).catch(() => {});
+        draftIdRef.current = null;
+        setDraftId(null);
+      }
+
       setSent(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setSending(false);
     }
-  }, [identityId, to, cc, bcc, showCc, showBcc, subject, markdown, uploading, inReplyToId]);
+  }, [
+    identityId,
+    to,
+    cc,
+    bcc,
+    showCc,
+    showBcc,
+    subject,
+    markdown,
+    uploading,
+    inReplyToId,
+  ]);
 
   if (sent) {
     return (
@@ -203,6 +317,11 @@ export default function Composer({
             setSubject("");
             setMarkdown("");
             setInlineImages([]);
+            setDraftId(null);
+            draftIdRef.current = null;
+            setSaveStatus("idle");
+            setLastSaved(null);
+            window.history.replaceState({}, "", "/compose");
           }}
           className="ml-2 text-stone-900 dark:text-stone-100 underline"
         >
@@ -215,8 +334,7 @@ export default function Composer({
   const fieldClass =
     "flex-1 text-sm text-stone-700 dark:text-stone-300 bg-transparent outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600";
   const labelClass = "text-xs text-stone-400 dark:text-stone-500 w-16";
-  const rowClass =
-    "flex items-center px-6 py-2 gap-3";
+  const rowClass = "flex items-center px-6 py-2 gap-3";
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-stone-900">
@@ -311,6 +429,14 @@ export default function Composer({
             Uploading {uploading} image{uploading > 1 ? "s" : ""}…
           </span>
         )}
+        {/* Save status */}
+        <span className="text-xs text-stone-400 dark:text-stone-500">
+          {saveStatus === "saving" && "Saving…"}
+          {saveStatus === "saved" &&
+            lastSaved &&
+            `Saved ${lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
+          {saveStatus === "error" && "Draft save failed"}
+        </span>
         <div className="flex items-center gap-1 ml-auto">
           <button
             onClick={() => setShowPreview(false)}
@@ -338,7 +464,11 @@ export default function Composer({
       {/* Editor area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <div
-          className={`flex flex-col ${showPreview ? "w-1/2 border-r border-stone-200 dark:border-stone-800" : "w-full"}`}
+          className={`flex flex-col ${
+            showPreview
+              ? "w-1/2 border-r border-stone-200 dark:border-stone-800"
+              : "w-full"
+          }`}
         >
           <textarea
             ref={textareaRef}
@@ -372,6 +502,12 @@ export default function Composer({
           className="text-sm bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 px-4 py-2 rounded hover:bg-stone-700 dark:hover:bg-stone-300 transition-colors disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
+        </button>
+        <button
+          onClick={handleDiscard}
+          className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+        >
+          Discard
         </button>
         {error && <span className="text-xs text-red-500">{error}</span>}
       </div>

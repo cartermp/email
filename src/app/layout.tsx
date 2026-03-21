@@ -41,10 +41,10 @@ export default async function RootLayout({
             Inbox
           </Link>
           <Link
-            href="/compose"
+            href="/drafts"
             className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
           >
-            Compose
+            Drafts
           </Link>
 
           {session && (
