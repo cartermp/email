@@ -3,7 +3,6 @@ import { getSession, getAccountId, getEmail } from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import EmailBody from "@/components/EmailBody";
-import MarkAsRead from "@/components/MarkAsRead";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +42,6 @@ export default async function EmailPage({ params }: Props) {
 
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
-      <MarkAsRead emailId={id} alreadyRead={!!email.keywords?.["$seen"]} />
       <div className="max-w-3xl mx-auto px-8 py-8">
         {/* Subject */}
         <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 mb-5 leading-snug">

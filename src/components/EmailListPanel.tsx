@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatDate } from "@/lib/format";
+import { markEmailAsRead } from "@/app/(inbox)/email/[id]/actions";
 
 interface Props {
   emails: Email[];
@@ -15,6 +17,21 @@ export default function EmailListPanel({ emails, unreadCount = 0 }: Props) {
   const selectedId = pathname.startsWith("/email/")
     ? pathname.slice("/email/".length)
     : undefined;
+
+  // Track emails marked read this session so the list stays accurate
+  // even though the layout's server data is only fetched once.
+  const [clientReadIds, setClientReadIds] = useState(new Set<string>());
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const email = emails.find((e) => e.id === selectedId);
+    if (!email) return;
+    const alreadyRead = !!email.keywords?.["$seen"] || clientReadIds.has(selectedId);
+    if (!alreadyRead) {
+      setClientReadIds((prev) => new Set([...prev, selectedId]));
+      markEmailAsRead(selectedId);
+    }
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="w-72 shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-700 h-full overflow-hidden">
@@ -43,7 +60,10 @@ export default function EmailListPanel({ emails, unreadCount = 0 }: Props) {
         )}
         {emails.map((email) => {
           const isSelected = email.id === selectedId;
-          const isUnread = email.id !== selectedId && !email.keywords?.["$seen"];
+          const isUnread =
+            !email.keywords?.["$seen"] &&
+            !clientReadIds.has(email.id) &&
+            email.id !== selectedId;
 
           return (
             <Link
