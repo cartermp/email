@@ -11,35 +11,35 @@ export default async function InboxPage() {
 
   const inbox = mailboxes.find((m) => m.role === "inbox");
   if (!inbox) {
-    return (
-      <div className="p-8 text-zinc-500">No inbox found.</div>
-    );
+    return <div className="p-8 text-gray-400 text-sm">No inbox found.</div>;
   }
 
   const emails = await listEmails(session.apiUrl, accountId, inbox.id);
 
   return (
-    <div className="flex flex-col">
-      <div className="sticky top-0 bg-white border-b border-zinc-200 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-sm font-semibold text-zinc-900">
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-5 h-12 flex items-center justify-between">
+        <h1 className="text-sm font-semibold text-gray-900">
           Inbox
           {inbox.unreadEmails > 0 && (
-            <span className="ml-2 text-xs font-normal text-zinc-500">
-              {inbox.unreadEmails} unread
+            <span className="ml-2 font-normal text-gray-400">
+              {inbox.unreadEmails}
             </span>
           )}
         </h1>
         <Link
           href="/compose"
-          className="text-xs bg-zinc-900 text-white px-3 py-1.5 rounded hover:bg-zinc-700 transition-colors"
+          className="text-xs font-medium bg-gray-900 text-white px-3 py-1.5 rounded-md hover:bg-gray-700 transition-colors"
         >
           Compose
         </Link>
       </div>
 
-      <div className="divide-y divide-zinc-100">
+      {/* Email list */}
+      <div className="divide-y divide-gray-100">
         {emails.length === 0 && (
-          <div className="p-8 text-zinc-400 text-sm">No emails.</div>
+          <div className="p-8 text-gray-400 text-sm">No emails.</div>
         )}
         {emails.map((email) => {
           const isUnread = !email.keywords?.["$seen"];
@@ -47,11 +47,20 @@ export default async function InboxPage() {
             <Link
               key={email.id}
               href={`/email/${email.id}`}
-              className="flex items-baseline gap-4 px-6 py-3 hover:bg-zinc-50 transition-colors"
+              className="group flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors"
             >
+              {/* Unread dot */}
+              <div className="w-1.5 shrink-0">
+                {isUnread && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                )}
+              </div>
+
               {/* From */}
               <span
-                className={`w-44 shrink-0 text-sm truncate ${isUnread ? "font-semibold text-zinc-900" : "text-zinc-600"}`}
+                className={`w-44 shrink-0 text-sm truncate ${
+                  isUnread ? "font-semibold text-gray-900" : "text-gray-500"
+                }`}
               >
                 {formatAddressList(email.from) || "(no sender)"}
               </span>
@@ -59,12 +68,14 @@ export default async function InboxPage() {
               {/* Subject + preview */}
               <span className="flex-1 min-w-0 text-sm truncate">
                 <span
-                  className={isUnread ? "font-semibold text-zinc-900" : "text-zinc-700"}
+                  className={
+                    isUnread ? "font-semibold text-gray-900" : "text-gray-700"
+                  }
                 >
                   {email.subject || "(no subject)"}
                 </span>
                 {email.preview && (
-                  <span className="text-zinc-400 font-normal">
+                  <span className="text-gray-400 font-normal">
                     {" — "}
                     {email.preview}
                   </span>
@@ -72,7 +83,7 @@ export default async function InboxPage() {
               </span>
 
               {/* Date */}
-              <span className="shrink-0 text-xs text-zinc-400">
+              <span className="shrink-0 text-xs text-gray-400 tabular-nums">
                 {formatDate(email.receivedAt)}
               </span>
             </Link>

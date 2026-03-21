@@ -18,7 +18,6 @@ export default async function EmailPage({ params }: Props) {
 
   if (!email) return notFound();
 
-  // Prefer HTML body, fall back to text
   let body: string | null = null;
   let bodyType: "html" | "text" = "text";
 
@@ -39,50 +38,52 @@ export default async function EmailPage({ params }: Props) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-6 py-6">
-      {/* Back */}
-      <Link
-        href="/"
-        className="text-xs text-zinc-400 hover:text-zinc-600 mb-6 inline-block"
-      >
-        ← Inbox
-      </Link>
-
-      {/* Subject */}
-      <h1 className="text-xl font-semibold text-zinc-900 mb-4">
-        {email.subject || "(no subject)"}
-      </h1>
-
-      {/* Headers */}
-      <div className="text-sm text-zinc-600 space-y-1 mb-6 pb-6 border-b border-zinc-200">
-        <div>
-          <span className="text-zinc-400 w-10 inline-block">From</span>
-          {formatAddressList(email.from)}
-        </div>
-        {email.to && email.to.length > 0 && (
-          <div>
-            <span className="text-zinc-400 w-10 inline-block">To</span>
-            {formatAddressList(email.to)}
-          </div>
-        )}
-        {email.cc && email.cc.length > 0 && (
-          <div>
-            <span className="text-zinc-400 w-10 inline-block">Cc</span>
-            {formatAddressList(email.cc)}
-          </div>
-        )}
-        <div>
-          <span className="text-zinc-400 w-10 inline-block">Date</span>
-          {formatFullDate(email.receivedAt)}
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-5 h-12 flex items-center">
+        <Link
+          href="/"
+          className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
+        >
+          ← Inbox
+        </Link>
       </div>
 
-      {/* Body */}
-      {body ? (
-        <EmailBody body={body} type={bodyType} />
-      ) : (
-        <p className="text-zinc-400 text-sm">No body content.</p>
-      )}
+      <div className="max-w-3xl w-full mx-auto px-8 py-8">
+        {/* Subject */}
+        <h1 className="text-xl font-semibold text-gray-900 mb-5 leading-snug">
+          {email.subject || "(no subject)"}
+        </h1>
+
+        {/* Header fields — grid keeps labels and values aligned */}
+        <dl className="grid gap-x-4 gap-y-1 mb-6 pb-6 border-b border-gray-200 text-sm"
+            style={{ gridTemplateColumns: "max-content 1fr" }}>
+          <dt className="text-gray-400 text-right">From</dt>
+          <dd className="text-gray-700">{formatAddressList(email.from)}</dd>
+
+          {email.to && email.to.length > 0 && (
+            <>
+              <dt className="text-gray-400 text-right">To</dt>
+              <dd className="text-gray-700">{formatAddressList(email.to)}</dd>
+            </>
+          )}
+          {email.cc && email.cc.length > 0 && (
+            <>
+              <dt className="text-gray-400 text-right">Cc</dt>
+              <dd className="text-gray-700">{formatAddressList(email.cc)}</dd>
+            </>
+          )}
+          <dt className="text-gray-400 text-right">Date</dt>
+          <dd className="text-gray-500">{formatFullDate(email.receivedAt)}</dd>
+        </dl>
+
+        {/* Body */}
+        {body ? (
+          <EmailBody body={body} type={bodyType} />
+        ) : (
+          <p className="text-gray-400 text-sm">No body content.</p>
+        )}
+      </div>
     </div>
   );
 }
