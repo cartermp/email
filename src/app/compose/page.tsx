@@ -6,6 +6,7 @@ import {
   addrList,
   buildReplyQuote,
   buildForwardQuote,
+  htmlToPlainText,
 } from "@/lib/compose";
 import Composer from "@/components/Composer";
 
@@ -41,12 +42,19 @@ export default async function ComposePage({ searchParams }: Props) {
     const email = await getEmail(session.apiUrl, accountId, id);
 
     if (email) {
-      // Extract plain text body for quoting
+      // Extract plain text body for quoting.
+      // Prefer text/plain; fall back to HTML→plain conversion; last resort: preview.
       let bodyText = "";
       if (email.textBody?.length > 0) {
         const part = email.textBody[0];
         if (part.partId && email.bodyValues?.[part.partId]) {
           bodyText = email.bodyValues[part.partId].value;
+        }
+      }
+      if (!bodyText && email.htmlBody?.length > 0) {
+        const part = email.htmlBody[0];
+        if (part.partId && email.bodyValues?.[part.partId]) {
+          bodyText = htmlToPlainText(email.bodyValues[part.partId].value);
         }
       }
       if (!bodyText) bodyText = email.preview ?? "";

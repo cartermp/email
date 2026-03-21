@@ -5,6 +5,7 @@ import {
   fwdSubject,
   buildReplyQuote,
   buildForwardQuote,
+  htmlToPlainText,
 } from "../compose";
 
 describe("reSubject", () => {
@@ -63,6 +64,37 @@ describe("buildReplyQuote", () => {
     const result = buildReplyQuote("date", "from", "body\n\n");
     // trailing blank lines should not produce empty quoted lines at the end
     assert.ok(!result.endsWith("> \n> "), `unexpected trailing quoted blanks: ${result}`);
+  });
+});
+
+describe("htmlToPlainText", () => {
+  it("converts <br> to newlines", () => {
+    assert.equal(htmlToPlainText("line1<br>line2"), "line1\nline2");
+    assert.equal(htmlToPlainText("line1<br/>line2"), "line1\nline2");
+  });
+
+  it("converts block elements to newlines", () => {
+    const result = htmlToPlainText("<p>para one</p><p>para two</p>");
+    assert.ok(result.includes("para one"));
+    assert.ok(result.includes("para two"));
+    assert.ok(result.includes("\n"));
+  });
+
+  it("strips tags", () => {
+    assert.equal(htmlToPlainText("<b>bold</b> and <i>italic</i>"), "bold and italic");
+  });
+
+  it("decodes common HTML entities", () => {
+    assert.equal(htmlToPlainText("a &amp; b &lt;c&gt; &quot;d&quot; &nbsp;e"), 'a & b <c> "d"  e');
+  });
+
+  it("collapses more than two consecutive newlines", () => {
+    const result = htmlToPlainText("<p>a</p><p></p><p></p><p>b</p>");
+    assert.ok(!result.includes("\n\n\n"), `got: ${JSON.stringify(result)}`);
+  });
+
+  it("trims leading and trailing whitespace", () => {
+    assert.equal(htmlToPlainText("  <p>hello</p>  "), "hello");
   });
 });
 
