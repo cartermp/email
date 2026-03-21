@@ -9,54 +9,175 @@ interface Identity {
   email: string;
 }
 
+interface InlineImage {
+  id: string;
+  blobId: string;
+  dataUrl: string;
+  type: string;
+}
+
 interface Props {
   identities: Identity[];
+  initialTo?: string;
+  initialCc?: string;
+  initialBcc?: string;
+  initialSubject?: string;
+  initialBody?: string;
+  inReplyToId?: string;
 }
 
 marked.setOptions({ gfm: true, breaks: true });
 
-export default function Composer({ identities }: Props) {
+function replacePlaceholders(html: string, getSrc: (id: string) => string) {
+  return html.replace(/src="@@([^"@]+)@@"/g, (_, id) => `src="${getSrc(id)}"`);
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export default function Composer({
+  identities,
+  initialTo = "",
+  initialCc = "",
+  initialBcc = "",
+  initialSubject = "",
+  initialBody = "",
+  inReplyToId,
+}: Props) {
   const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [markdown, setMarkdown] = useState("");
+  const [to, setTo] = useState(initialTo);
+  const [cc, setCc] = useState(initialCc);
+  const [bcc, setBcc] = useState(initialBcc);
+  const [showCc, setShowCc] = useState(!!initialCc);
+  const [showBcc, setShowBcc] = useState(!!initialBcc);
+  const [subject, setSubject] = useState(initialSubject);
+  const [markdown, setMarkdown] = useState(initialBody);
   const [preview, setPreview] = useState("");
   const [showPreview, setShowPreview] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [inlineImages, setInlineImages] = useState<InlineImage[]>([]);
+  const [uploading, setUploading] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inlineImagesRef = useRef(inlineImages);
+  useEffect(() => { inlineImagesRef.current = inlineImages; }, [inlineImages]);
 
-  // Update preview whenever markdown changes
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const html = await marked.parse(markdown);
-      if (!cancelled) setPreview(wrapEmailHtml(html));
+      const withImages = replacePlaceholders(html, (id) => {
+        return inlineImages.find((img) => img.id === id)?.dataUrl ?? "";
+      });
+      if (!cancelled) setPreview(wrapEmailHtml(withImages));
     })();
     return () => { cancelled = true; };
-  }, [markdown]);
+  }, [markdown, inlineImages]);
+
+  const handlePaste = useCallback(
+    async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+      const imageItem = Array.from(e.clipboardData.items).find((item) =>
+        item.type.startsWith("image/")
+      );
+      if (!imageItem) return;
+      e.preventDefault();
+
+      const file = imageItem.getAsFile();
+      if (!file) return;
+
+      const id = `img-${Date.now()}`;
+      const placeholder = `![image](@@${id}@@)`;
+
+      const textarea = textareaRef.current;
+      const start = textarea?.selectionStart ?? markdown.length;
+      const end = textarea?.selectionEnd ?? markdown.length;
+      setMarkdown(markdown.slice(0, start) + placeholder + markdown.slice(end));
+
+      requestAnimationFrame(() => {
+        if (textarea) {
+          const pos = start + placeholder.length;
+          textarea.selectionStart = pos;
+          textarea.selectionEnd = pos;
+        }
+      });
+
+      setUploading((n) => n + 1);
+      try {
+        const [dataUrl, uploadRes] = await Promise.all([
+          fileToDataUrl(file),
+          fetch("/api/upload", {
+            method: "POST",
+            body: (() => {
+              const fd = new FormData();
+              fd.append("file", file);
+              return fd;
+            })(),
+          }),
+        ]);
+
+        if (!uploadRes.ok) {
+          const data = await uploadRes.json().catch(() => ({}));
+          throw new Error(data.error ?? "Upload failed");
+        }
+        const { blobId, type } = await uploadRes.json();
+        setInlineImages((prev) => [...prev, { id, blobId, dataUrl, type }]);
+      } catch (err) {
+        setMarkdown((prev) => prev.replace(placeholder, ""));
+        setError(
+          `Image upload failed: ${err instanceof Error ? err.message : "unknown error"}`
+        );
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    },
+    [markdown]
+  );
 
   const handleSend = useCallback(async () => {
     if (!to.trim() || !subject.trim() || !markdown.trim()) {
       setError("To, subject, and body are required.");
       return;
     }
+    if (uploading > 0) {
+      setError("Please wait for images to finish uploading.");
+      return;
+    }
     setError(null);
     setSending(true);
     try {
-      const html = await marked.parse(markdown);
+      const rawHtml = await marked.parse(markdown);
+      const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
+
+      const splitAddrs = (val: string) =>
+        val.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+
       const res = await fetch("/api/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           identityId,
-          to: to.split(/[,;]/).map((s) => s.trim()).filter(Boolean),
+          to: splitAddrs(to),
+          cc: showCc && cc.trim() ? splitAddrs(cc) : undefined,
+          bcc: showBcc && bcc.trim() ? splitAddrs(bcc) : undefined,
           subject,
           textBody: markdown,
-          htmlBody: wrapEmailHtml(html),
+          htmlBody: wrapEmailHtml(htmlWithCids),
+          inlineImages: inlineImagesRef.current.map(({ id, blobId, type }) => ({
+            id,
+            blobId,
+            type,
+          })),
+          inReplyToId: inReplyToId ?? undefined,
         }),
       });
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Send failed (${res.status})`);
@@ -67,20 +188,23 @@ export default function Composer({ identities }: Props) {
     } finally {
       setSending(false);
     }
-  }, [identityId, to, subject, markdown]);
+  }, [identityId, to, cc, bcc, showCc, showBcc, subject, markdown, uploading, inReplyToId]);
 
   if (sent) {
     return (
-      <div className="flex items-center justify-center h-64 text-zinc-500 text-sm">
+      <div className="flex items-center justify-center h-64 text-sm text-stone-500 dark:text-stone-400">
         Message sent.{" "}
         <button
           onClick={() => {
             setSent(false);
             setTo("");
+            setCc("");
+            setBcc("");
             setSubject("");
             setMarkdown("");
+            setInlineImages([]);
           }}
-          className="ml-2 text-zinc-900 underline"
+          className="ml-2 text-stone-900 dark:text-stone-100 underline"
         >
           Compose another
         </button>
@@ -88,17 +212,23 @@ export default function Composer({ identities }: Props) {
     );
   }
 
+  const fieldClass =
+    "flex-1 text-sm text-stone-700 dark:text-stone-300 bg-transparent outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600";
+  const labelClass = "text-xs text-stone-400 dark:text-stone-500 w-16";
+  const rowClass =
+    "flex items-center px-6 py-2 gap-3";
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-white dark:bg-stone-900">
       {/* Header fields */}
-      <div className="border-b border-zinc-200 divide-y divide-zinc-100">
+      <div className="border-b border-stone-200 dark:border-stone-800 divide-y divide-stone-100 dark:divide-stone-800">
         {identities.length > 1 && (
-          <div className="flex items-center px-6 py-2 gap-3">
-            <label className="text-xs text-zinc-400 w-16">From</label>
+          <div className={rowClass}>
+            <label className={labelClass}>From</label>
             <select
               value={identityId}
               onChange={(e) => setIdentityId(e.target.value)}
-              className="flex-1 text-sm text-zinc-700 bg-transparent outline-none"
+              className="flex-1 text-sm text-stone-700 dark:text-stone-300 bg-transparent outline-none"
             >
               {identities.map((id) => (
                 <option key={id.id} value={id.id}>
@@ -108,41 +238,97 @@ export default function Composer({ identities }: Props) {
             </select>
           </div>
         )}
-        <div className="flex items-center px-6 py-2 gap-3">
-          <label className="text-xs text-zinc-400 w-16">To</label>
+        <div className={rowClass}>
+          <label className={labelClass}>To</label>
           <input
             type="text"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="recipient@example.com"
-            className="flex-1 text-sm text-zinc-700 bg-transparent outline-none placeholder:text-zinc-300"
+            className={fieldClass}
           />
+          <div className="flex items-center gap-2 shrink-0">
+            {!showCc && (
+              <button
+                onClick={() => setShowCc(true)}
+                className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300"
+              >
+                Cc
+              </button>
+            )}
+            {!showBcc && (
+              <button
+                onClick={() => setShowBcc(true)}
+                className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300"
+              >
+                Bcc
+              </button>
+            )}
+          </div>
         </div>
-        <div className="flex items-center px-6 py-2 gap-3">
-          <label className="text-xs text-zinc-400 w-16">Subject</label>
+        {showCc && (
+          <div className={rowClass}>
+            <label className={labelClass}>Cc</label>
+            <input
+              type="text"
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+              placeholder="cc@example.com"
+              className={fieldClass}
+              autoFocus={!initialCc}
+            />
+          </div>
+        )}
+        {showBcc && (
+          <div className={rowClass}>
+            <label className={labelClass}>Bcc</label>
+            <input
+              type="text"
+              value={bcc}
+              onChange={(e) => setBcc(e.target.value)}
+              placeholder="bcc@example.com"
+              className={fieldClass}
+            />
+          </div>
+        )}
+        <div className={rowClass}>
+          <label className={labelClass}>Subject</label>
           <input
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Subject"
-            className="flex-1 text-sm text-zinc-700 bg-transparent outline-none placeholder:text-zinc-300"
+            className={fieldClass}
           />
         </div>
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-4 px-6 py-2 border-b border-zinc-100 bg-zinc-50">
-        <span className="text-xs text-zinc-400">Markdown</span>
+      <div className="flex items-center gap-4 px-6 py-2 border-b border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/50">
+        <span className="text-xs text-stone-400 dark:text-stone-500">Markdown</span>
+        {uploading > 0 && (
+          <span className="text-xs text-stone-400 dark:text-stone-500">
+            Uploading {uploading} image{uploading > 1 ? "s" : ""}…
+          </span>
+        )}
         <div className="flex items-center gap-1 ml-auto">
           <button
             onClick={() => setShowPreview(false)}
-            className={`text-xs px-2 py-1 rounded ${!showPreview ? "bg-zinc-200 text-zinc-900" : "text-zinc-500 hover:text-zinc-700"}`}
+            className={`text-xs px-2 py-1 rounded ${
+              !showPreview
+                ? "bg-stone-200 dark:bg-stone-700 text-stone-900 dark:text-stone-100"
+                : "text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+            }`}
           >
             Write
           </button>
           <button
             onClick={() => setShowPreview(true)}
-            className={`text-xs px-2 py-1 rounded ${showPreview ? "bg-zinc-200 text-zinc-900" : "text-zinc-500 hover:text-zinc-700"}`}
+            className={`text-xs px-2 py-1 rounded ${
+              showPreview
+                ? "bg-stone-200 dark:bg-stone-700 text-stone-900 dark:text-stone-100"
+                : "text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
+            }`}
           >
             Split
           </button>
@@ -151,20 +337,23 @@ export default function Composer({ identities }: Props) {
 
       {/* Editor area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Markdown textarea */}
-        <div className={`flex flex-col ${showPreview ? "w-1/2 border-r border-zinc-200" : "w-full"}`}>
+        <div
+          className={`flex flex-col ${showPreview ? "w-1/2 border-r border-stone-200 dark:border-stone-800" : "w-full"}`}
+        >
           <textarea
             ref={textareaRef}
             value={markdown}
             onChange={(e) => setMarkdown(e.target.value)}
-            placeholder={"Write your email in Markdown…\n\n**Bold**, *italic*, `code`, lists, links — all supported."}
-            className="flex-1 resize-none px-6 py-4 text-sm text-zinc-700 font-mono leading-relaxed outline-none placeholder:text-zinc-300"
+            onPaste={handlePaste}
+            placeholder={
+              "Write your email in Markdown…\n\n**Bold**, *italic*, `code`, lists, links — all supported.\nPaste an image anywhere to embed it."
+            }
+            className="flex-1 resize-none px-6 py-4 text-sm text-stone-700 dark:text-stone-300 font-mono leading-relaxed outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600 bg-white dark:bg-stone-900"
           />
         </div>
 
-        {/* HTML preview */}
         {showPreview && (
-          <div className="w-1/2 overflow-auto">
+          <div className="w-1/2 overflow-auto bg-white dark:bg-stone-900">
             <iframe
               srcDoc={preview}
               className="w-full h-full border-0"
@@ -176,11 +365,11 @@ export default function Composer({ identities }: Props) {
       </div>
 
       {/* Footer */}
-      <div className="border-t border-zinc-200 px-6 py-3 flex items-center gap-4">
+      <div className="border-t border-stone-200 dark:border-stone-800 px-6 py-3 flex items-center gap-4 bg-white dark:bg-stone-900">
         <button
           onClick={handleSend}
-          disabled={sending}
-          className="text-sm bg-zinc-900 text-white px-4 py-2 rounded hover:bg-zinc-700 transition-colors disabled:opacity-50"
+          disabled={sending || uploading > 0}
+          className="text-sm bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 px-4 py-2 rounded hover:bg-stone-700 dark:hover:bg-stone-300 transition-colors disabled:opacity-50"
         >
           {sending ? "Sending…" : "Send"}
         </button>
@@ -190,7 +379,6 @@ export default function Composer({ identities }: Props) {
   );
 }
 
-// Wrap HTML with minimal email-safe styling
 function wrapEmailHtml(body: string): string {
   return `<!DOCTYPE html>
 <html>
@@ -200,6 +388,7 @@ function wrapEmailHtml(body: string): string {
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; color: #1a1a1a; max-width: 640px; margin: 0 auto; padding: 24px; }
   h1, h2, h3 { font-weight: 600; margin: 1.5em 0 0.5em; }
   p { margin: 0 0 1em; }
+  img { max-width: 100%; height: auto; display: block; margin: 1em 0; }
   code { font-family: monospace; background: #f4f4f5; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
   pre { background: #f4f4f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; }
   pre code { background: none; padding: 0; }

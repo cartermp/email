@@ -1,8 +1,16 @@
 import Link from "next/link";
-import { getSession, getAccountId, getEmail, markAsRead } from "@/lib/jmap";
+import {
+  getSession,
+  getAccountId,
+  getMailboxes,
+  listEmails,
+  getEmail,
+  markAsRead,
+} from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import EmailBody from "@/components/EmailBody";
+import EmailListPanel from "@/components/EmailListPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -14,15 +22,24 @@ export default async function EmailPage({ params }: Props) {
   const { id } = await params;
   const session = await getSession();
   const accountId = getAccountId(session);
-  const email = await getEmail(session.apiUrl, accountId, id);
+
+  // Fetch email list (for left panel) and selected email in parallel
+  const [mailboxes, email] = await Promise.all([
+    getMailboxes(session.apiUrl, accountId),
+    getEmail(session.apiUrl, accountId, id),
+  ]);
 
   if (!email) return notFound();
 
-  // Mark as read if not already seen — fire-and-forget, don't block render
-  if (!email.keywords?.["$seen"]) {
-    void markAsRead(session.apiUrl, accountId, id);
-  }
+  const inbox = mailboxes.find((m) => m.role === "inbox");
 
+  // Fetch email list and mark-as-read in parallel
+  const [emails] = await Promise.all([
+    inbox ? listEmails(session.apiUrl, accountId, inbox.id) : Promise.resolve([]),
+    email.keywords?.["$seen"] ? Promise.resolve() : markAsRead(session.apiUrl, accountId, id),
+  ]);
+
+  // Resolve body
   let body: string | null = null;
   let bodyType: "html" | "text" = "text";
 
@@ -33,7 +50,6 @@ export default async function EmailPage({ params }: Props) {
       bodyType = "html";
     }
   }
-
   if (!body && email.textBody?.length > 0) {
     const part = email.textBody[0];
     if (part.partId && email.bodyValues?.[part.partId]) {
@@ -42,52 +58,88 @@ export default async function EmailPage({ params }: Props) {
     }
   }
 
+  const hasMultipleRecipients = ((email.to?.length ?? 0) + (email.cc?.length ?? 0)) > 1;
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-5 h-12 flex items-center">
-        <Link
-          href="/"
-          className="text-sm text-gray-400 hover:text-gray-700 transition-colors"
-        >
-          ← Inbox
-        </Link>
-      </div>
+    <div className="flex h-full">
+      {/* Left panel: email list */}
+      <EmailListPanel
+        emails={emails}
+        unreadCount={inbox?.unreadEmails ?? 0}
+        selectedId={id}
+      />
 
-      <div className="max-w-3xl w-full mx-auto px-8 py-8">
-        {/* Subject */}
-        <h1 className="text-xl font-semibold text-gray-900 mb-5 leading-snug">
-          {email.subject || "(no subject)"}
-        </h1>
+      {/* Right panel: email detail */}
+      <div className="flex-1 overflow-y-auto bg-stone-50 dark:bg-stone-900">
+        <div className="max-w-3xl mx-auto px-8 py-8">
+          {/* Subject */}
+          <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 mb-5 leading-snug">
+            {email.subject || "(no subject)"}
+          </h1>
 
-        {/* Header fields — grid keeps labels and values aligned */}
-        <dl className="grid gap-x-4 gap-y-1 mb-6 pb-6 border-b border-gray-200 text-sm"
-            style={{ gridTemplateColumns: "max-content 1fr" }}>
-          <dt className="text-gray-400 text-right">From</dt>
-          <dd className="text-gray-700">{formatAddressList(email.from)}</dd>
+          {/* Metadata */}
+          <dl
+            className="grid gap-x-4 gap-y-1 mb-4 text-sm"
+            style={{ gridTemplateColumns: "max-content 1fr" }}
+          >
+            <dt className="text-stone-400 dark:text-stone-500 text-right">From</dt>
+            <dd className="text-stone-700 dark:text-stone-300">
+              {formatAddressList(email.from)}
+            </dd>
 
-          {email.to && email.to.length > 0 && (
-            <>
-              <dt className="text-gray-400 text-right">To</dt>
-              <dd className="text-gray-700">{formatAddressList(email.to)}</dd>
-            </>
+            {email.to && email.to.length > 0 && (
+              <>
+                <dt className="text-stone-400 dark:text-stone-500 text-right">To</dt>
+                <dd className="text-stone-700 dark:text-stone-300">
+                  {formatAddressList(email.to)}
+                </dd>
+              </>
+            )}
+            {email.cc && email.cc.length > 0 && (
+              <>
+                <dt className="text-stone-400 dark:text-stone-500 text-right">Cc</dt>
+                <dd className="text-stone-700 dark:text-stone-300">
+                  {formatAddressList(email.cc)}
+                </dd>
+              </>
+            )}
+            <dt className="text-stone-400 dark:text-stone-500 text-right">Date</dt>
+            <dd className="text-stone-500 dark:text-stone-400">
+              {formatFullDate(email.receivedAt)}
+            </dd>
+          </dl>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 mb-6 pb-6 border-b border-stone-200 dark:border-stone-700">
+            <Link
+              href={`/compose?mode=reply&id=${email.id}`}
+              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+            >
+              Reply
+            </Link>
+            {hasMultipleRecipients && (
+              <Link
+                href={`/compose?mode=reply-all&id=${email.id}`}
+                className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              >
+                Reply All
+              </Link>
+            )}
+            <Link
+              href={`/compose?mode=forward&id=${email.id}`}
+              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+            >
+              Forward
+            </Link>
+          </div>
+
+          {/* Body */}
+          {body ? (
+            <EmailBody body={body} type={bodyType} />
+          ) : (
+            <p className="text-stone-400 dark:text-stone-500 text-sm">No body content.</p>
           )}
-          {email.cc && email.cc.length > 0 && (
-            <>
-              <dt className="text-gray-400 text-right">Cc</dt>
-              <dd className="text-gray-700">{formatAddressList(email.cc)}</dd>
-            </>
-          )}
-          <dt className="text-gray-400 text-right">Date</dt>
-          <dd className="text-gray-500">{formatFullDate(email.receivedAt)}</dd>
-        </dl>
-
-        {/* Body */}
-        {body ? (
-          <EmailBody body={body} type={bodyType} />
-        ) : (
-          <p className="text-gray-400 text-sm">No body content.</p>
-        )}
+        </div>
       </div>
     </div>
   );

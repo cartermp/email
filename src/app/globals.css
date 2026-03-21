@@ -5,12 +5,6 @@
   --font-mono: var(--font-geist-mono);
 }
 
-/* Force light mode — email iframes are always light, dark mode support can come later */
 :root {
-  color-scheme: light;
-}
-
-body {
-  background: #ffffff;
-  color: #111827;
+  color-scheme: light dark;
 }

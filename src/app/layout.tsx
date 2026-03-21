@@ -26,24 +26,23 @@ export default async function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
-      style={{ colorScheme: "light" }}
     >
-      <body className="h-full flex bg-white text-gray-900 antialiased">
+      <body className="h-full flex bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
         {/* Sidebar */}
-        <nav className="w-48 shrink-0 flex flex-col bg-gray-50 border-r border-gray-200 px-3 py-5">
-          <span className="text-sm font-semibold text-gray-900 px-2 mb-4">
+        <nav className="w-44 shrink-0 flex flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
+          <span className="text-sm font-semibold text-stone-900 dark:text-stone-100 px-2 mb-4">
             Mail
           </span>
 
           <Link
             href="/"
-            className="text-sm text-gray-700 hover:bg-gray-200 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors"
+            className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
           >
             Inbox
           </Link>
           <Link
             href="/compose"
-            className="text-sm text-gray-700 hover:bg-gray-200 hover:text-gray-900 px-2 py-1.5 rounded-md transition-colors"
+            className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
           >
             Compose
           </Link>
@@ -58,7 +57,7 @@ export default async function RootLayout({
             >
               <button
                 type="submit"
-                className="text-xs text-gray-400 hover:text-gray-600 px-2 py-1 transition-colors"
+                className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
               >
                 Sign out
               </button>
@@ -67,7 +66,7 @@ export default async function RootLayout({
         </nav>
 
         {/* Main content */}
-        <main className="flex-1 overflow-auto min-w-0">{children}</main>
+        <main className="flex-1 overflow-hidden min-w-0 h-full">{children}</main>
       </body>
     </html>
   );

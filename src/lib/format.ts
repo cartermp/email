@@ -5,6 +5,12 @@ export function formatAddress(addr: EmailAddress): string {
   return addr.email;
 }
 
+/** Produces "Name <email>" for use in composer To/CC/BCC fields. */
+export function formatAddressRFC(addr: EmailAddress): string {
+  if (addr.name) return `${addr.name} <${addr.email}>`;
+  return addr.email;
+}
+
 export function formatAddressList(addrs: EmailAddress[] | null): string {
   if (!addrs || addrs.length === 0) return "";
   return addrs.map(formatAddress).join(", ");

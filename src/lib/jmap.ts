@@ -113,6 +113,7 @@ export async function getEmail(
         ids: [emailId],
         properties: [
           "id",
+          "messageId",
           "threadId",
           "mailboxIds",
           "subject",
@@ -170,6 +171,36 @@ export async function markAsRead(
   ]);
 }
 
+export async function uploadBlob(
+  uploadUrl: string,
+  accountId: string,
+  data: ArrayBuffer,
+  contentType: string
+): Promise<{ blobId: string; type: string; size: number }> {
+  const url = uploadUrl.replace("{accountId}", accountId);
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": contentType },
+    body: data,
+  });
+  if (!res.ok) throw new Error(`Blob upload failed: ${res.statusText}`);
+  return res.json();
+}
+
+export interface InlineImage {
+  id: string;
+  blobId: string;
+  type: string;
+}
+
+function parseAddresses(addrs: string[]): { name: string | null; email: string }[] {
+  return addrs.map((addr) => {
+    const m = addr.match(/^(.+?)\s*<(.+?)>$/);
+    if (m) return { name: m[1].trim(), email: m[2].trim() };
+    return { name: null, email: addr.trim() };
+  });
+}
+
 export async function sendEmail(
   apiUrl: string,
   accountId: string,
@@ -177,47 +208,67 @@ export async function sendEmail(
     identityId,
     from,
     to,
+    cc,
+    bcc,
     subject,
     textBody,
     htmlBody,
+    inlineImages,
     inReplyToId,
   }: {
     identityId: string;
     from: { name: string; email: string };
     to: string[];
+    cc?: string[];
+    bcc?: string[];
     subject: string;
     textBody: string;
     htmlBody: string;
+    inlineImages?: InlineImage[];
     inReplyToId?: string;
   }
 ): Promise<{ emailId: string; submissionId: string }> {
-  const toAddresses = to.map((addr) => {
-    const m = addr.match(/^(.+?)\s*<(.+?)>$/);
-    if (m) return { name: m[1].trim(), email: m[2].trim() };
-    return { name: null, email: addr.trim() };
-  });
+  const toAddresses = parseAddresses(to);
+
+  const alternativePart = {
+    type: "multipart/alternative",
+    subParts: [
+      { partId: "text", type: "text/plain" },
+      { partId: "html", type: "text/html" },
+    ],
+  };
+
+  const bodyStructure =
+    inlineImages && inlineImages.length > 0
+      ? {
+          type: "multipart/related",
+          subParts: [
+            alternativePart,
+            ...inlineImages.map((img) => ({
+              type: img.type,
+              blobId: img.blobId,
+              cid: `${img.id}@mail`,
+              disposition: "inline",
+            })),
+          ],
+        }
+      : alternativePart;
 
   const emailCreate: Record<string, unknown> = {
     mailboxIds: {},
     from: [from],
     to: toAddresses,
     subject,
-    bodyStructure: {
-      type: "multipart/alternative",
-      subParts: [
-        { partId: "text", type: "text/plain" },
-        { partId: "html", type: "text/html" },
-      ],
-    },
+    bodyStructure,
     bodyValues: {
       text: { value: textBody, charset: "utf-8" },
       html: { value: htmlBody, charset: "utf-8" },
     },
   };
 
-  if (inReplyToId) {
-    emailCreate.inReplyTo = [inReplyToId];
-  }
+  if (cc && cc.length > 0) emailCreate.cc = parseAddresses(cc);
+  if (bcc && bcc.length > 0) emailCreate.bcc = parseAddresses(bcc);
+  if (inReplyToId) emailCreate.inReplyTo = [inReplyToId];
 
   const data = await jmapCall(apiUrl, [
     ["Email/set", { accountId, create: { draft: emailCreate } }, "0"],

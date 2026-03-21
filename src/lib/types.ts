@@ -31,6 +31,7 @@ export interface EmailBodyPart {
 
 export interface Email {
   id: string;
+  messageId: string[] | null;
   threadId: string;
   mailboxIds: Record<string, boolean>;
   subject: string | null;

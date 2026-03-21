@@ -4,7 +4,7 @@ import { getSession, getAccountId, getIdentities, sendEmail } from "@/lib/jmap";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { identityId, to, subject, textBody, htmlBody } = body;
+    const { identityId, to, cc, bcc, subject, textBody, htmlBody, inlineImages, inReplyToId } = body;
 
     if (!identityId || !to?.length || !subject || !textBody) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -24,9 +24,13 @@ export async function POST(req: NextRequest) {
       identityId,
       from: { name: identity.name, email: identity.email },
       to,
+      cc,
+      bcc,
       subject,
       textBody,
       htmlBody,
+      inlineImages,
+      inReplyToId,
     });
 
     return NextResponse.json(result);
