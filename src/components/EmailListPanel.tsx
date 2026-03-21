@@ -1,15 +1,21 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatDate } from "@/lib/format";
 
 interface Props {
   emails: Email[];
   unreadCount?: number;
-  /** The JMAP id of the currently-open email (used for selection highlight + optimistic read state). */
-  selectedId?: string;
 }
 
-export default function EmailListPanel({ emails, unreadCount = 0, selectedId }: Props) {
+export default function EmailListPanel({ emails, unreadCount = 0 }: Props) {
+  const pathname = usePathname();
+  const selectedId = pathname.startsWith("/email/")
+    ? pathname.slice("/email/".length)
+    : undefined;
+
   return (
     <div className="w-72 shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-700 h-full overflow-hidden">
       {/* Header */}
@@ -37,7 +43,6 @@ export default function EmailListPanel({ emails, unreadCount = 0, selectedId }: 
         )}
         {emails.map((email) => {
           const isSelected = email.id === selectedId;
-          // Treat the open email as read immediately (we just marked it)
           const isUnread = email.id !== selectedId && !email.keywords?.["$seen"];
 
           return (
