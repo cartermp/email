@@ -37,6 +37,7 @@ export default function EmailListPanel({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Email[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isInSearchMode = searchQuery.trim().length > 0;
@@ -110,15 +111,52 @@ export default function EmailListPanel({
       </div>
 
       {/* Search input */}
-      <div className="px-3 py-2 border-b border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 shrink-0">
+      <div className="relative px-3 py-2 border-b border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 shrink-0">
         <input
           ref={searchInputRef}
           type="search"
           placeholder="Search all mail…"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           className="w-full text-sm rounded-md px-2.5 py-1.5 bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 border border-transparent focus:border-stone-300 dark:focus:border-stone-600 focus:outline-none"
         />
+        {searchFocused && (
+          <div className="absolute left-3 right-3 top-full mt-1 z-10 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-lg text-xs overflow-hidden">
+            <div className="px-3 py-2 border-b border-stone-100 dark:border-stone-800 text-stone-400 dark:text-stone-500 font-medium uppercase tracking-wide text-[10px]">
+              Search syntax
+            </div>
+            {(
+              [
+                ["from:", "sender"],
+                ["to:", "recipient"],
+                ["cc:", "CC'd"],
+                ["subject:", "subject line"],
+              ] as [string, string][]
+            ).map(([prefix, desc]) => (
+              <button
+                key={prefix}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault(); // keep input focused
+                  setSearchQuery((q) => {
+                    const trimmed = q.trimEnd();
+                    return trimmed ? trimmed + " " + prefix : prefix;
+                  });
+                  searchInputRef.current?.focus();
+                }}
+                className="w-full flex items-center gap-3 px-3 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-800 text-left cursor-pointer"
+              >
+                <code className="text-stone-700 dark:text-stone-300 font-mono">{prefix}<span className="text-stone-400 dark:text-stone-500">…</span></code>
+                <span className="text-stone-400 dark:text-stone-500">{desc}</span>
+              </button>
+            ))}
+            <div className="px-3 py-1.5 text-stone-400 dark:text-stone-500 border-t border-stone-100 dark:border-stone-800">
+              Combine: <code className="font-mono text-stone-600 dark:text-stone-400">from:alice invoice</code>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Email list */}

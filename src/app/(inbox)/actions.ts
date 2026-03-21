@@ -1,6 +1,7 @@
 "use server";
 
 import { getSession, getAccountId, listEmails, searchEmails } from "@/lib/jmap";
+import { parseSearchQuery, buildJmapFilter } from "@/lib/search";
 import { Email } from "@/lib/types";
 
 export async function loadMoreEmails(
@@ -15,5 +16,6 @@ export async function loadMoreEmails(
 export async function searchEmailsAction(query: string): Promise<Email[]> {
   const session = await getSession();
   const accountId = getAccountId(session);
-  return searchEmails(session.apiUrl, accountId, query);
+  const filter = buildJmapFilter(parseSearchQuery(query));
+  return searchEmails(session.apiUrl, accountId, filter);
 }

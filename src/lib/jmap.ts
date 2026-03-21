@@ -111,7 +111,7 @@ export async function listEmails(
 export async function searchEmails(
   apiUrl: string,
   accountId: string,
-  query: string,
+  filter: Record<string, unknown>,
   limit = 50
 ): Promise<Email[]> {
   const data = await jmapCall(apiUrl, [
@@ -119,7 +119,7 @@ export async function searchEmails(
       "Email/query",
       {
         accountId,
-        filter: { text: query },
+        filter,
         sort: [{ property: "receivedAt", isAscending: false }],
         limit,
       },
