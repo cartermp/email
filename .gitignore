@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/src/lib/__tests__/fixtures/
 
 # next.js
 /.next/

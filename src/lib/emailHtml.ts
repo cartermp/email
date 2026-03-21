@@ -1,24 +1,29 @@
 /**
  * Prepare email HTML for display in a sandboxed iframe.
  *
- * - Injects a low-specificity light-mode fallback so emails without explicit
- *   colors stay readable.
- * - Injects a warm dark-mode override (stone-900 palette) for emails that
- *   don't have their own prefers-color-scheme: dark rules.
+ * - For emails with native dark mode (prefers-color-scheme: dark rules): step
+ *   aside and let their own CSS handle theming.
+ * - For all other emails: lock to light rendering with color-scheme:light so
+ *   the browser never applies dark-mode transforms to emails designed for
+ *   light backgrounds. Forcing a dark background on these causes illegible
+ *   text because inline color styles (e.g. color:#000) can't be overridden
+ *   without being extremely aggressive.
+ * - Injects overflow:hidden so the iframe never gets its own scrollbar; the
+ *   parent container handles all scrolling.
  * - Injects a resize script that reports the document height to the parent
- *   frame via postMessage so the iframe can grow to fit its content.
+ *   frame via postMessage so the iframe grows to fit its content.
  */
 export function prepareHtml(html: string): string {
   const hasNativeDark = /prefers-color-scheme\s*:\s*dark/i.test(html);
-  const darkOverride = hasNativeDark
-    ? ""
-    : "@media(prefers-color-scheme:dark){" +
-      "html,body{background-color:#1c1917!important;color:#e7e5e4!important}" +
-      "a{color:#7dd3fc}" +
-      "}";
+
+  // Non-dark-mode emails: lock to light so inline colors render as intended.
+  // Dark-mode emails: no base style injection — their own CSS takes over.
+  const baseStyle = hasNativeDark
+    ? "html,body{overflow:hidden}"
+    : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;color-scheme:light}";
 
   const inject = [
-    `<style>html,body{background-color:#ffffff;color:#000000;overflow:hidden}${darkOverride}</style>`,
+    `<style>${baseStyle}</style>`,
     `<script>(function(){
   function send(){
     var h=Math.max(

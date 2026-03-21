@@ -5,7 +5,6 @@ import { prepareHtml } from "../emailHtml";
 describe("prepareHtml", () => {
   it("injects into existing <head>", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    // style and script should be inside <head>
     assert.ok(result.startsWith("<html><head><style>"));
     assert.ok(result.includes("</style><script>"));
   });
@@ -21,19 +20,14 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("<body><p>hello</p></body>"));
   });
 
-  it("includes dark mode override for emails without native dark mode", () => {
-    const result = prepareHtml("<html><head></head><body>plain</body></html>");
-    assert.ok(result.includes("prefers-color-scheme:dark"));
-    assert.ok(result.includes("#1c1917"));
+  it("sets overflow:hidden to prevent iframe internal scrollbar", () => {
+    const result = prepareHtml("<html><head></head><body>content</body></html>");
+    assert.ok(result.includes("overflow:hidden"));
   });
 
-  it("omits dark mode override when email already has prefers-color-scheme: dark", () => {
-    const html =
-      "<html><head><style>@media (prefers-color-scheme: dark){body{background:#000}}</style></head><body></body></html>";
-    const result = prepareHtml(html);
-    // The injected style should not contain our override
-    const injectedStyle = result.match(/<style>([^<]*)<\/style>/)?.[1] ?? "";
-    assert.ok(!injectedStyle.includes("#1c1917"), `override should be absent, got: ${injectedStyle}`);
+  it("handles uppercase HEAD tag", () => {
+    const result = prepareHtml("<HTML><HEAD></HEAD><BODY>hi</BODY></HTML>");
+    assert.ok(result.includes("<style>"), "should inject style into uppercase HEAD");
   });
 
   it("includes postMessage resize script", () => {
@@ -42,13 +36,44 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("postMessage"));
   });
 
-  it("sets overflow:hidden to prevent iframe internal scrollbar", () => {
-    const result = prepareHtml("<html><head></head><body>content</body></html>");
-    assert.ok(result.includes("overflow:hidden"), `expected overflow:hidden in: ${result.slice(0, 300)}`);
+  describe("light-mode emails (no native dark mode)", () => {
+    const lightEmail = "<html><head></head><body>plain</body></html>";
+
+    it("locks rendering to light with color-scheme:light", () => {
+      const result = prepareHtml(lightEmail);
+      assert.ok(result.includes("color-scheme:light"));
+    });
+
+    it("sets a white background", () => {
+      const result = prepareHtml(lightEmail);
+      assert.ok(result.includes("background-color:#ffffff"));
+    });
+
+    it("does not inject a dark-mode media query", () => {
+      const result = prepareHtml(lightEmail);
+      assert.ok(!result.includes("prefers-color-scheme"), "should not inject dark override");
+    });
   });
 
-  it("handles uppercase HEAD tag", () => {
-    const result = prepareHtml("<HTML><HEAD></HEAD><BODY>hi</BODY></HTML>");
-    assert.ok(result.includes("<style>"), "should inject style into uppercase HEAD");
+  describe("dark-mode-aware emails", () => {
+    const darkEmail =
+      "<html><head><style>@media (prefers-color-scheme: dark){body{background:#000}}</style></head><body></body></html>";
+
+    it("does not inject color-scheme:light", () => {
+      const result = prepareHtml(darkEmail);
+      assert.ok(!result.includes("color-scheme:light"));
+    });
+
+    it("does not inject a white background override", () => {
+      const result = prepareHtml(darkEmail);
+      // The injected style should only contain overflow:hidden, not a background color
+      const injectedStyle = result.match(/<style>(.*?)<\/style>/)?.[1] ?? "";
+      assert.ok(!injectedStyle.includes("background-color:#ffffff"), `got: ${injectedStyle}`);
+    });
+
+    it("still injects overflow:hidden", () => {
+      const result = prepareHtml(darkEmail);
+      assert.ok(result.includes("overflow:hidden"));
+    });
   });
 });
