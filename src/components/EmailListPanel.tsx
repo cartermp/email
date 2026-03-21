@@ -33,6 +33,33 @@ export default function EmailListPanel({
 
   const view: View = pathname.startsWith("/drafts") ? "drafts" : "inbox";
   const [clientReadIds, setClientReadIds] = useState(new Set<string>());
+  const [clientUnreadIds, setClientUnreadIds] = useState(new Set<string>());
+
+  useEffect(() => {
+    function onMarkUnread(e: Event) {
+      const id = (e as CustomEvent<string>).detail;
+      setClientReadIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
+      setClientUnreadIds((prev) => new Set([...prev, id]));
+    }
+    function onPinChanged(e: Event) {
+      const { id, pinned } = (e as CustomEvent<{ id: string; pinned: boolean }>).detail;
+      const applyPin = (list: Email[]) =>
+        list.map((email) => {
+          if (email.id !== id) return email;
+          const keywords = { ...email.keywords };
+          if (pinned) { keywords["$flagged"] = true; } else { delete keywords["$flagged"]; }
+          return { ...email, keywords };
+        });
+      setExtraEmails(applyPin);
+      setSearchResults(applyPin);
+    }
+    window.addEventListener("email-mark-unread", onMarkUnread);
+    window.addEventListener("email-pin-changed", onPinChanged);
+    return () => {
+      window.removeEventListener("email-mark-unread", onMarkUnread);
+      window.removeEventListener("email-pin-changed", onPinChanged);
+    };
+  }, []);
 
   const [extraEmails, setExtraEmails] = useState<Email[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -198,7 +225,7 @@ export default function EmailListPanel({
               const isSelected = email.id === selectedId;
               const pinned = isPinned(email);
               const isUnread =
-                !email.keywords?.["$seen"] &&
+                (clientUnreadIds.has(email.id) || !email.keywords?.["$seen"]) &&
                 !clientReadIds.has(email.id) &&
                 email.id !== selectedId;
 

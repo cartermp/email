@@ -1,12 +1,18 @@
 "use server";
 
-import { getSession, getAccountId, getIdentities, markAsRead, sendCalendarReply } from "@/lib/jmap";
+import { getSession, getAccountId, getIdentities, markAsRead, markAsUnread, sendCalendarReply } from "@/lib/jmap";
 import { parseIcs, buildCalendarReply } from "@/lib/ics";
 
 export async function markEmailAsRead(emailId: string): Promise<void> {
   const session = await getSession();
   const accountId = getAccountId(session);
   await markAsRead(session.apiUrl, accountId, emailId);
+}
+
+export async function markEmailAsUnread(emailId: string): Promise<void> {
+  const session = await getSession();
+  const accountId = getAccountId(session);
+  await markAsUnread(session.apiUrl, accountId, emailId);
 }
 
 export async function sendCalendarReplyAction(

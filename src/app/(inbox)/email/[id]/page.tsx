@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
 import CalendarEventCard, { CalendarEventData } from "@/components/CalendarEventCard";
+import MarkUnreadButton from "@/components/MarkUnreadButton";
 import { parseIcs } from "@/lib/ics";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +150,7 @@ export default async function EmailPage({ params }: Props) {
             emailId={email.id}
             initiallyPinned={!!email.keywords?.["$flagged"]}
           />
+          <MarkUnreadButton emailId={email.id} />
           <Link
             href={`/compose?mode=reply&id=${email.id}`}
             className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"

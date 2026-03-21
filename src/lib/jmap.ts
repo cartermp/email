@@ -311,10 +311,22 @@ export async function markAsRead(
   await jmapCall(apiUrl, [
     [
       "Email/set",
-      {
-        accountId,
-        update: { [emailId]: { "keywords/$seen": true } },
-      },
+      { accountId, update: { [emailId]: { "keywords/$seen": true } } },
+      "0",
+    ],
+  ]);
+}
+
+export async function markAsUnread(
+  apiUrl: string,
+  accountId: string,
+  emailId: string
+): Promise<void> {
+  await jmapCall(apiUrl, [
+    [
+      "Email/set",
+      // null removes the keyword per RFC 8620 §5.3
+      { accountId, update: { [emailId]: { "keywords/$seen": null } } },
       "0",
     ],
   ]);

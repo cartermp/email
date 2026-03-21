@@ -28,6 +28,9 @@ export default function PinButton({ emailId, initiallyPinned }: Props) {
     setPending(true);
     try {
       await togglePinAction(emailId, next);
+      window.dispatchEvent(
+        new CustomEvent("email-pin-changed", { detail: { id: emailId, pinned: next } })
+      );
       router.refresh();
     } finally {
       setPending(false);
