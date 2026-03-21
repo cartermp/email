@@ -18,7 +18,6 @@ Features to implement over time, roughly in priority order.
 - Draft auto-save
 - Multiple account support (Gmail, Outlook via IMAP bridge or OAuth)
 - Unread count badge in sidebar
-- Mark as starred
 - Archive and delete actions
 - Mobile-responsive layout
 - Dark mode

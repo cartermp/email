@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Email } from "@/lib/types";
+import { isPinned, sortEmailsByPin, mergeEmailUpdates } from "@/lib/emailList";
 import { formatAddressList, formatDate } from "@/lib/format";
 import { markEmailAsRead } from "@/app/(inbox)/email/[id]/actions";
 import { loadMoreEmails, searchEmailsAction } from "@/app/(inbox)/actions";
@@ -28,10 +29,15 @@ export default function EmailListPanel({
 
   const [clientReadIds, setClientReadIds] = useState(new Set<string>());
 
-  // Inbox list + pagination
-  const [inboxEmails, setInboxEmails] = useState(emails);
-  const [total, setTotal] = useState(initialTotal);
+  // Extra pages from "load more". The emails prop is the first page, kept
+  // fresh by router.refresh(). When it updates, we merge new keyword data
+  // (e.g. updated pin state) into extraEmails too.
+  const [extraEmails, setExtraEmails] = useState<Email[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  useEffect(() => {
+    setExtraEmails((prev) => mergeEmailUpdates(prev, emails));
+  }, [emails]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,8 +47,25 @@ export default function EmailListPanel({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const isInSearchMode = searchQuery.trim().length > 0;
-  const visibleEmails = isInSearchMode ? searchResults : inboxEmails;
-  const hasMore = !isInSearchMode && inboxEmails.length < total;
+
+  // Merge prop emails + extra pages, deduping so refreshes don't duplicate
+  const allInboxEmails = useMemo(() => {
+    const propIds = new Set(emails.map((e) => e.id));
+    return [...emails, ...extraEmails.filter((e) => !propIds.has(e.id))];
+  }, [emails, extraEmails]);
+
+  // Pin state comes directly from email.keywords.$flagged — server is truth.
+  // sortEmailsByPin is a stable sort so relative order within each group is preserved.
+  const sortedInboxEmails = useMemo(
+    () => sortEmailsByPin(allInboxEmails),
+    [allInboxEmails]
+  );
+
+  const visibleEmails = isInSearchMode ? searchResults : sortedInboxEmails;
+  const hasMore = !isInSearchMode && allInboxEmails.length < initialTotal;
+  const pinnedCount = isInSearchMode
+    ? 0
+    : sortedInboxEmails.filter(isPinned).length;
 
   // Debounced search
   useEffect(() => {
@@ -79,12 +102,8 @@ export default function EmailListPanel({
   async function handleLoadMore() {
     setLoadingMore(true);
     try {
-      const { emails: more, total: newTotal } = await loadMoreEmails(
-        inboxId,
-        inboxEmails.length
-      );
-      setInboxEmails((prev) => [...prev, ...more]);
-      setTotal(newTotal);
+      const { emails: more } = await loadMoreEmails(inboxId, allInboxEmails.length);
+      setExtraEmails((prev) => [...prev, ...more]);
     } finally {
       setLoadingMore(false);
     }
@@ -139,7 +158,7 @@ export default function EmailListPanel({
                 key={prefix}
                 type="button"
                 onMouseDown={(e) => {
-                  e.preventDefault(); // keep input focused
+                  e.preventDefault();
                   setSearchQuery((q) => {
                     const trimmed = q.trimEnd();
                     return trimmed ? trimmed + " " + prefix : prefix;
@@ -148,12 +167,18 @@ export default function EmailListPanel({
                 }}
                 className="w-full flex items-center gap-3 px-3 py-1.5 hover:bg-stone-50 dark:hover:bg-stone-800 text-left cursor-pointer"
               >
-                <code className="text-stone-700 dark:text-stone-300 font-mono">{prefix}<span className="text-stone-400 dark:text-stone-500">…</span></code>
+                <code className="text-stone-700 dark:text-stone-300 font-mono">
+                  {prefix}
+                  <span className="text-stone-400 dark:text-stone-500">…</span>
+                </code>
                 <span className="text-stone-400 dark:text-stone-500">{desc}</span>
               </button>
             ))}
             <div className="px-3 py-1.5 text-stone-400 dark:text-stone-500 border-t border-stone-100 dark:border-stone-800">
-              Combine: <code className="font-mono text-stone-600 dark:text-stone-400">from:alice invoice</code>
+              Combine:{" "}
+              <code className="font-mono text-stone-600 dark:text-stone-400">
+                from:alice invoice
+              </code>
             </div>
           </div>
         )}
@@ -170,63 +195,83 @@ export default function EmailListPanel({
           </p>
         )}
         {!isSearching &&
-          visibleEmails.map((email) => {
+          visibleEmails.map((email, idx) => {
             const isSelected = email.id === selectedId;
+            const pinned = isPinned(email);
             const isUnread =
               !email.keywords?.["$seen"] &&
               !clientReadIds.has(email.id) &&
               email.id !== selectedId;
 
+            const showPinnedDivider = !isInSearchMode && pinnedCount > 0 && idx === 0;
+            const showRestDivider =
+              !isInSearchMode && pinnedCount > 0 && idx === pinnedCount;
+
             return (
-              <Link
-                key={email.id}
-                href={`/email/${email.id}`}
-                className={[
-                  "flex flex-col gap-0.5 px-4 py-2.5 border-b transition-colors",
-                  "border-stone-100 dark:border-stone-700/60",
-                  isSelected
-                    ? "bg-stone-200 dark:bg-stone-800"
-                    : "hover:bg-stone-100 dark:hover:bg-stone-900",
-                ].join(" ")}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 shrink-0">
-                    {isUnread && (
-                      <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+              <div key={email.id}>
+                {showPinnedDivider && (
+                  <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/60 border-b border-stone-200 dark:border-stone-700">
+                    Pinned
+                  </div>
+                )}
+                {showRestDivider && (
+                  <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/60 border-b border-stone-200 dark:border-stone-700">
+                    All mail
+                  </div>
+                )}
+                <Link
+                  href={`/email/${email.id}`}
+                  className={[
+                    "flex flex-col gap-0.5 px-4 py-2.5 border-b transition-colors",
+                    "border-stone-100 dark:border-stone-700/60",
+                    isSelected
+                      ? "bg-stone-200 dark:bg-stone-800"
+                      : "hover:bg-stone-100 dark:hover:bg-stone-900",
+                  ].join(" ")}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 shrink-0 flex justify-center">
+                      {pinned ? (
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-amber-500">
+                          <path d="M12 2C7.58 2 4 5.58 4 10c0 5.25 8 12 8 12s8-6.75 8-12C20 5.58 16.42 2 12 2z" />
+                        </svg>
+                      ) : isUnread ? (
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                      ) : null}
+                    </div>
+                    <span
+                      className={[
+                        "flex-1 text-sm truncate",
+                        isUnread
+                          ? "font-semibold text-stone-900 dark:text-stone-100"
+                          : "text-stone-500 dark:text-stone-400",
+                      ].join(" ")}
+                    >
+                      {formatAddressList(email.from) || "(no sender)"}
+                    </span>
+                    <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
+                      {formatDate(email.receivedAt)}
+                    </span>
+                  </div>
+                  <div className="pl-5 text-xs truncate">
+                    <span
+                      className={
+                        isUnread
+                          ? "font-semibold text-stone-800 dark:text-stone-200"
+                          : "text-stone-500 dark:text-stone-400"
+                      }
+                    >
+                      {email.subject || "(no subject)"}
+                    </span>
+                    {email.preview && (
+                      <span className="text-stone-400 dark:text-stone-600">
+                        {" — "}
+                        {email.preview}
+                      </span>
                     )}
                   </div>
-                  <span
-                    className={[
-                      "flex-1 text-sm truncate",
-                      isUnread
-                        ? "font-semibold text-stone-900 dark:text-stone-100"
-                        : "text-stone-500 dark:text-stone-400",
-                    ].join(" ")}
-                  >
-                    {formatAddressList(email.from) || "(no sender)"}
-                  </span>
-                  <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
-                    {formatDate(email.receivedAt)}
-                  </span>
-                </div>
-                <div className="pl-3.5 text-xs truncate">
-                  <span
-                    className={
-                      isUnread
-                        ? "font-semibold text-stone-800 dark:text-stone-200"
-                        : "text-stone-500 dark:text-stone-400"
-                    }
-                  >
-                    {email.subject || "(no subject)"}
-                  </span>
-                  {email.preview && (
-                    <span className="text-stone-400 dark:text-stone-600">
-                      {" — "}
-                      {email.preview}
-                    </span>
-                  )}
-                </div>
-              </Link>
+                </Link>
+              </div>
             );
           })}
 
@@ -236,7 +281,9 @@ export default function EmailListPanel({
             disabled={loadingMore}
             className="w-full py-3 text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition-colors disabled:opacity-50"
           >
-            {loadingMore ? "Loading…" : `Load more (${inboxEmails.length} of ${total})`}
+            {loadingMore
+              ? "Loading…"
+              : `Load more (${allInboxEmails.length} of ${initialTotal})`}
           </button>
         )}
       </div>

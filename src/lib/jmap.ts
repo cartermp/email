@@ -193,6 +193,26 @@ export async function getIdentities(
   return (result.list as Identity[]) ?? [];
 }
 
+export async function setPin(
+  apiUrl: string,
+  accountId: string,
+  emailId: string,
+  pin: boolean
+): Promise<void> {
+  await jmapCall(apiUrl, [
+    [
+      "Email/set",
+      {
+        accountId,
+        // JMAP RFC 8620 §5.3: set to true to add a keyword, null to remove it.
+        // Setting to false is not valid and is silently ignored by some servers.
+        update: { [emailId]: { "keywords/$flagged": pin ? true : null } },
+      },
+      "0",
+    ],
+  ]);
+}
+
 export async function markAsRead(
   apiUrl: string,
   accountId: string,
