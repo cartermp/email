@@ -13,7 +13,6 @@ Features to implement over time, roughly in priority order.
 
 - Folder / label navigation in the sidebar
 - Thread view — group emails by `threadId`
-- Search — `Email/query` with a `text` filter
 - Keyboard shortcuts (j/k navigation, r to reply, c to compose, etc.)
 - Reply / reply-all / forward
 - Draft auto-save
