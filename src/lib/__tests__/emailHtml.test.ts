@@ -49,9 +49,16 @@ describe("prepareHtml", () => {
       assert.ok(result.includes("background-color:#ffffff"));
     });
 
-    it("does not inject a dark-mode media query", () => {
+    it("injects dark-mode filter inversion on html element", () => {
       const result = prepareHtml(lightEmail);
-      assert.ok(!result.includes("prefers-color-scheme"), "should not inject dark override");
+      assert.ok(result.includes("prefers-color-scheme:dark") || result.includes("prefers-color-scheme: dark"));
+      assert.ok(result.includes("filter:invert(1) hue-rotate(180deg)"));
+    });
+
+    it("injects counter-filter on img and video to preserve image colors", () => {
+      const result = prepareHtml(lightEmail);
+      // img and video get the same filter applied twice (self-inverse for images)
+      assert.ok(result.includes("img,video{filter:invert(1) hue-rotate(180deg)}"), `got: ${result}`);
     });
   });
 
@@ -69,6 +76,13 @@ describe("prepareHtml", () => {
       // The injected style should only contain overflow:hidden, not a background color
       const injectedStyle = result.match(/<style>(.*?)<\/style>/)?.[1] ?? "";
       assert.ok(!injectedStyle.includes("background-color:#ffffff"), `got: ${injectedStyle}`);
+    });
+
+    it("does not inject a filter inversion (email handles its own dark mode)", () => {
+      const result = prepareHtml(darkEmail);
+      // Only one prefers-color-scheme reference — the email's own style, not our injected filter
+      const injectedStyle = result.match(/<style>(.*?)<\/style>/)?.[1] ?? "";
+      assert.ok(!injectedStyle.includes("filter:invert"), `injected style should not contain filter: ${injectedStyle}`);
     });
 
     it("still injects overflow:hidden", () => {

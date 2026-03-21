@@ -1,29 +1,38 @@
 /**
  * Prepare email HTML for display in a sandboxed iframe.
  *
- * - For emails with native dark mode (prefers-color-scheme: dark rules): step
- *   aside and let their own CSS handle theming.
- * - For all other emails: lock to light rendering with color-scheme:light so
- *   the browser never applies dark-mode transforms to emails designed for
- *   light backgrounds. Forcing a dark background on these causes illegible
- *   text because inline color styles (e.g. color:#000) can't be overridden
- *   without being extremely aggressive.
- * - Injects overflow:hidden so the iframe never gets its own scrollbar; the
- *   parent container handles all scrolling.
- * - Injects a resize script that reports the document height to the parent
- *   frame via postMessage so the iframe grows to fit its content.
+ * Dark mode strategy:
+ * - Emails with native dark mode (prefers-color-scheme: dark rules): step
+ *   aside entirely, let their own CSS handle theming.
+ * - All other emails: in dark mode, apply filter:invert(1) hue-rotate(180deg)
+ *   to the html element. This flips white→black and dark text→light text.
+ *   A counter-filter on img/video restores images to their original colors
+ *   (applying the same filter twice is self-inverse for images).
+ *   color-scheme:light prevents the browser from auto-adapting UI controls
+ *   on top of our filter.
+ *
+ * Scrolling: overflow:hidden on html,body prevents the iframe from ever
+ * getting its own scrollbar; the parent container handles all scrolling.
+ *
+ * Resizing: injected script reports document height via postMessage so the
+ * iframe grows to fit its content.
  */
 export function prepareHtml(html: string): string {
   const hasNativeDark = /prefers-color-scheme\s*:\s*dark/i.test(html);
 
-  // Non-dark-mode emails: lock to light so inline colors render as intended.
-  // Dark-mode emails: no base style injection — their own CSS takes over.
   const baseStyle = hasNativeDark
     ? "html,body{overflow:hidden}"
     : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;color-scheme:light}";
 
+  const darkAdapt = hasNativeDark
+    ? ""
+    : "@media(prefers-color-scheme:dark){" +
+      "html{filter:invert(1) hue-rotate(180deg)}" +
+      "img,video{filter:invert(1) hue-rotate(180deg)}" +
+      "}";
+
   const inject = [
-    `<style>${baseStyle}</style>`,
+    `<style>${baseStyle}${darkAdapt}</style>`,
     `<script>(function(){
   function send(){
     var h=Math.max(
