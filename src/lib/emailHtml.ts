@@ -18,7 +18,7 @@ export function prepareHtml(html: string): string {
       "}";
 
   const inject = [
-    `<style>html,body{background-color:#ffffff;color:#000000}${darkOverride}</style>`,
+    `<style>html,body{background-color:#ffffff;color:#000000;overflow:hidden}${darkOverride}</style>`,
     `<script>(function(){
   function send(){
     var h=Math.max(

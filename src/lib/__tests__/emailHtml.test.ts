@@ -41,4 +41,14 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("iframe-resize"));
     assert.ok(result.includes("postMessage"));
   });
+
+  it("sets overflow:hidden to prevent iframe internal scrollbar", () => {
+    const result = prepareHtml("<html><head></head><body>content</body></html>");
+    assert.ok(result.includes("overflow:hidden"), `expected overflow:hidden in: ${result.slice(0, 300)}`);
+  });
+
+  it("handles uppercase HEAD tag", () => {
+    const result = prepareHtml("<HTML><HEAD></HEAD><BODY>hi</BODY></HTML>");
+    assert.ok(result.includes("<style>"), "should inject style into uppercase HEAD");
+  });
 });

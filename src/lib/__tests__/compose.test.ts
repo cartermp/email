@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   reSubject,
   fwdSubject,
+  addrList,
   buildReplyQuote,
   buildForwardQuote,
   htmlToPlainText,
@@ -46,6 +47,33 @@ describe("fwdSubject", () => {
 
   it("handles null subject", () => {
     assert.equal(fwdSubject(null), "Fwd: ");
+  });
+});
+
+describe("addrList", () => {
+  it("returns empty string for null", () => {
+    assert.equal(addrList(null), "");
+  });
+
+  it("returns empty string for empty array", () => {
+    assert.equal(addrList([]), "");
+  });
+
+  it("formats a named address as Name <email>", () => {
+    assert.equal(
+      addrList([{ name: "Alice", email: "alice@example.com" }]),
+      "Alice <alice@example.com>"
+    );
+  });
+
+  it("joins multiple addresses with comma-space", () => {
+    assert.equal(
+      addrList([
+        { name: "Alice", email: "alice@example.com" },
+        { name: null, email: "bob@example.com" },
+      ]),
+      "Alice <alice@example.com>, bob@example.com"
+    );
   });
 });
 
@@ -95,6 +123,18 @@ describe("htmlToPlainText", () => {
 
   it("trims leading and trailing whitespace", () => {
     assert.equal(htmlToPlainText("  <p>hello</p>  "), "hello");
+  });
+
+  it("handles uppercase tags", () => {
+    assert.equal(htmlToPlainText("<B>bold</B> text<BR>next"), "bold text\nnext");
+  });
+
+  it("decodes &#39; and &apos; as apostrophe", () => {
+    assert.equal(htmlToPlainText("it&#39;s &apos;fine&apos;"), "it's 'fine'");
+  });
+
+  it("returns empty string for empty input", () => {
+    assert.equal(htmlToPlainText(""), "");
   });
 });
 
