@@ -1,8 +1,6 @@
 [build]
-builder = "nixpacks"
-buildCommand = "pnpm install --frozen-lockfile && pnpm build"
+builder = "dockerfile"
 
 [deploy]
-startCommand = "pnpm start"
 healthcheckPath = "/"
 restartPolicyType = "on_failure"
