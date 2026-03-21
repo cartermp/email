@@ -1,26 +1,18 @@
 import { getSession, getAccountId, getIdentities, getEmail } from "@/lib/jmap";
 import { formatAddressRFC, formatFullDate } from "@/lib/format";
-import { EmailAddress } from "@/lib/types";
+import {
+  reSubject,
+  fwdSubject,
+  addrList,
+  buildReplyQuote,
+  buildForwardQuote,
+} from "@/lib/compose";
 import Composer from "@/components/Composer";
 
 export const dynamic = "force-dynamic";
 
 interface Props {
   searchParams: Promise<{ mode?: string; id?: string }>;
-}
-
-function reSubject(subject: string | null): string {
-  const s = subject ?? "";
-  return /^re:/i.test(s) ? s : `Re: ${s}`;
-}
-
-function fwdSubject(subject: string | null): string {
-  const s = subject ?? "";
-  return /^fwd?:/i.test(s) ? s : `Fwd: ${s}`;
-}
-
-function addrList(addrs: EmailAddress[] | null): string {
-  return (addrs ?? []).map(formatAddressRFC).join(", ");
 }
 
 export default async function ComposePage({ searchParams }: Props) {
@@ -113,29 +105,4 @@ export default async function ComposePage({ searchParams }: Props) {
       </div>
     </div>
   );
-}
-
-function buildReplyQuote(date: string, from: string, body: string): string {
-  const quoted = body
-    .trimEnd()
-    .split("\n")
-    .map((line) => `> ${line}`)
-    .join("\n");
-  return `\n\n---\n\n*On ${date}, ${from} wrote:*\n\n${quoted}`;
-}
-
-function buildForwardQuote({
-  from,
-  to,
-  date,
-  subject,
-  body,
-}: {
-  from: string;
-  to: string;
-  date: string;
-  subject: string;
-  body: string;
-}): string {
-  return `\n\n---\n\n**---------- Forwarded message ----------**\n\n**From:** ${from}  \n**To:** ${to}  \n**Date:** ${date}  \n**Subject:** ${subject}\n\n${body}`;
 }
