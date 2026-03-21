@@ -57,10 +57,61 @@ export async function getMailboxes(
   return (result.list as Mailbox[]) ?? [];
 }
 
+const EMAIL_LIST_PROPERTIES = [
+  "id",
+  "threadId",
+  "mailboxIds",
+  "subject",
+  "from",
+  "to",
+  "receivedAt",
+  "preview",
+  "keywords",
+  "hasAttachment",
+  "size",
+];
+
 export async function listEmails(
   apiUrl: string,
   accountId: string,
   mailboxId: string,
+  limit = 50,
+  position = 0
+): Promise<{ emails: Email[]; total: number }> {
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/query",
+      {
+        accountId,
+        filter: { inMailbox: mailboxId },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        limit,
+        position,
+      },
+      "0",
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
+        properties: EMAIL_LIST_PROPERTIES,
+      },
+      "1",
+    ],
+  ]);
+  const [, queryResult] = data.methodResponses[0];
+  const [, getResult] = data.methodResponses[1];
+  return {
+    emails: (getResult.list as Email[]) ?? [],
+    total: (queryResult.total as number) ?? 0,
+  };
+}
+
+export async function searchEmails(
+  apiUrl: string,
+  accountId: string,
+  query: string,
   limit = 50
 ): Promise<Email[]> {
   const data = await jmapCall(apiUrl, [
@@ -68,7 +119,7 @@ export async function listEmails(
       "Email/query",
       {
         accountId,
-        filter: { inMailbox: mailboxId },
+        filter: { text: query },
         sort: [{ property: "receivedAt", isAscending: false }],
         limit,
       },
@@ -79,19 +130,7 @@ export async function listEmails(
       {
         accountId,
         "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-        properties: [
-          "id",
-          "threadId",
-          "mailboxIds",
-          "subject",
-          "from",
-          "to",
-          "receivedAt",
-          "preview",
-          "keywords",
-          "hasAttachment",
-          "size",
-        ],
+        properties: EMAIL_LIST_PROPERTIES,
       },
       "1",
     ],

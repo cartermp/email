@@ -12,13 +12,18 @@ export default async function InboxLayout({
   const accountId = getAccountId(session);
   const mailboxes = await getMailboxes(session.apiUrl, accountId);
   const inbox = mailboxes.find((m) => m.role === "inbox");
-  const emails = inbox
+  const { emails, total } = inbox
     ? await listEmails(session.apiUrl, accountId, inbox.id)
-    : [];
+    : { emails: [], total: 0 };
 
   return (
     <div className="flex h-full">
-      <EmailListPanel emails={emails} unreadCount={inbox?.unreadEmails ?? 0} />
+      <EmailListPanel
+        emails={emails}
+        inboxId={inbox?.id ?? ""}
+        initialTotal={total}
+        unreadCount={inbox?.unreadEmails ?? 0}
+      />
       <div className="flex-1 overflow-hidden min-w-0 h-full">{children}</div>
     </div>
   );
