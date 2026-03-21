@@ -320,6 +320,22 @@ export async function markAsRead(
   ]);
 }
 
+export async function downloadBlobAsText(
+  downloadUrl: string,
+  accountId: string,
+  blobId: string,
+  name = "file"
+): Promise<string> {
+  const url = downloadUrl
+    .replace(/\{accountId\}/, accountId)
+    .replace(/\{blobId\}/, blobId)
+    .replace(/\{name\}/, encodeURIComponent(name))
+    .replace(/\{type\}/, "text%2Fcalendar");
+  const res = await fetch(url, { headers: authHeader(), cache: "no-store" });
+  if (!res.ok) throw new Error(`Blob download failed: ${res.statusText}`);
+  return res.text();
+}
+
 export async function uploadBlob(
   uploadUrl: string,
   accountId: string,
@@ -455,4 +471,59 @@ export async function sendEmail(
   }
 
   return { emailId, submissionId };
+}
+
+export async function sendCalendarReply(
+  apiUrl: string,
+  uploadUrl: string,
+  accountId: string,
+  identityId: string,
+  from: { name: string; email: string },
+  to: { name: string | null; email: string },
+  subject: string,
+  textBody: string,
+  icsText: string,
+  inReplyToId?: string
+): Promise<void> {
+  // Upload the ICS blob
+  const icsBytes = new TextEncoder().encode(icsText).buffer as ArrayBuffer;
+  const { blobId } = await uploadBlob(uploadUrl, accountId, icsBytes, "text/calendar");
+
+  const emailCreate: Record<string, unknown> = {
+    mailboxIds: {},
+    from: [from],
+    to: [to],
+    subject,
+    bodyStructure: {
+      type: "multipart/mixed",
+      subParts: [
+        { partId: "text", type: "text/plain" },
+        { blobId, type: "text/calendar", name: "invite.ics", disposition: "attachment" },
+      ],
+    },
+    bodyValues: {
+      text: { value: textBody, charset: "utf-8" },
+    },
+  };
+  if (inReplyToId) emailCreate.inReplyTo = [inReplyToId];
+
+  const data = await jmapCall(apiUrl, [
+    ["Email/set", { accountId, create: { reply: emailCreate } }, "0"],
+    [
+      "EmailSubmission/set",
+      {
+        accountId,
+        create: { submission: { identityId, emailId: "#reply" } },
+        onSuccessDestroyEmail: [],
+      },
+      "1",
+    ],
+  ]);
+
+  const [, emailResult] = data.methodResponses[0];
+  const created = (emailResult.created as Record<string, { id: string }>) ?? {};
+  if (!created.reply?.id) {
+    const err = emailResult.notCreated as Record<string, unknown>;
+    throw new Error(`Calendar reply failed: ${JSON.stringify(err?.reply ?? emailResult)}`);
+  }
 }

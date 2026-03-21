@@ -1,6 +1,7 @@
 export interface JMAPSession {
   apiUrl: string;
   uploadUrl: string;
+  downloadUrl: string;
   accounts: Record<string, { name: string; isPersonal: boolean }>;
   primaryAccounts: Record<string, string>;
 }

@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { getSession, getAccountId, getEmail } from "@/lib/jmap";
+import { getSession, getAccountId, getEmail, downloadBlobAsText } from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
+import CalendarEventCard, { CalendarEventData } from "@/components/CalendarEventCard";
+import { parseIcs } from "@/lib/ics";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function EmailPage({ params }: Props) {
 
   if (!email) return notFound();
 
-  // Resolve body
+  // ── Resolve body ──────────────────────────────────────────────
   let body: string | null = null;
   let bodyType: "html" | "text" = "text";
 
@@ -35,6 +37,66 @@ export default async function EmailPage({ params }: Props) {
     if (part.partId && email.bodyValues?.[part.partId]) {
       body = email.bodyValues[part.partId].value;
       bodyType = "text";
+    }
+  }
+
+  // ── Detect calendar invite ────────────────────────────────────
+  let calendarEvent: CalendarEventData | null = null;
+
+  // Check text body parts (text/calendar inline)
+  const inlineCalPart = email.textBody?.find((p) => p.type === "text/calendar");
+  // Check attachments (text/calendar as attachment)
+  const attachedCalPart = email.attachments?.find((p) => p.type === "text/calendar");
+
+  const calPart = inlineCalPart ?? attachedCalPart;
+
+  if (calPart) {
+    try {
+      let icsText: string | null = null;
+
+      // If it's an inline part with a partId, the value may already be in bodyValues
+      if (calPart.partId && email.bodyValues?.[calPart.partId]) {
+        icsText = email.bodyValues[calPart.partId].value;
+      } else if (calPart.blobId) {
+        // Download the blob
+        icsText = await downloadBlobAsText(
+          session.downloadUrl,
+          accountId,
+          calPart.blobId,
+          calPart.name ?? "invite.ics"
+        );
+      }
+
+      if (icsText) {
+        const event = parseIcs(icsText);
+        if (event) {
+          // Find current user's PARTSTAT by matching the reply-to or from address
+          // Best-effort: check all identities... for now find any ACCEPTED/DECLINED attendee
+          // that looks like the account holder (the "to" address of the invite email)
+          const myEmails = new Set(
+            (email.to ?? []).map((a) => a.email.toLowerCase())
+          );
+          const myAttendee = event.attendees.find((a) =>
+            myEmails.has(a.email.toLowerCase())
+          );
+
+          calendarEvent = {
+            icsText,
+            method: event.method,
+            summary: event.summary,
+            dtStart: event.dtStart?.toISOString() ?? null,
+            dtEnd: event.dtEnd?.toISOString() ?? null,
+            allDay: event.allDay,
+            location: event.location,
+            organizerName: event.organizer?.name ?? null,
+            organizerEmail: event.organizer?.email ?? null,
+            myCurrentPartstat: myAttendee?.partstat ?? null,
+            inReplyToMessageId: email.messageId?.[0],
+          };
+        }
+      }
+    } catch {
+      // Non-fatal: if we can't parse the calendar part, skip the card
     }
   }
 
@@ -108,6 +170,9 @@ export default async function EmailPage({ params }: Props) {
             Forward
           </Link>
         </div>
+
+        {/* Calendar invite card */}
+        {calendarEvent && <CalendarEventCard event={calendarEvent} />}
 
         {/* Body */}
         {body ? (
