@@ -108,6 +108,35 @@ export async function listEmails(
   };
 }
 
+export async function listPinnedEmails(
+  apiUrl: string,
+  accountId: string
+): Promise<Email[]> {
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/query",
+      {
+        accountId,
+        filter: { hasKeyword: "$flagged" },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        limit: 100,
+      },
+      "0",
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
+        properties: EMAIL_LIST_PROPERTIES,
+      },
+      "1",
+    ],
+  ]);
+  const [, result] = data.methodResponses[1];
+  return (result.list as Email[]) ?? [];
+}
+
 export async function searchEmails(
   apiUrl: string,
   accountId: string,

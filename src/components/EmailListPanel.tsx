@@ -15,6 +15,7 @@ interface Props {
   initialTotal: number;
   unreadCount?: number;
   drafts?: Email[];
+  pinnedEmails?: Email[];
 }
 
 type View = "inbox" | "drafts";
@@ -25,6 +26,7 @@ export default function EmailListPanel({
   initialTotal,
   unreadCount = 0,
   drafts = [],
+  pinnedEmails = [],
 }: Props) {
   const pathname = usePathname();
   const selectedId = pathname.startsWith("/email/")
@@ -65,8 +67,8 @@ export default function EmailListPanel({
   const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    setExtraEmails((prev) => mergeEmailUpdates(prev, emails));
-  }, [emails]); // eslint-disable-line react-hooks/exhaustive-deps
+    setExtraEmails((prev) => mergeEmailUpdates(prev, [...emails, ...pinnedEmails]));
+  }, [emails, pinnedEmails]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Search (inbox only)
   const [searchQuery, setSearchQuery] = useState("");
@@ -83,8 +85,12 @@ export default function EmailListPanel({
 
   const allInboxEmails = useMemo(() => {
     const propIds = new Set(emails.map((e) => e.id));
-    return [...emails, ...extraEmails.filter((e) => !propIds.has(e.id))];
-  }, [emails, extraEmails]);
+    const extras = extraEmails.filter((e) => !propIds.has(e.id));
+    const knownIds = new Set([...propIds, ...extras.map((e) => e.id)]);
+    // Pinned emails fetched separately — add any not already in the paginated set
+    const pinnedExtras = pinnedEmails.filter((e) => !knownIds.has(e.id));
+    return [...emails, ...extras, ...pinnedExtras];
+  }, [emails, extraEmails, pinnedEmails]);
 
   const sortedInboxEmails = useMemo(
     () => sortEmailsByPin(allInboxEmails),
@@ -92,7 +98,9 @@ export default function EmailListPanel({
   );
 
   const visibleEmails = isInSearchMode ? searchResults : sortedInboxEmails;
-  const hasMore = !isInSearchMode && allInboxEmails.length < initialTotal;
+  // Pagination counts only the server-paginated slice, not pinned extras
+  const paginatedCount = emails.length + extraEmails.length;
+  const hasMore = !isInSearchMode && paginatedCount < initialTotal;
   const pinnedCount = isInSearchMode
     ? 0
     : sortedInboxEmails.filter(isPinned).length;
@@ -132,7 +140,7 @@ export default function EmailListPanel({
   async function handleLoadMore() {
     setLoadingMore(true);
     try {
-      const { emails: more } = await loadMoreEmails(inboxId, allInboxEmails.length);
+      const { emails: more } = await loadMoreEmails(inboxId, paginatedCount);
       setExtraEmails((prev) => [...prev, ...more]);
     } finally {
       setLoadingMore(false);
@@ -141,16 +149,6 @@ export default function EmailListPanel({
 
   return (
     <div className="flex flex-col h-full overflow-hidden w-full">
-
-      {/* Compose button */}
-      <div className="shrink-0 px-3 pt-3 pb-2 border-b border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900">
-        <Link
-          href="/compose"
-          className="flex items-center justify-center text-xs font-medium py-1.5 rounded-md bg-stone-900 dark:bg-stone-100 text-stone-50 dark:text-stone-900 hover:bg-stone-700 dark:hover:bg-stone-300 transition-colors"
-        >
-          Compose
-        </Link>
-      </div>
 
       {/* Search (inbox only) */}
       {view === "inbox" && (
@@ -163,6 +161,12 @@ export default function EmailListPanel({
             onChange={(e) => setSearchQuery(e.target.value)}
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setSearchFocused(false);
+                searchInputRef.current?.blur();
+              }
+            }}
             className="w-full text-sm rounded-md px-2.5 py-1.5 bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 border border-transparent focus:border-stone-300 dark:focus:border-stone-600 focus:outline-none"
           />
           {searchFocused && (

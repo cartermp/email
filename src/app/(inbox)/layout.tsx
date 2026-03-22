@@ -1,4 +1,4 @@
-import { getSession, getAccountId, getMailboxes, listEmails, listDrafts } from "@/lib/jmap";
+import { getSession, getAccountId, getMailboxes, listEmails, listDrafts, listPinnedEmails } from "@/lib/jmap";
 import { Email } from "@/lib/types";
 import EmailListPanel from "@/components/EmailListPanel";
 import InboxPanelLayout from "@/components/InboxPanelLayout";
@@ -16,13 +16,14 @@ export default async function InboxLayout({
   const inbox = mailboxes.find((m) => m.role === "inbox");
   const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
 
-  const [{ emails, total }, drafts] = await Promise.all([
+  const [{ emails, total }, drafts, pinned] = await Promise.all([
     inbox
       ? listEmails(session.apiUrl, accountId, inbox.id)
       : Promise.resolve({ emails: [] as Email[], total: 0 }),
     draftsMailbox
       ? listDrafts(session.apiUrl, accountId, draftsMailbox.id)
       : Promise.resolve([] as Email[]),
+    listPinnedEmails(session.apiUrl, accountId),
   ]);
 
   return (
@@ -34,6 +35,7 @@ export default async function InboxLayout({
           initialTotal={total}
           unreadCount={inbox?.unreadEmails ?? 0}
           drafts={drafts}
+          pinnedEmails={pinned}
         />
       }
     >
