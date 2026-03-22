@@ -1,5 +1,4 @@
-import { getSession, getAccountId, getMailboxes, listEmails, listDrafts, listPinnedEmails } from "@/lib/jmap";
-import { Email } from "@/lib/types";
+import { getSession, getAccountId, getMailboxes, listInboxEmails, listDrafts, listPinnedEmails } from "@/lib/jmap";
 import EmailListPanel from "@/components/EmailListPanel";
 import InboxPanelLayout from "@/components/InboxPanelLayout";
 
@@ -15,27 +14,33 @@ export default async function InboxLayout({
   const mailboxes = await getMailboxes(session.apiUrl, accountId);
   const inbox = mailboxes.find((m) => m.role === "inbox");
   const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
+  const archiveMailbox = mailboxes.find((m) => m.role === "archive");
+  const trashMailbox = mailboxes.find((m) => m.role === "trash");
 
-  const [{ emails, total }, drafts, pinned] = await Promise.all([
+  const [inbox_emails, drafts, pinned] = await Promise.all([
     inbox
-      ? listEmails(session.apiUrl, accountId, inbox.id)
-      : Promise.resolve({ emails: [] as Email[], total: 0 }),
+      ? listInboxEmails(session.apiUrl, accountId, inbox.id)
+      : Promise.resolve({ unreads: [], unreadTotal: 0, reads: [], readTotal: 0 }),
     draftsMailbox
       ? listDrafts(session.apiUrl, accountId, draftsMailbox.id)
-      : Promise.resolve([] as Email[]),
+      : Promise.resolve([]),
     listPinnedEmails(session.apiUrl, accountId),
   ]);
+  const { unreads, unreadTotal, reads, readTotal } = inbox_emails;
 
   return (
     <InboxPanelLayout
       list={
         <EmailListPanel
-          emails={emails}
+          unreads={unreads}
+          unreadTotal={unreadTotal}
+          reads={reads}
+          readTotal={readTotal}
           inboxId={inbox?.id ?? ""}
-          initialTotal={total}
-          unreadCount={inbox?.unreadEmails ?? 0}
           drafts={drafts}
           pinnedEmails={pinned}
+          archiveMailboxId={archiveMailbox?.id}
+          trashMailboxId={trashMailbox?.id}
         />
       }
     >

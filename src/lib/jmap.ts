@@ -1,6 +1,5 @@
 import { Email, Identity, JMAPSession, Mailbox } from "./types";
 
-const TOKEN = process.env.FASTMAIL_API_TOKEN;
 const SESSION_URL = "https://api.fastmail.com/jmap/session";
 
 const JMAP_USING = [
@@ -12,8 +11,9 @@ const JMAP_USING = [
 type MethodCall = [string, Record<string, unknown>, string];
 
 function authHeader() {
-  if (!TOKEN) throw new Error("FASTMAIL_API_TOKEN is not set");
-  return { Authorization: `Bearer ${TOKEN}` };
+  const token = process.env.FASTMAIL_API_TOKEN;
+  if (!token) throw new Error("FASTMAIL_API_TOKEN is not set");
+  return { Authorization: `Bearer ${token}` };
 }
 
 export async function getSession(): Promise<JMAPSession> {
@@ -99,6 +99,85 @@ export async function listEmails(
       },
       "1",
     ],
+  ]);
+  const [, queryResult] = data.methodResponses[0];
+  const [, getResult] = data.methodResponses[1];
+  return {
+    emails: (getResult.list as Email[]) ?? [],
+    total: (queryResult.total as number) ?? 0,
+  };
+}
+
+/**
+ * Fetch the inbox in two separate queries (unread + read) batched in one HTTP
+ * request. Unreads always appear before reads in the combined result.
+ */
+export async function listInboxEmails(
+  apiUrl: string,
+  accountId: string,
+  mailboxId: string,
+  limit = 50
+): Promise<{ unreads: Email[]; unreadTotal: number; reads: Email[]; readTotal: number }> {
+  const data = await jmapCall(apiUrl, [
+    ["Email/query", {
+      accountId,
+      filter: { inMailbox: mailboxId, notKeyword: "$seen" },
+      sort: [{ property: "receivedAt", isAscending: false }],
+      limit, position: 0,
+    }, "uq"],
+    ["Email/get", {
+      accountId,
+      "#ids": { resultOf: "uq", name: "Email/query", path: "/ids" },
+      properties: EMAIL_LIST_PROPERTIES,
+    }, "ug"],
+    ["Email/query", {
+      accountId,
+      filter: { inMailbox: mailboxId, hasKeyword: "$seen" },
+      sort: [{ property: "receivedAt", isAscending: false }],
+      limit, position: 0,
+    }, "rq"],
+    ["Email/get", {
+      accountId,
+      "#ids": { resultOf: "rq", name: "Email/query", path: "/ids" },
+      properties: EMAIL_LIST_PROPERTIES,
+    }, "rg"],
+  ]);
+  const [, uq] = data.methodResponses[0];
+  const [, ug] = data.methodResponses[1];
+  const [, rq] = data.methodResponses[2];
+  const [, rg] = data.methodResponses[3];
+  return {
+    unreads: (ug.list as Email[]) ?? [],
+    unreadTotal: (uq.total as number) ?? 0,
+    reads: (rg.list as Email[]) ?? [],
+    readTotal: (rq.total as number) ?? 0,
+  };
+}
+
+export async function loadMoreEmailsFiltered(
+  apiUrl: string,
+  accountId: string,
+  mailboxId: string,
+  filter: "unread" | "read",
+  position: number,
+  limit = 50
+): Promise<{ emails: Email[]; total: number }> {
+  const jmapFilter =
+    filter === "unread"
+      ? { inMailbox: mailboxId, notKeyword: "$seen" }
+      : { inMailbox: mailboxId, hasKeyword: "$seen" };
+  const data = await jmapCall(apiUrl, [
+    ["Email/query", {
+      accountId,
+      filter: jmapFilter,
+      sort: [{ property: "receivedAt", isAscending: false }],
+      limit, position,
+    }, "0"],
+    ["Email/get", {
+      accountId,
+      "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
+      properties: EMAIL_LIST_PROPERTIES,
+    }, "1"],
   ]);
   const [, queryResult] = data.methodResponses[0];
   const [, getResult] = data.methodResponses[1];
@@ -567,4 +646,43 @@ export async function sendCalendarReply(
     const err = emailResult.notCreated as Record<string, unknown>;
     throw new Error(`Calendar reply failed: ${JSON.stringify(err?.reply ?? emailResult)}`);
   }
+}
+
+/**
+ * Apply a keyword patch to many emails in one JMAP call.
+ * Use `true` to add a keyword, `null` to remove it (RFC 8620 §5.3).
+ */
+export async function setKeywordsOnMany(
+  apiUrl: string,
+  accountId: string,
+  emailIds: string[],
+  patch: Record<string, boolean | null>
+): Promise<void> {
+  if (!emailIds.length) return;
+  const update: Record<string, Record<string, boolean | null>> = {};
+  for (const id of emailIds) update[id] = patch;
+  await jmapCall(apiUrl, [["Email/set", { accountId, update }, "0"]]);
+}
+
+/**
+ * Move emails into a target mailbox, removing them from all current mailboxes.
+ */
+export async function moveEmailsToMailbox(
+  apiUrl: string,
+  accountId: string,
+  emails: Pick<Email, "id" | "mailboxIds">[],
+  targetMailboxId: string
+): Promise<void> {
+  if (!emails.length) return;
+  const update: Record<string, Record<string, boolean | null>> = {};
+  for (const email of emails) {
+    const patch: Record<string, boolean | null> = {
+      [`mailboxIds/${targetMailboxId}`]: true,
+    };
+    for (const mbId of Object.keys(email.mailboxIds)) {
+      if (mbId !== targetMailboxId) patch[`mailboxIds/${mbId}`] = null;
+    }
+    update[email.id] = patch;
+  }
+  await jmapCall(apiUrl, [["Email/set", { accountId, update }, "0"]]);
 }

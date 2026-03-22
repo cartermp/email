@@ -148,3 +148,94 @@ describe("mergeEmailUpdates", () => {
     assert.equal(result.length, 1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Inbox display order: pinned → unread (not pinned) → read (not pinned)
+// ---------------------------------------------------------------------------
+// This mirrors the allInboxEmails memo in EmailListPanel so we can verify the
+// ordering logic in isolation without a browser environment.
+
+function buildInboxOrder(
+  pinnedEmails: Email[],
+  allUnreads: Email[],
+  allReads: Email[]
+): Email[] {
+  const pinnedIds = new Set(pinnedEmails.map((e) => e.id));
+  const seenIds = new Set<string>();
+  const result: Email[] = [];
+  const add = (e: Email) => {
+    if (!seenIds.has(e.id)) {
+      seenIds.add(e.id);
+      result.push(e);
+    }
+  };
+  pinnedEmails.forEach(add);
+  allUnreads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
+  allReads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
+  return result;
+}
+
+describe("inbox display order (pinned → unread → read)", () => {
+  it("places pinned emails first regardless of read state", () => {
+    const pinned = makeEmail("p1", { keywords: { "$flagged": true, "$seen": true } });
+    const unread = makeEmail("u1", { keywords: {} });
+    const read = makeEmail("r1", { keywords: { "$seen": true } });
+    const result = buildInboxOrder([pinned], [unread], [read]);
+    assert.equal(result[0].id, "p1");
+  });
+
+  it("places unreads before reads when there are no pinned emails", () => {
+    const u1 = makeEmail("u1", { keywords: {} });
+    const u2 = makeEmail("u2", { keywords: {} });
+    const r1 = makeEmail("r1", { keywords: { "$seen": true } });
+    const result = buildInboxOrder([], [u1, u2], [r1]);
+    assert.deepEqual(result.map((e) => e.id), ["u1", "u2", "r1"]);
+  });
+
+  it("excludes pinned emails from the unread and read sections", () => {
+    const pinned = makeEmail("p1", { keywords: { "$flagged": true } });
+    const result = buildInboxOrder([pinned], [pinned], []);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].id, "p1");
+  });
+
+  it("deduplicates emails that appear in multiple buckets", () => {
+    const email = makeEmail("dup", { keywords: {} });
+    const result = buildInboxOrder([], [email, email], []);
+    assert.equal(result.length, 1);
+  });
+
+  it("preserves chronological order within the unread section", () => {
+    // Server returns newest-first; verify relative order is preserved
+    const u1 = makeEmail("u1", { receivedAt: "2024-03-01T00:00:00Z" });
+    const u2 = makeEmail("u2", { receivedAt: "2024-02-01T00:00:00Z" });
+    const result = buildInboxOrder([], [u1, u2], []);
+    assert.deepEqual(result.map((e) => e.id), ["u1", "u2"]);
+  });
+
+  it("preserves chronological order within the read section", () => {
+    const r1 = makeEmail("r1", { receivedAt: "2024-03-01T00:00:00Z", keywords: { "$seen": true } });
+    const r2 = makeEmail("r2", { receivedAt: "2024-02-01T00:00:00Z", keywords: { "$seen": true } });
+    const result = buildInboxOrder([], [], [r1, r2]);
+    assert.deepEqual(result.map((e) => e.id), ["r1", "r2"]);
+  });
+
+  it("returns empty list when all buckets are empty", () => {
+    const result = buildInboxOrder([], [], []);
+    assert.deepEqual(result, []);
+  });
+
+  it("handles only reads with no unreads or pinned", () => {
+    const r1 = makeEmail("r1", { keywords: { "$seen": true } });
+    const result = buildInboxOrder([], [], [r1]);
+    assert.deepEqual(result.map((e) => e.id), ["r1"]);
+  });
+
+  it("orders: pinned first, then unread, then read", () => {
+    const pinned = makeEmail("p", { keywords: { "$flagged": true } });
+    const unread = makeEmail("u", { keywords: {} });
+    const read   = makeEmail("r", { keywords: { "$seen": true } });
+    const result = buildInboxOrder([pinned], [unread], [read]);
+    assert.deepEqual(result.map((e) => e.id), ["p", "u", "r"]);
+  });
+});
