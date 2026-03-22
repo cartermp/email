@@ -6,6 +6,7 @@ import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
 import CalendarEventCard, { CalendarEventData } from "@/components/CalendarEventCard";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
+import MobileBackButton from "@/components/MobileBackButton";
 import { parseIcs } from "@/lib/ics";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +108,8 @@ export default async function EmailPage({ params }: Props) {
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
       <div className="max-w-3xl mx-auto px-8 py-8">
+        <MobileBackButton label="Inbox" />
+
         {/* Subject */}
         <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 mb-5 leading-snug">
           {email.subject || "(no subject)"}

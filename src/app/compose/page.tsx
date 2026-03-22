@@ -9,6 +9,7 @@ import {
   htmlToPlainText,
 } from "@/lib/compose";
 import Composer from "@/components/Composer";
+import MobileBackButton from "@/components/MobileBackButton";
 
 export const dynamic = "force-dynamic";
 
@@ -114,12 +115,13 @@ export default async function ComposePage({ searchParams }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-6 py-4">
+      <div className="sticky top-0 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-6 py-4 flex items-center gap-3">
+        <MobileBackButton label="" />
         <h1 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
           {title}
         </h1>
       </div>
-      <div className="flex-1 min-h-0" style={{ height: "calc(100vh - 57px)" }}>
+      <div className="flex-1 min-h-0">
         <Composer
           identities={sorted.map((i) => ({ id: i.id, name: i.name, email: i.email }))}
           initialTo={initialTo}

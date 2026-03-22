@@ -140,7 +140,7 @@ export default function EmailListPanel({
   }
 
   return (
-    <div className="w-72 shrink-0 flex flex-col border-r border-stone-200 dark:border-stone-700 h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden w-full">
 
       {/* Compose button */}
       <div className="shrink-0 px-3 pt-3 pb-2 border-b border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900">

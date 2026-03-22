@@ -1,6 +1,7 @@
 import { getSession, getAccountId, getMailboxes, listEmails, listDrafts } from "@/lib/jmap";
 import { Email } from "@/lib/types";
 import EmailListPanel from "@/components/EmailListPanel";
+import InboxPanelLayout from "@/components/InboxPanelLayout";
 
 export const dynamic = "force-dynamic";
 
@@ -25,15 +26,18 @@ export default async function InboxLayout({
   ]);
 
   return (
-    <div className="flex h-full">
-      <EmailListPanel
-        emails={emails}
-        inboxId={inbox?.id ?? ""}
-        initialTotal={total}
-        unreadCount={inbox?.unreadEmails ?? 0}
-        drafts={drafts}
-      />
-      <div className="flex-1 overflow-hidden min-w-0 h-full">{children}</div>
-    </div>
+    <InboxPanelLayout
+      list={
+        <EmailListPanel
+          emails={emails}
+          inboxId={inbox?.id ?? ""}
+          initialTotal={total}
+          unreadCount={inbox?.unreadEmails ?? 0}
+          drafts={drafts}
+        />
+      }
+    >
+      {children}
+    </InboxPanelLayout>
   );
 }

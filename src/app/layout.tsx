@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
+import MobileNav from "@/components/MobileNav";
 import "./globals.css";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
@@ -27,46 +28,52 @@ export default async function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full`}
     >
-      <body className="h-full flex bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
-        {/* Sidebar */}
-        <nav className="w-44 shrink-0 flex flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
-          <span className="text-sm font-semibold text-stone-900 dark:text-stone-100 px-2 mb-4">
-            Mail
-          </span>
+      <body className="h-full flex flex-col bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
+        {/* Row: desktop sidebar + main content */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Sidebar — desktop only */}
+          <nav className="hidden md:flex w-44 shrink-0 flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
+            <span className="text-sm font-semibold text-stone-900 dark:text-stone-100 px-2 mb-4">
+              Mail
+            </span>
 
-          <Link
-            href="/"
-            className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
-          >
-            Inbox
-          </Link>
-          <Link
-            href="/drafts"
-            className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
-          >
-            Drafts
-          </Link>
-
-          {session && (
-            <form
-              className="mt-auto"
-              action={async () => {
-                "use server";
-                await signOut({ redirectTo: "/login" });
-              }}
+            <Link
+              href="/"
+              className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
             >
-              <button
-                type="submit"
-                className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
-              >
-                Sign out
-              </button>
-            </form>
-          )}
-        </nav>
+              Inbox
+            </Link>
+            <Link
+              href="/drafts"
+              className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
+            >
+              Drafts
+            </Link>
 
-        {/* Main content */}
-        <main className="flex-1 overflow-hidden min-w-0 h-full">{children}</main>
+            {session && (
+              <form
+                className="mt-auto"
+                action={async () => {
+                  "use server";
+                  await signOut({ redirectTo: "/login" });
+                }}
+              >
+                <button
+                  type="submit"
+                  className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
+                >
+                  Sign out
+                </button>
+              </form>
+            )}
+          </nav>
+
+          {/* Main content */}
+          <main className="flex-1 overflow-hidden min-w-0 h-full">{children}</main>
+        </div>
+
+        {/* Mobile bottom nav — hidden on desktop */}
+        <MobileNav />
       </body>
     </html>
   );
