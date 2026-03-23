@@ -290,6 +290,48 @@ export async function getEmail(
   return list?.[0] ?? null;
 }
 
+/**
+ * Fetch every email in a thread, with full body values, sorted oldest-first.
+ * Uses a two-step JMAP batch: Thread/get → Email/get back-reference.
+ */
+export async function getThreadEmails(
+  apiUrl: string,
+  accountId: string,
+  threadId: string
+): Promise<Email[]> {
+  const data = await jmapCall(apiUrl, [
+    ["Thread/get", { accountId, ids: [threadId] }, "t"],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": {
+          resultOf: "t",
+          name: "Thread/get",
+          path: "/list/*/emailIds",
+        },
+        properties: [
+          "id", "messageId", "threadId", "mailboxIds",
+          "subject", "from", "to", "cc", "replyTo",
+          "receivedAt", "preview", "keywords",
+          "hasAttachment", "size",
+          "htmlBody", "textBody", "attachments", "bodyValues",
+        ],
+        fetchHTMLBodyValues: true,
+        fetchTextBodyValues: true,
+        maxBodyValueBytes: 1024 * 1024,
+      },
+      "e",
+    ],
+  ]);
+  const emails: Email[] =
+    (data.methodResponses.find(([n]) => n === "Email/get")?.[1] as { list?: Email[] })
+      ?.list ?? [];
+  return emails.sort(
+    (a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime()
+  );
+}
+
 export async function getIdentities(
   apiUrl: string,
   accountId: string

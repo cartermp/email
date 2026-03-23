@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
 import { usePathname, useRouter } from "next/navigation";
 import { Email } from "@/lib/types";
-import { isPinned, mergeEmailUpdates } from "@/lib/emailList";
+import { isPinned, mergeEmailUpdates, groupIntoThreads, ThreadSummary } from "@/lib/emailList";
 import { formatAddressList, formatDate } from "@/lib/format";
 import { markEmailAsRead } from "@/app/(inbox)/email/[id]/actions";
 import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox } from "@/app/(inbox)/actions";
@@ -101,8 +101,8 @@ export default function EmailListPanel({
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
-  const selectedId = pathname.startsWith("/email/")
-    ? pathname.slice("/email/".length)
+  const selectedThreadId = pathname.startsWith("/thread/")
+    ? pathname.slice("/thread/".length)
     : undefined;
 
   const view: View = pathname.startsWith("/drafts") ? "drafts" : "inbox";
@@ -267,6 +267,13 @@ export default function EmailListPanel({
     return base.filter((e) => !archivedIds.has(e.id));
   }, [isInSearchMode, searchResults, allInboxEmails, archivedIds]);
 
+  // Group emails into thread summaries for the list view.
+  // Search results are also grouped so every row navigates to the thread view.
+  const visibleThreads = useMemo(
+    () => groupIntoThreads(visibleEmails),
+    [visibleEmails]
+  );
+
   // -------------------------------------------------------------------------
   // Pagination
   // -------------------------------------------------------------------------
@@ -277,7 +284,9 @@ export default function EmailListPanel({
   const hasMore = !isInSearchMode && (hasMoreUnreads || hasMoreReads);
 
   const unreadCount = unreadTotal;
-  const pinnedCount = isInSearchMode ? 0 : pinnedEmails.length;
+  const pinnedThreadCount = isInSearchMode
+    ? 0
+    : visibleThreads.filter((t) => t.isPinned).length;
 
   // -------------------------------------------------------------------------
   // Debounced search
@@ -298,18 +307,24 @@ export default function EmailListPanel({
   }, [searchQuery]);
 
   // -------------------------------------------------------------------------
-  // Auto-mark as read when navigating to an email
+  // Auto-mark as read when navigating to a thread
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!selectedId) return;
-    const email = visibleEmails.find((e) => e.id === selectedId);
-    if (!email) return;
-    const alreadyRead = !!email.keywords?.["$seen"] || clientReadIds.has(selectedId);
-    if (!alreadyRead) {
-      setClientReadIds((prev) => new Set([...prev, selectedId]));
-      markEmailAsRead(selectedId);
+    if (!selectedThreadId) return;
+    const thread = visibleThreads.find((t) => t.threadId === selectedThreadId);
+    if (!thread) return;
+    const unreadIds = thread.allEmails
+      .filter(
+        (e) =>
+          (!e.keywords?.["$seen"] || clientUnreadIds.has(e.id)) &&
+          !clientReadIds.has(e.id)
+      )
+      .map((e) => e.id);
+    if (unreadIds.length > 0) {
+      setClientReadIds((prev) => new Set([...prev, ...unreadIds]));
+      bulkMarkAsRead(unreadIds);
     }
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -------------------------------------------------------------------------
   // Load more
@@ -632,21 +647,31 @@ export default function EmailListPanel({
             </p>
           )}
           {!isSearching &&
-            visibleEmails.map((email, idx) => {
-              const isRouteSelected = email.id === selectedId;
-              const isChecked = selectedIds.has(email.id);
-              const pinned = isPinned(email);
+            visibleThreads.map((thread, idx) => {
+              const { latestEmail, senders } = thread;
+              const isRouteSelected = thread.threadId === selectedThreadId;
+              const isChecked = thread.allEmails.some((e) => selectedIds.has(e.id));
               const isUnread =
-                (clientUnreadIds.has(email.id) || !email.keywords?.["$seen"]) &&
-                !clientReadIds.has(email.id) &&
-                email.id !== selectedId;
+                thread.allEmails.some(
+                  (e) =>
+                    (clientUnreadIds.has(e.id) || !e.keywords?.["$seen"]) &&
+                    !clientReadIds.has(e.id)
+                ) && thread.threadId !== selectedThreadId;
 
-              const showPinnedDivider = !isInSearchMode && pinnedCount > 0 && idx === 0;
+              const showPinnedDivider =
+                !isInSearchMode && pinnedThreadCount > 0 && idx === 0;
               const showRestDivider =
-                !isInSearchMode && pinnedCount > 0 && idx === pinnedCount;
+                !isInSearchMode && pinnedThreadCount > 0 && idx === pinnedThreadCount;
+
+              // Sender display: comma-separated unique names, truncated to 3
+              const senderLabel =
+                senders
+                  .slice(0, 3)
+                  .map((s) => s.name?.split(" ")[0] ?? s.email.split("@")[0])
+                  .join(", ") || "(no sender)";
 
               return (
-                <div key={email.id}>
+                <div key={thread.threadId}>
                   {showPinnedDivider && (
                     <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/60 border-b border-stone-200 dark:border-stone-700">
                       Pinned
@@ -658,7 +683,7 @@ export default function EmailListPanel({
                     </div>
                   )}
 
-                  {/* Row */}
+                  {/* Thread row */}
                   <div
                     className={[
                       "group flex items-center gap-2.5 px-3 py-2.5 border-b border-stone-100 dark:border-stone-700/60 select-none transition-colors",
@@ -668,40 +693,47 @@ export default function EmailListPanel({
                           ? "bg-stone-200 dark:bg-stone-800"
                           : "hover:bg-stone-100 dark:hover:bg-stone-900",
                     ].join(" ")}
-                    onPointerDown={(e) => startLongPress(e, email.id)}
+                    onPointerDown={(e) => startLongPress(e, latestEmail.id)}
                     onPointerMove={checkLongPressMove}
                     onPointerUp={cancelLongPress}
                     onPointerLeave={cancelLongPress}
                     onPointerCancel={cancelLongPress}
                   >
-                    {/* Unread / pin dot — fixed-width gutter so avatar never shifts */}
+                    {/* Unread / pin indicator */}
                     <div className="w-2 shrink-0 flex items-center justify-center">
                       {!selectionMode && isUnread && (
                         <div className="w-2 h-2 rounded-full bg-blue-500" />
                       )}
-                      {!selectionMode && pinned && !isUnread && (
+                      {!selectionMode && thread.isPinned && !isUnread && (
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-2.5 h-2.5 text-amber-400">
                           <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
                         </svg>
                       )}
                     </div>
 
-                    {/* Avatar — morphs to checkbox on hover (desktop) or in selection mode */}
+                    {/* Avatar — morphs to checkbox on hover / in selection mode */}
                     <div
                       className="relative w-9 h-9 shrink-0 rounded-full cursor-pointer"
                       onClick={() => {
                         if (!selectionMode) setSelectionMode(true);
-                        toggleSelection(email.id);
+                        // Toggle all emails in this thread
+                        const allIds = thread.allEmails.map((e) => e.id);
+                        setSelectedIds((prev) => {
+                          const next = new Set(prev);
+                          const allChecked = allIds.every((id) => prev.has(id));
+                          allIds.forEach((id) =>
+                            allChecked ? next.delete(id) : next.add(id)
+                          );
+                          return next;
+                        });
                       }}
                     >
-                      {/* Avatar */}
                       <div className={[
                         "absolute inset-0 transition-opacity duration-150",
                         selectionMode ? "opacity-0" : "opacity-100 group-hover:opacity-0",
                       ].join(" ")}>
-                        <SenderAvatar from={email.from} size={36} />
+                        <SenderAvatar from={latestEmail.from} size={36} />
                       </div>
-                      {/* Checkbox circle */}
                       <div className={[
                         "absolute inset-0 rounded-full flex items-center justify-center transition-opacity duration-150 text-white",
                         selectionMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
@@ -715,11 +747,19 @@ export default function EmailListPanel({
 
                     {/* Text content */}
                     <Link
-                      href={`/email/${email.id}`}
+                      href={`/thread/${thread.threadId}`}
                       onClick={(e) => {
                         if (selectionMode) {
                           e.preventDefault();
-                          toggleSelection(email.id);
+                          const allIds = thread.allEmails.map((em) => em.id);
+                          setSelectedIds((prev) => {
+                            const next = new Set(prev);
+                            const allChecked = allIds.every((id) => prev.has(id));
+                            allIds.forEach((id) =>
+                              allChecked ? next.delete(id) : next.add(id)
+                            );
+                            return next;
+                          });
                           return;
                         }
                         if (longPressActive.current) {
@@ -729,7 +769,7 @@ export default function EmailListPanel({
                       }}
                       className="flex flex-col gap-0.5 flex-1 min-w-0"
                     >
-                      {/* Sender + date */}
+                      {/* Senders + date */}
                       <div className="flex items-baseline justify-between gap-1.5">
                         <span className={[
                           "text-sm truncate",
@@ -737,32 +777,37 @@ export default function EmailListPanel({
                             ? "font-semibold text-stone-900 dark:text-stone-100"
                             : "text-stone-600 dark:text-stone-400",
                         ].join(" ")}>
-                          {formatAddressList(email.from) || "(no sender)"}
+                          {senderLabel}
                         </span>
                         <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
-                          {formatDate(email.receivedAt)}
+                          {formatDate(latestEmail.receivedAt)}
                         </span>
                       </div>
-                      {/* Subject */}
-                      <div className="flex items-center gap-1 min-w-0">
+                      {/* Subject + thread count */}
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <span className={[
                           "text-xs truncate flex-1",
                           isUnread
                             ? "font-semibold text-stone-800 dark:text-stone-200"
                             : "text-stone-500 dark:text-stone-400",
                         ].join(" ")}>
-                          {email.subject || "(no subject)"}
+                          {latestEmail.subject || "(no subject)"}
                         </span>
-                        {pinned && !selectionMode && (
+                        {thread.count > 1 && (
+                          <span className="shrink-0 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400">
+                            {thread.count}
+                          </span>
+                        )}
+                        {thread.isPinned && !selectionMode && (
                           <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-amber-400 shrink-0">
                             <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
                           </svg>
                         )}
                       </div>
                       {/* Preview */}
-                      {email.preview && (
+                      {latestEmail.preview && (
                         <p className="text-xs text-stone-400 dark:text-stone-500 truncate">
-                          {email.preview}
+                          {latestEmail.preview}
                         </p>
                       )}
                     </Link>
