@@ -77,10 +77,11 @@ describe("prepareHtml", () => {
         "dark mode filter must not be in a CSS @media rule");
     });
 
-    it("injects counter-filter on img and video to preserve image colors", () => {
+    it("injects counter-filter on img/video/picture/canvas to preserve image colors", () => {
       const result = prepareHtml(lightEmail);
-      // img and video get the same filter applied twice (self-inverse for images)
-      assert.ok(result.includes("img,video{filter:invert(1) hue-rotate(180deg)}"), `got: ${result}`);
+      // These elements get the same filter applied twice (self-inverse).
+      // !important ensures email CSS cannot override the counter-filter.
+      assert.ok(result.includes("img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}"), `got: ${result}`);
     });
   });
 

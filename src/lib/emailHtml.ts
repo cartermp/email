@@ -37,7 +37,7 @@ export function prepareHtml(html: string): string {
     ? ""
     : `if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches){` +
       `var ds=document.createElement('style');` +
-      `ds.textContent='html{filter:invert(1) hue-rotate(180deg)}img,video{filter:invert(1) hue-rotate(180deg)}';` +
+      `ds.textContent='html{filter:invert(1) hue-rotate(180deg)}img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}';` +
       `document.head.appendChild(ds);}`;
 
   const inject = [
