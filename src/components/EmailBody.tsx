@@ -9,55 +9,61 @@ interface Props {
 }
 
 export default function EmailBody({ body, type }: Props) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-
     const handleMessage = (e: MessageEvent) => {
-      if (
-        e.source === iframe.contentWindow &&
-        e.data?.type === "iframe-resize" &&
-        typeof e.data.height === "number" &&
-        e.data.height > 0
-      ) {
-        iframe.style.height = e.data.height + "px";
+      const iframe = iframeRef.current;
+      const wrapper = wrapperRef.current;
+      if (!iframe || !wrapper) return;
+      if (e.source !== iframe.contentWindow) return;
+      if (e.data?.type !== "iframe-resize") return;
+
+      const naturalH: number = e.data.height;
+      const naturalW: number = e.data.width ?? 0;
+      if (!naturalH || naturalH <= 0) return;
+
+      const availW = wrapper.clientWidth;
+
+      if (naturalW > availW + 2 && availW > 0) {
+        // Content is wider than the container (common for HTML newsletters on
+        // mobile — iOS Safari ignores <meta viewport> inside iframes so layout
+        // happens at ~980 px). Scale the iframe element down from the outside
+        // so the full content fits without any internal rewriting.
+        const scale = availW / naturalW;
+        iframe.style.width = naturalW + "px";
+        iframe.style.height = naturalH + "px";
+        iframe.style.transform = `scale(${scale})`;
+        iframe.style.transformOrigin = "top left";
+        wrapper.style.height = Math.ceil(naturalH * scale) + "px";
+      } else {
+        // Content fits — normal sizing.
+        iframe.style.width = "100%";
+        iframe.style.height = naturalH + "px";
+        iframe.style.transform = "";
+        wrapper.style.height = "";
       }
     };
+
     window.addEventListener("message", handleMessage);
-
-    // On load, tell the iframe its actual rendered width so it can zoom
-    // wide content down to fit. iOS Safari ignores <meta viewport> inside
-    // iframes, so the layout viewport inside stays at ~980px regardless of
-    // the element's CSS width. PostMessage is the only reliable bridge.
-    const onLoad = () => {
-      iframe.contentWindow?.postMessage(
-        { type: "iframe-viewport", width: iframe.clientWidth },
-        "*"
-      );
-    };
-    iframe.addEventListener("load", onLoad);
-
-    return () => {
-      window.removeEventListener("message", handleMessage);
-      iframe.removeEventListener("load", onLoad);
-    };
+    return () => window.removeEventListener("message", handleMessage);
   }, []);
 
   const srcDoc = type === "html" ? prepareHtml(body) : prepareTextBody(body);
 
   return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={srcDoc}
-      className="w-full border-0 block"
-      style={{ minHeight: "200px" }}
-      // allow-scripts: needed for the injected resize script.
-      // No allow-same-origin so email scripts cannot access parent frame,
-      // cookies, or application storage.
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-      title="Email content"
-    />
+    <div ref={wrapperRef} style={{ minHeight: "200px", overflow: "hidden" }}>
+      <iframe
+        ref={iframeRef}
+        srcDoc={srcDoc}
+        className="w-full border-0 block"
+        // allow-scripts: needed for the injected resize script.
+        // No allow-same-origin so email scripts cannot access parent frame,
+        // cookies, or application storage.
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        title="Email content"
+      />
+    </div>
   );
 }

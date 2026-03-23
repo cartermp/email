@@ -5,8 +5,6 @@ import { prepareHtml, prepareTextBody } from "../emailHtml";
 describe("prepareHtml", () => {
   it("injects into existing <head>", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    // viewport meta is injected first, then style, then script
-    assert.ok(result.includes('<meta name="viewport"'), "should inject viewport meta");
     assert.ok(result.includes("<style>"), "should inject style");
     assert.ok(result.includes("<script>"), "should inject script");
   });
@@ -23,17 +21,18 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("<body><p>hello</p></body>"));
   });
 
-  it("injects width=device-width viewport meta to prevent mobile bleed", () => {
+  it("reports scrollWidth in the postMessage so the parent can scale externally", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    assert.ok(result.includes('width=device-width'), "should set width=device-width");
-    assert.ok(result.includes('initial-scale=1'), "should set initial-scale=1");
+    // The parent (EmailBody) scales the iframe element itself when content is
+    // wider than the container — it needs scrollWidth to compute the ratio.
+    assert.ok(result.includes("scrollWidth"), "should report scrollWidth");
+    assert.ok(result.includes("width:w"), "should include width in the postMessage payload");
   });
 
-  it("replaces a fixed-width viewport meta from the original email", () => {
+  it("strips a fixed-width viewport meta from the original email", () => {
     const email = '<html><head><meta name="viewport" content="width=600"></head><body></body></html>';
     const result = prepareHtml(email);
     assert.ok(!result.includes('content="width=600"'), "original fixed-width viewport should be removed");
-    assert.ok(result.includes('width=device-width'), "device-width viewport should be injected");
   });
 
   it("sets overflow:hidden to prevent iframe internal scrollbar", () => {
