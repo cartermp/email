@@ -63,6 +63,22 @@ export function prepareHtml(html: string): string {
     }
   });
   if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement);}
+  // Receive the real iframe pixel width from the parent page and zoom
+  // wide content down to fit. iOS Safari ignores <meta viewport> in iframes,
+  // so the layout viewport stays ~980px; postMessage is the only bridge.
+  window.addEventListener('message',function(e){
+    if(e.data&&e.data.type==='iframe-viewport'&&e.data.width>0){
+      var avail=e.data.width;
+      var sw=Math.max(
+        document.documentElement.scrollWidth,
+        document.body?document.body.scrollWidth:0
+      );
+      if(sw>avail+2){
+        document.body.style.zoom=String(avail/sw);
+        send();
+      }
+    }
+  });
 })();</script>`,
   ].join("");
 
@@ -113,6 +129,16 @@ body{
   send();
   window.addEventListener('load',send);
   if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement);}
+  window.addEventListener('message',function(e){
+    if(e.data&&e.data.type==='iframe-viewport'&&e.data.width>0){
+      var avail=e.data.width;
+      var sw=Math.max(
+        document.documentElement.scrollWidth,
+        document.body?document.body.scrollWidth:0
+      );
+      if(sw>avail+2){document.body.style.zoom=String(avail/sw);send();}
+    }
+  });
 })();</script>`;
 
   return html.replace("</body>", resize + "</body>");

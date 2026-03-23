@@ -12,10 +12,11 @@ export default function EmailBody({ body, type }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) return;
+
     const handleMessage = (e: MessageEvent) => {
-      const iframe = iframeRef.current;
       if (
-        iframe &&
         e.source === iframe.contentWindow &&
         e.data?.type === "iframe-resize" &&
         typeof e.data.height === "number" &&
@@ -24,9 +25,24 @@ export default function EmailBody({ body, type }: Props) {
         iframe.style.height = e.data.height + "px";
       }
     };
-
     window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
+
+    // On load, tell the iframe its actual rendered width so it can zoom
+    // wide content down to fit. iOS Safari ignores <meta viewport> inside
+    // iframes, so the layout viewport inside stays at ~980px regardless of
+    // the element's CSS width. PostMessage is the only reliable bridge.
+    const onLoad = () => {
+      iframe.contentWindow?.postMessage(
+        { type: "iframe-viewport", width: iframe.clientWidth },
+        "*"
+      );
+    };
+    iframe.addEventListener("load", onLoad);
+
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      iframe.removeEventListener("load", onLoad);
+    };
   }, []);
 
   const srcDoc = type === "html" ? prepareHtml(body) : prepareTextBody(body);
