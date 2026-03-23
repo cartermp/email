@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getAccountId, listInboxEmails, loadMoreEmailsFiltered } from "../jmap";
+import { getAccountId, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -224,5 +224,144 @@ describe("loadMoreEmailsFiltered", () => {
     const result = await loadMoreEmailsFiltered("https://api.example.com/jmap", "acct1", "mbox1", "read", 0);
     assert.deepEqual(result.emails, []);
     assert.equal(result.total, 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// setKeywordsOnMany
+// ---------------------------------------------------------------------------
+
+describe("setKeywordsOnMany", () => {
+  function lastCall() {
+    return (capturedBodies[capturedBodies.length - 1] as any).methodCalls[0];
+  }
+
+  function setupVoidMock() {
+    capturedBodies = [];
+    mockResponses = [makeJmapResponse([["Email/setResponse", { updated: {} }, "0"]])];
+  }
+
+  it("does nothing and makes no request when emailIds is empty", async () => {
+    capturedBodies = [];
+    await setKeywordsOnMany("https://api.example.com/jmap", "acct1", [], { "keywords/$seen": true });
+    assert.equal(capturedBodies.length, 0);
+  });
+
+  it("sends a single Email/set request", async () => {
+    setupVoidMock();
+    await setKeywordsOnMany("https://api.example.com/jmap", "acct1", ["e1"], { "keywords/$seen": true });
+    assert.equal(capturedBodies.length, 1);
+    assert.equal(lastCall()[0], "Email/set");
+  });
+
+  it("includes every email ID in the update map", async () => {
+    setupVoidMock();
+    await setKeywordsOnMany("https://api.example.com/jmap", "acct1", ["e1", "e2", "e3"], { "keywords/$seen": true });
+    const update = lastCall()[1].update;
+    assert.deepEqual(Object.keys(update).sort(), ["e1", "e2", "e3"]);
+  });
+
+  it("applies the same patch to every email", async () => {
+    setupVoidMock();
+    const patch = { "keywords/$seen": true };
+    await setKeywordsOnMany("https://api.example.com/jmap", "acct1", ["e1", "e2"], patch);
+    const update = lastCall()[1].update;
+    assert.deepEqual(update["e1"], patch);
+    assert.deepEqual(update["e2"], patch);
+  });
+
+  it("passes null values through (used to remove keywords)", async () => {
+    setupVoidMock();
+    const patch = { "keywords/$seen": null };
+    await setKeywordsOnMany("https://api.example.com/jmap", "acct1", ["e1"], patch);
+    const update = lastCall()[1].update;
+    assert.equal(update["e1"]["keywords/$seen"], null);
+  });
+
+  it("uses the provided accountId", async () => {
+    setupVoidMock();
+    await setKeywordsOnMany("https://api.example.com/jmap", "my-account", ["e1"], { "keywords/$flagged": true });
+    assert.equal(lastCall()[1].accountId, "my-account");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// moveEmailsToMailbox
+// ---------------------------------------------------------------------------
+
+describe("moveEmailsToMailbox", () => {
+  function lastCall() {
+    return (capturedBodies[capturedBodies.length - 1] as any).methodCalls[0];
+  }
+
+  function setupVoidMock() {
+    capturedBodies = [];
+    mockResponses = [makeJmapResponse([["Email/setResponse", { updated: {} }, "0"]])];
+  }
+
+  it("does nothing and makes no request when emails is empty", async () => {
+    capturedBodies = [];
+    await moveEmailsToMailbox("https://api.example.com/jmap", "acct1", [], "target-mbox");
+    assert.equal(capturedBodies.length, 0);
+  });
+
+  it("sends a single Email/set request", async () => {
+    setupVoidMock();
+    await moveEmailsToMailbox("https://api.example.com/jmap", "acct1", [{ id: "e1", mailboxIds: { "inbox": true } }], "archive");
+    assert.equal(capturedBodies.length, 1);
+    assert.equal(lastCall()[0], "Email/set");
+  });
+
+  it("sets mailboxIds/{target}: true for each email", async () => {
+    setupVoidMock();
+    await moveEmailsToMailbox("https://api.example.com/jmap", "acct1", [
+      { id: "e1", mailboxIds: { "inbox": true } },
+    ], "archive");
+    const patch = lastCall()[1].update["e1"];
+    assert.equal(patch["mailboxIds/archive"], true);
+  });
+
+  it("sets mailboxIds/{old}: null for every current mailbox", async () => {
+    setupVoidMock();
+    await moveEmailsToMailbox("https://api.example.com/jmap", "acct1", [
+      { id: "e1", mailboxIds: { "inbox": true, "starred": true } },
+    ], "archive");
+    const patch = lastCall()[1].update["e1"];
+    assert.equal(patch["mailboxIds/inbox"], null);
+    assert.equal(patch["mailboxIds/starred"], null);
+  });
+
+  it("does not null out the target mailbox if email is already in it", async () => {
+    setupVoidMock();
+    await moveEmailsToMailbox("https://api.example.com/jmap", "acct1", [
+      { id: "e1", mailboxIds: { "archive": true, "inbox": true } },
+    ], "archive");
+    const patch = lastCall()[1].update["e1"];
+    assert.equal(patch["mailboxIds/archive"], true);
+    assert.equal(patch["mailboxIds/inbox"], null);
+    assert.ok(!Object.prototype.hasOwnProperty.call(patch, "mailboxIds/archive_null"),
+      "should not have a null entry for the target mailbox");
+    // Specifically: the target key must be true, not null
+    assert.notEqual(patch["mailboxIds/archive"], null);
+  });
+
+  it("patches multiple emails in the same request", async () => {
+    setupVoidMock();
+    await moveEmailsToMailbox("https://api.example.com/jmap", "acct1", [
+      { id: "e1", mailboxIds: { "inbox": true } },
+      { id: "e2", mailboxIds: { "inbox": true } },
+    ], "trash");
+    const update = lastCall()[1].update;
+    assert.deepEqual(Object.keys(update).sort(), ["e1", "e2"]);
+    assert.equal(update["e1"]["mailboxIds/trash"], true);
+    assert.equal(update["e2"]["mailboxIds/trash"], true);
+  });
+
+  it("uses the provided accountId", async () => {
+    setupVoidMock();
+    await moveEmailsToMailbox("https://api.example.com/jmap", "my-account", [
+      { id: "e1", mailboxIds: {} },
+    ], "trash");
+    assert.equal(lastCall()[1].accountId, "my-account");
   });
 });

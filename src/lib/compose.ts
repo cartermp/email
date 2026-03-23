@@ -7,9 +7,15 @@ import { formatAddressRFC } from "./format";
  */
 export function htmlToPlainText(html: string): string {
   return html
+    // Strip whole blocks whose content should never appear as text
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    // Convert structural elements to newlines before stripping tags
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/?(p|div|tr|li|h[1-6]|blockquote)[^>]*>/gi, "\n")
-    .replace(/<[^>]+>/g, "")
+    // Strip all remaining tags (including doctype, CDATA, etc.)
+    .replace(/<[^>]*>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")

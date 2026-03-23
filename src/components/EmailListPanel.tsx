@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import SenderAvatar from "@/components/SenderAvatar";
 import { usePathname, useRouter } from "next/navigation";
 import { Email } from "@/lib/types";
 import { isPinned, mergeEmailUpdates } from "@/lib/emailList";
@@ -165,6 +166,22 @@ export default function EmailListPanel({
   const longPressActive = useRef(false);
   const longPressPos = useRef({ x: 0, y: 0 });
 
+  // -------------------------------------------------------------------------
+  // Pull-to-refresh
+  // -------------------------------------------------------------------------
+  const PTR_POCKET = 56;
+  const PTR_TRIGGER = 48;
+
+  const [pullY, setPullY] = useState(0);
+  const [activePull, setActivePull] = useState(false);
+  const [refreshPhase, setRefreshPhase] = useState<"idle" | "loading" | "success" | "fading">("idle");
+  const [isPending, startTransition] = useTransition();
+  const listRef = useRef<HTMLDivElement>(null);
+  const ptrActive = useRef(false);
+  const ptrStartY = useRef(0);
+  const ptrCurrentY = useRef(0);
+  const ptrTriggerRef = useRef<() => void>(() => {});
+
   function toggleSelection(id: string) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -309,6 +326,78 @@ export default function EmailListPanel({
       setLoadingMore(false);
     }
   }
+
+  // -------------------------------------------------------------------------
+  // PTR effects
+  // -------------------------------------------------------------------------
+
+  // Keep trigger callback current without stale closures in the touch handler
+  useEffect(() => {
+    ptrTriggerRef.current = () => {
+      setPullY(PTR_POCKET);
+      setActivePull(false);
+      setRefreshPhase("loading");
+      startTransition(() => router.refresh());
+    };
+  });
+
+  // When server re-render finishes, transition to success then idle
+  useEffect(() => {
+    if (!isPending && refreshPhase === "loading") {
+      setPullY(0);
+      setRefreshPhase("success");
+      const t1 = setTimeout(() => setRefreshPhase("fading"), 1400);
+      const t2 = setTimeout(() => setRefreshPhase("idle"), 2000);
+      return () => { clearTimeout(t1); clearTimeout(t2); };
+    }
+  }, [isPending, refreshPhase]);
+
+  // Non-passive touch listeners so we can call preventDefault during pull
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+
+    function onTouchStart(e: TouchEvent) {
+      if (el!.scrollTop === 0 && e.touches.length === 1) {
+        ptrStartY.current = e.touches[0].clientY;
+      }
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      const dy = e.touches[0].clientY - ptrStartY.current;
+      if (el!.scrollTop === 0 && dy > 4) {
+        e.preventDefault();
+        ptrActive.current = true;
+        const resistance = Math.min(dy * 0.45, PTR_POCKET + 12);
+        ptrCurrentY.current = resistance;
+        setPullY(resistance);
+        setActivePull(true);
+      }
+    }
+
+    function onTouchEnd() {
+      if (!ptrActive.current) return;
+      ptrActive.current = false;
+      setActivePull(false);
+      if (ptrCurrentY.current >= PTR_TRIGGER) {
+        ptrTriggerRef.current();
+      } else {
+        setPullY(0);
+      }
+      ptrCurrentY.current = 0;
+    }
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd);
+    el.addEventListener("touchcancel", onTouchEnd);
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, []); // mount-only: handlers use refs for all mutable state
 
   // -------------------------------------------------------------------------
   // Bulk actions
@@ -477,7 +566,56 @@ export default function EmailListPanel({
 
       {/* Inbox list */}
       {view === "inbox" && (
-        <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
+        <div className="relative flex-1 overflow-hidden bg-stone-50 dark:bg-stone-900">
+
+          {/* PTR pocket — sits behind the list, revealed as the list slides down */}
+          <div
+            className="absolute inset-x-0 top-0 flex items-center justify-center"
+            style={{ height: PTR_POCKET }}
+          >
+            {refreshPhase === "loading" ? (
+              <svg className="w-5 h-5 text-stone-400 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+            ) : (
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                className="w-5 h-5 text-stone-300 dark:text-stone-600"
+                style={{ transform: `rotate(${Math.min(pullY / PTR_TRIGGER, 1) * 180}deg)` }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            )}
+          </div>
+
+          {/* "Up to date" success pill — floats over the list after refresh */}
+          {(refreshPhase === "success" || refreshPhase === "fading") && (
+            <div className={[
+              "absolute inset-x-0 top-3 z-20 flex justify-center pointer-events-none transition-opacity duration-500",
+              refreshPhase === "fading" ? "opacity-0" : "opacity-100",
+            ].join(" ")}>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-800 dark:bg-stone-100 text-stone-100 dark:text-stone-800 text-xs font-medium shadow-md">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                </svg>
+                Up to date
+              </div>
+            </div>
+          )}
+
+          {/* Scrollable list — translates down to reveal PTR pocket */}
+          <div
+            ref={listRef}
+            className={[
+              "absolute inset-0 overflow-y-auto",
+              !activePull ? "transition-transform duration-300 ease-out" : "",
+            ].join(" ")}
+            style={pullY > 0 ? { transform: `translateY(${pullY}px)` } : undefined}
+          >
           {isSearching && (
             <p className="p-4 text-sm text-stone-400 dark:text-stone-500">Searching…</p>
           )}
@@ -515,37 +653,60 @@ export default function EmailListPanel({
 
                   {/* Row */}
                   <div
-                    className="group flex items-stretch border-b border-stone-100 dark:border-stone-700/60"
+                    className={[
+                      "group flex items-center gap-2.5 px-3 py-2.5 border-b border-stone-100 dark:border-stone-700/60 select-none transition-colors",
+                      isChecked
+                        ? "bg-blue-50 dark:bg-blue-950/25"
+                        : isRouteSelected
+                          ? "bg-stone-200 dark:bg-stone-800"
+                          : "hover:bg-stone-100 dark:hover:bg-stone-900",
+                    ].join(" ")}
                     onPointerDown={(e) => startLongPress(e, email.id)}
                     onPointerMove={checkLongPressMove}
                     onPointerUp={cancelLongPress}
                     onPointerLeave={cancelLongPress}
                     onPointerCancel={cancelLongPress}
                   >
-                    {/* Checkbox column — slides in on hover (desktop) or always in selection mode */}
+                    {/* Unread / pin dot — fixed-width gutter so avatar never shifts */}
+                    <div className="w-2 shrink-0 flex items-center justify-center">
+                      {!selectionMode && isUnread && (
+                        <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      )}
+                      {!selectionMode && pinned && !isUnread && (
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-2.5 h-2.5 text-amber-400">
+                          <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Avatar — morphs to checkbox on hover (desktop) or in selection mode */}
                     <div
-                      className={[
-                        "flex items-center justify-center shrink-0 transition-[width,padding] duration-150 overflow-hidden cursor-pointer select-none",
-                        selectionMode ? "w-9 pl-3" : "w-0 group-hover:w-9 group-hover:pl-3",
-                      ].join(" ")}
+                      className="relative w-9 h-9 shrink-0 rounded-full cursor-pointer"
                       onClick={() => {
                         if (!selectionMode) setSelectionMode(true);
                         toggleSelection(email.id);
                       }}
                     >
-                      <div
-                        className={[
-                          "w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors",
-                          isChecked
-                            ? "bg-blue-500 border-blue-500 text-white"
-                            : "border-stone-300 dark:border-stone-500",
-                        ].join(" ")}
-                      >
+                      {/* Avatar */}
+                      <div className={[
+                        "absolute inset-0 transition-opacity duration-150",
+                        selectionMode ? "opacity-0" : "opacity-100 group-hover:opacity-0",
+                      ].join(" ")}>
+                        <SenderAvatar from={email.from} size={36} />
+                      </div>
+                      {/* Checkbox circle */}
+                      <div className={[
+                        "absolute inset-0 rounded-full flex items-center justify-center transition-opacity duration-150 text-white",
+                        selectionMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                        isChecked
+                          ? "bg-blue-500"
+                          : "border-2 border-stone-300 dark:border-stone-500 bg-stone-100 dark:bg-stone-800",
+                      ].join(" ")}>
                         {isChecked && <IconCheck />}
                       </div>
                     </div>
 
-                    {/* Email content */}
+                    {/* Text content */}
                     <Link
                       href={`/email/${email.id}`}
                       onClick={(e) => {
@@ -559,61 +720,44 @@ export default function EmailListPanel({
                           longPressActive.current = false;
                         }
                       }}
-                      className={[
-                        "flex flex-col gap-0.5 py-2.5 pr-4 flex-1 min-w-0 transition-colors",
-                        selectionMode ? "pl-2" : "pl-4",
-                        isChecked
-                          ? "bg-blue-50 dark:bg-blue-950/25"
-                          : isRouteSelected
-                            ? "bg-stone-200 dark:bg-stone-800"
-                            : "hover:bg-stone-100 dark:hover:bg-stone-900",
-                      ].join(" ")}
+                      className="flex flex-col gap-0.5 flex-1 min-w-0"
                     >
-                      <div className="flex items-center gap-2">
-                        {/* Indicator: pin or unread dot (hidden in selection mode) */}
-                        {!selectionMode && (
-                          <div className="w-3 shrink-0 flex justify-center">
-                            {pinned ? (
-                              <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-amber-500">
-                                <path d="M12 2C7.58 2 4 5.58 4 10c0 5.25 8 12 8 12s8-6.75 8-12C20 5.58 16.42 2 12 2z" />
-                              </svg>
-                            ) : isUnread ? (
-                              <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            ) : null}
-                          </div>
-                        )}
-                        <span
-                          className={[
-                            "flex-1 text-sm truncate",
-                            selectionMode ? "ml-0" : "",
-                            isUnread
-                              ? "font-semibold text-stone-900 dark:text-stone-100"
-                              : "text-stone-500 dark:text-stone-400",
-                          ].join(" ")}
-                        >
+                      {/* Sender + date */}
+                      <div className="flex items-baseline justify-between gap-1.5">
+                        <span className={[
+                          "text-sm truncate",
+                          isUnread
+                            ? "font-semibold text-stone-900 dark:text-stone-100"
+                            : "text-stone-600 dark:text-stone-400",
+                        ].join(" ")}>
                           {formatAddressList(email.from) || "(no sender)"}
                         </span>
-                        <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
+                        <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
                           {formatDate(email.receivedAt)}
                         </span>
                       </div>
-                      <div className={["text-xs truncate", selectionMode ? "" : "pl-5"].join(" ")}>
-                        <span
-                          className={
-                            isUnread
-                              ? "font-semibold text-stone-800 dark:text-stone-200"
-                              : "text-stone-500 dark:text-stone-400"
-                          }
-                        >
+                      {/* Subject */}
+                      <div className="flex items-center gap-1 min-w-0">
+                        <span className={[
+                          "text-xs truncate flex-1",
+                          isUnread
+                            ? "font-semibold text-stone-800 dark:text-stone-200"
+                            : "text-stone-500 dark:text-stone-400",
+                        ].join(" ")}>
                           {email.subject || "(no subject)"}
                         </span>
-                        {email.preview && (
-                          <span className="text-stone-400 dark:text-stone-600">
-                            {" — "}
-                            {email.preview}
-                          </span>
+                        {pinned && !selectionMode && (
+                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-amber-400 shrink-0">
+                            <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
+                          </svg>
                         )}
                       </div>
+                      {/* Preview */}
+                      {email.preview && (
+                        <p className="text-xs text-stone-400 dark:text-stone-500 truncate">
+                          {email.preview}
+                        </p>
+                      )}
                     </Link>
                   </div>
                 </div>
@@ -633,6 +777,7 @@ export default function EmailListPanel({
                   : `Load more (${loadedUnreads + loadedReads} of ${unreadTotal + readTotal})`}
             </button>
           )}
+          </div>
         </div>
       )}
 

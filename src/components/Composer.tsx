@@ -64,7 +64,7 @@ export default function Composer({
   const [subject, setSubject] = useState(initialSubject);
   const [markdown, setMarkdown] = useState(initialBody);
   const [preview, setPreview] = useState("");
-  const [showPreview, setShowPreview] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -359,10 +359,13 @@ export default function Composer({
         <div className={rowClass}>
           <label className={labelClass}>To</label>
           <input
-            type="text"
+            type="email"
             value={to}
             onChange={(e) => setTo(e.target.value)}
             placeholder="recipient@example.com"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             className={fieldClass}
           />
           <div className="flex items-center gap-2 shrink-0">
@@ -388,11 +391,13 @@ export default function Composer({
           <div className={rowClass}>
             <label className={labelClass}>Cc</label>
             <input
-              type="text"
+              type="email"
               value={cc}
               onChange={(e) => setCc(e.target.value)}
               placeholder="cc@example.com"
-              className={fieldClass}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               autoFocus={!initialCc}
             />
           </div>
@@ -401,10 +406,13 @@ export default function Composer({
           <div className={rowClass}>
             <label className={labelClass}>Bcc</label>
             <input
-              type="text"
+              type="email"
               value={bcc}
               onChange={(e) => setBcc(e.target.value)}
               placeholder="bcc@example.com"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               className={fieldClass}
             />
           </div>

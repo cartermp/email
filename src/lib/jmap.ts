@@ -500,6 +500,7 @@ export async function sendEmail(
     htmlBody,
     inlineImages,
     inReplyToId,
+    sentMailboxId,
   }: {
     identityId: string;
     from: { name: string; email: string };
@@ -511,6 +512,7 @@ export async function sendEmail(
     htmlBody: string;
     inlineImages?: InlineImage[];
     inReplyToId?: string;
+    sentMailboxId?: string;
   }
 ): Promise<{ emailId: string; submissionId: string }> {
   const toAddresses = parseAddresses(to);
@@ -540,7 +542,7 @@ export async function sendEmail(
       : alternativePart;
 
   const emailCreate: Record<string, unknown> = {
-    mailboxIds: {},
+    mailboxIds: sentMailboxId ? { [sentMailboxId]: true } : {},
     from: [from],
     to: toAddresses,
     subject,
