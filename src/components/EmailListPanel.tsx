@@ -472,7 +472,7 @@ export default function EmailListPanel({
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
             onKeyDown={(e) => {
-              if (e.key === "Escape") {
+              if (e.key === "Escape" || e.key === "Enter") {
                 setSearchFocused(false);
                 searchInputRef.current?.blur();
               }
@@ -568,7 +568,8 @@ export default function EmailListPanel({
       {view === "inbox" && (
         <div className="relative flex-1 overflow-hidden bg-stone-50 dark:bg-stone-900">
 
-          {/* PTR pocket — sits behind the list, revealed as the list slides down */}
+          {/* PTR pocket — only rendered when actively pulling or refreshing */}
+          {(pullY > 0 || refreshPhase === "loading") && (
           <div
             className="absolute inset-x-0 top-0 flex items-center justify-center"
             style={{ height: PTR_POCKET }}
@@ -591,6 +592,7 @@ export default function EmailListPanel({
               </svg>
             )}
           </div>
+          )}
 
           {/* "Up to date" success pill — floats over the list after refresh */}
           {(refreshPhase === "success" || refreshPhase === "fading") && (

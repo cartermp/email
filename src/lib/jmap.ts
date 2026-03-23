@@ -688,3 +688,59 @@ export async function moveEmailsToMailbox(
   }
   await jmapCall(apiUrl, [["Email/set", { accountId, update }, "0"]]);
 }
+
+// ---------------------------------------------------------------------------
+// Contacts search
+// ---------------------------------------------------------------------------
+
+export interface ContactSuggestion {
+  name: string;
+  email: string;
+}
+
+export async function searchContacts(
+  apiUrl: string,
+  accountId: string,
+  query: string
+): Promise<ContactSuggestion[]> {
+  // Contacts use a separate JMAP capability — issue a dedicated request
+  // rather than mixing into the mail-capability batch.
+  const res = await fetch(apiUrl, {
+    method: "POST",
+    headers: { ...authHeader(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      using: [
+        "urn:ietf:params:jmap:core",
+        "https://cyrusimap.org/ns/jmap/contacts",
+      ],
+      methodCalls: [
+        ["Contact/query", { accountId, filter: { text: query }, limit: 10 }, "q"],
+        [
+          "Contact/get",
+          {
+            accountId,
+            "#ids": { resultOf: "q", name: "Contact/query", path: "/ids" },
+            properties: ["firstName", "lastName", "emails"],
+          },
+          "g",
+        ],
+      ],
+    }),
+    cache: "no-store",
+  });
+
+  if (!res.ok) return [];
+
+  const data = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contacts: any[] = data.methodResponses?.[1]?.[1]?.list ?? [];
+
+  const results: ContactSuggestion[] = [];
+  for (const c of contacts) {
+    const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
+    for (const entry of c.emails ?? []) {
+      if (entry.value) results.push({ name: name || entry.value, email: entry.value });
+    }
+  }
+  return results;
+}

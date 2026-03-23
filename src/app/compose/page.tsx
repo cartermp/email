@@ -38,6 +38,7 @@ export default async function ComposePage({ searchParams }: Props) {
   let inReplyToId: string | undefined;
   let title = "New Message";
   let initialDraftId: string | undefined;
+  let forwardedHtml: string | undefined;
 
   // Resume a saved draft
   if (draftId) {
@@ -67,7 +68,13 @@ export default async function ComposePage({ searchParams }: Props) {
       if (email.textBody?.length > 0) {
         const part = email.textBody[0];
         if (part.partId && email.bodyValues?.[part.partId]) {
-          bodyText = email.bodyValues[part.partId].value;
+          const raw = email.bodyValues[part.partId].value;
+          // Some senders (e.g. Zola) set the text/plain part to raw HTML source.
+          // Detect this by checking whether the content opens with an HTML tag
+          // and discard it in favour of the HTML body below.
+          if (!/^\s*</i.test(raw)) {
+            bodyText = raw;
+          }
         }
       }
       if (!bodyText && email.htmlBody?.length > 0) {
@@ -102,6 +109,16 @@ export default async function ComposePage({ searchParams }: Props) {
       } else if (mode === "forward") {
         title = "Forward";
         initialSubject = fwdSubject(email.subject);
+        // Capture the original HTML body so the Composer can append it
+        // verbatim to the outgoing email — preserving images and formatting.
+        if (email.htmlBody?.length > 0) {
+          const part = email.htmlBody[0];
+          if (part.partId && email.bodyValues?.[part.partId]) {
+            forwardedHtml = email.bodyValues[part.partId].value;
+          }
+        }
+        // The markdown body carries the plain-text fallback (text/plain part
+        // of the sent email) and what's shown in the editor.
         initialBody = buildForwardQuote({
           from: addrList(email.from),
           to: addrList(email.to),
@@ -131,6 +148,7 @@ export default async function ComposePage({ searchParams }: Props) {
           initialBody={initialBody}
           inReplyToId={inReplyToId}
           initialDraftId={initialDraftId}
+          forwardedHtml={forwardedHtml}
         />
       </div>
     </div>

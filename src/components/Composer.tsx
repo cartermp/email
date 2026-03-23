@@ -4,6 +4,154 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 
+// ---------------------------------------------------------------------------
+// RecipientInput — text input with contact autocomplete dropdown
+// ---------------------------------------------------------------------------
+
+interface ContactSuggestion { name: string; email: string; }
+
+function RecipientInput({
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+  inputClassName,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  inputClassName: string;
+}) {
+  const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
+  const [activeIdx, setActiveIdx] = useState(-1);
+  const [open, setOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // The "current token" is everything after the last comma — what the user is
+  // actively typing before completing it into an address.
+  function currentToken(v: string) {
+    const parts = v.split(/,/);
+    return parts[parts.length - 1].trimStart();
+  }
+
+  function replaceLastToken(v: string, replacement: string) {
+    const parts = v.split(/,/);
+    parts[parts.length - 1] = " " + replacement;
+    // Strip the leading space on the first token if there was nothing before it
+    return parts.join(",").replace(/^,\s*/, "");
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = e.target.value;
+    onChange(v);
+
+    const token = currentToken(v);
+    clearTimeout(debounceRef.current);
+
+    if (token.length < 2) {
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/contacts?q=${encodeURIComponent(token)}`);
+        if (!res.ok) return;
+        const data: ContactSuggestion[] = await res.json();
+        setSuggestions(data);
+        setActiveIdx(-1);
+        setOpen(data.length > 0);
+      } catch { /* network error — silently skip */ }
+    }, 200);
+  }
+
+  function select(s: ContactSuggestion) {
+    const formatted = s.name ? `${s.name} <${s.email}>` : s.email;
+    // Replace the current token with the chosen address, then add ", " so the
+    // user can immediately start typing another recipient.
+    const base = replaceLastToken(value, formatted);
+    const next = base.trimEnd() + ", ";
+    onChange(next);
+    setSuggestions([]);
+    setOpen(false);
+    setActiveIdx(-1);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.setSelectionRange(next.length, next.length);
+    });
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!open || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(i - 1, -1));
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (activeIdx >= 0) {
+        e.preventDefault();
+        select(suggestions[activeIdx]);
+      } else {
+        setOpen(false);
+      }
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setActiveIdx(-1);
+    }
+  }
+
+  return (
+    <div className="relative flex-1 min-w-0">
+      <input
+        ref={inputRef}
+        type="text"
+        value={value}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={() => setTimeout(() => { setOpen(false); setActiveIdx(-1); }, 150)}
+        placeholder={placeholder}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        autoFocus={autoFocus}
+        className={inputClassName}
+      />
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 z-50 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 shadow-lg overflow-hidden">
+          {suggestions.map((s, i) => (
+            <button
+              key={`${s.name}-${s.email}-${i}`}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); select(s); }}
+              className={[
+                "w-full flex flex-col items-start px-3 py-2 text-left",
+                i === activeIdx
+                  ? "bg-blue-50 dark:bg-blue-900/40"
+                  : "hover:bg-stone-50 dark:hover:bg-stone-700/50",
+                i > 0 ? "border-t border-stone-100 dark:border-stone-700/60" : "",
+              ].join(" ")}
+            >
+              {s.name && (
+                <span className="text-sm font-medium text-stone-800 dark:text-stone-100 truncate w-full">
+                  {s.name}
+                </span>
+              )}
+              <span className="text-xs text-stone-500 dark:text-stone-400 truncate w-full">
+                {s.email}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface Identity {
   id: string;
   name: string;
@@ -26,6 +174,7 @@ interface Props {
   initialBody?: string;
   inReplyToId?: string;
   initialDraftId?: string;
+  forwardedHtml?: string;
 }
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -54,6 +203,7 @@ export default function Composer({
   initialBody = "",
   inReplyToId,
   initialDraftId,
+  forwardedHtml,
 }: Props) {
   const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
   const [to, setTo] = useState(initialTo);
@@ -98,7 +248,10 @@ export default function Composer({
       const withImages = replacePlaceholders(html, (id) => {
         return inlineImages.find((img) => img.id === id)?.dataUrl ?? "";
       });
-      if (!cancelled) setPreview(wrapEmailHtml(withImages));
+      const body = forwardedHtml
+        ? withImages + appendForwardedHtml(forwardedHtml)
+        : withImages;
+      if (!cancelled) setPreview(wrapEmailHtml(body));
     })();
     return () => {
       cancelled = true;
@@ -242,10 +395,10 @@ export default function Composer({
     setSending(true);
     try {
       const rawHtml = await marked.parse(markdown);
-      const htmlWithCids = replacePlaceholders(
-        rawHtml,
-        (id) => `cid:${id}@mail`
-      );
+      const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
+      const composedBody = forwardedHtml
+        ? htmlWithCids + appendForwardedHtml(forwardedHtml)
+        : htmlWithCids;
 
       const splitAddrs = (val: string) =>
         val
@@ -263,7 +416,7 @@ export default function Composer({
           bcc: showBcc && bcc.trim() ? splitAddrs(bcc) : undefined,
           subject,
           textBody: markdown,
-          htmlBody: wrapEmailHtml(htmlWithCids),
+          htmlBody: wrapEmailHtml(composedBody),
           inlineImages: inlineImagesRef.current.map(({ id, blobId, type }) => ({
             id,
             blobId,
@@ -358,15 +511,11 @@ export default function Composer({
         )}
         <div className={rowClass}>
           <label className={labelClass}>To</label>
-          <input
-            type="email"
+          <RecipientInput
             value={to}
-            onChange={(e) => setTo(e.target.value)}
+            onChange={setTo}
             placeholder="recipient@example.com"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            className={fieldClass}
+            inputClassName={fieldClass}
           />
           <div className="flex items-center gap-2 shrink-0">
             {!showCc && (
@@ -390,30 +539,23 @@ export default function Composer({
         {showCc && (
           <div className={rowClass}>
             <label className={labelClass}>Cc</label>
-            <input
-              type="email"
+            <RecipientInput
               value={cc}
-              onChange={(e) => setCc(e.target.value)}
+              onChange={setCc}
               placeholder="cc@example.com"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
               autoFocus={!initialCc}
+              inputClassName={fieldClass}
             />
           </div>
         )}
         {showBcc && (
           <div className={rowClass}>
             <label className={labelClass}>Bcc</label>
-            <input
-              type="email"
+            <RecipientInput
               value={bcc}
-              onChange={(e) => setBcc(e.target.value)}
+              onChange={setBcc}
               placeholder="bcc@example.com"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              className={fieldClass}
+              inputClassName={fieldClass}
             />
           </div>
         )}
@@ -545,4 +687,24 @@ function wrapEmailHtml(body: string): string {
 </head>
 <body>${body}</body>
 </html>`;
+}
+
+// Extract the <body> content from a full HTML document, or return the input
+// as-is if no <body> tag is found (e.g. HTML fragments).
+function extractBodyContent(html: string): string {
+  const m = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (m) return m[1];
+  // Strip doctype / html / head wrappers and return the rest
+  return html
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<\/?html[^>]*>/gi, "")
+    .replace(/<head[\s\S]*?<\/head>/gi, "")
+    .trim();
+}
+
+// Returns an HTML snippet to append after the composed content when forwarding.
+// The original email is rendered in a visually separated block.
+function appendForwardedHtml(originalHtml: string): string {
+  const content = extractBodyContent(originalHtml);
+  return `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e4e4e7;font-size:14px;">${content}</div>`;
 }

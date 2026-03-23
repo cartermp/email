@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { prepareHtml } from "../emailHtml";
+import { prepareHtml, prepareTextBody } from "../emailHtml";
 
 describe("prepareHtml", () => {
   it("injects into existing <head>", () => {
@@ -49,10 +49,17 @@ describe("prepareHtml", () => {
       assert.ok(result.includes("background-color:#ffffff"));
     });
 
-    it("injects dark-mode filter inversion on html element", () => {
+    it("injects dark-mode filter inversion via JS matchMedia, not CSS @media", () => {
       const result = prepareHtml(lightEmail);
-      assert.ok(result.includes("prefers-color-scheme:dark") || result.includes("prefers-color-scheme: dark"));
-      assert.ok(result.includes("filter:invert(1) hue-rotate(180deg)"));
+      // Must use window.matchMedia so it fires even when color-scheme:light
+      // suppresses CSS media queries inside the sandboxed iframe.
+      assert.ok(result.includes("matchMedia") && result.includes("prefers-color-scheme:dark"),
+        "should use matchMedia to detect dark mode");
+      assert.ok(result.includes("filter:invert(1) hue-rotate(180deg)"),
+        "should inject invert filter for dark mode");
+      // Must NOT rely on a CSS @media block for the inversion
+      assert.ok(!result.match(/@media[^{]*prefers-color-scheme[^{]*dark[^{]*\{[^}]*filter/),
+        "dark mode filter must not be in a CSS @media rule");
     });
 
     it("injects counter-filter on img and video to preserve image colors", () => {
@@ -89,5 +96,57 @@ describe("prepareHtml", () => {
       const result = prepareHtml(darkEmail);
       assert.ok(result.includes("overflow:hidden"));
     });
+  });
+});
+
+describe("prepareTextBody", () => {
+  it("returns a full HTML document", () => {
+    const result = prepareTextBody("hello world");
+    assert.ok(result.startsWith("<html>"), "should start with <html>");
+    assert.ok(result.includes("</html>"), "should end with </html>");
+  });
+
+  it("escapes HTML entities in the text", () => {
+    const result = prepareTextBody("<b>bold</b> & \"quoted\"");
+    assert.ok(result.includes("&lt;b&gt;bold&lt;/b&gt;"), "< and > should be escaped");
+    assert.ok(result.includes("&amp;"), "& should be escaped");
+    assert.ok(!result.includes("<b>"), "raw <b> tag must not appear");
+  });
+
+  it("uses system-ui sans-serif font (not monospace)", () => {
+    const result = prepareTextBody("hello");
+    assert.ok(result.includes("sans-serif"), "should use sans-serif font");
+    assert.ok(!result.includes("monospace"), "must not use monospace font");
+  });
+
+  it("preserves newlines via white-space:pre-wrap", () => {
+    const result = prepareTextBody("line one\nline two");
+    assert.ok(result.includes("white-space:pre-wrap") || result.includes("white-space: pre-wrap"),
+      "should use pre-wrap to preserve newlines");
+    assert.ok(result.includes("line one\nline two"), "raw text with newlines should be present");
+  });
+
+  it("injects dark mode via JS matchMedia with stone palette colors", () => {
+    const result = prepareTextBody("text");
+    // Must use matchMedia so dark mode works inside the sandboxed iframe
+    assert.ok(result.includes("matchMedia") && result.includes("prefers-color-scheme:dark"),
+      "should detect dark mode via matchMedia");
+    // Stone-800 (#1c1917) background and stone-200 (#e7e5e4) text
+    assert.ok(result.includes("#1c1917"), "dark background should use stone-900 (#1c1917)");
+    assert.ok(result.includes("#e7e5e4"), "dark text should use stone-200 (#e7e5e4)");
+    // Must NOT use a CSS @media block for dark mode
+    assert.ok(!result.match(/@media[^{]*prefers-color-scheme[^{]*dark/),
+      "dark mode must not use a CSS @media rule");
+  });
+
+  it("injects the iframe resize postMessage script", () => {
+    const result = prepareTextBody("text");
+    assert.ok(result.includes("iframe-resize"), "should send iframe-resize postMessage");
+    assert.ok(result.includes("postMessage"), "should call postMessage");
+  });
+
+  it("sets overflow:hidden to prevent internal scrollbar", () => {
+    const result = prepareTextBody("text");
+    assert.ok(result.includes("overflow:hidden"));
   });
 });

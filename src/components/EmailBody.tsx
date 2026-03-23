@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { prepareHtml } from "@/lib/emailHtml";
+import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 
 interface Props {
   body: string;
@@ -29,25 +29,19 @@ export default function EmailBody({ body, type }: Props) {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  if (type === "html") {
-    return (
-      <iframe
-        ref={iframeRef}
-        srcDoc={prepareHtml(body)}
-        className="w-full border-0 block"
-        style={{ minHeight: "200px", backgroundColor: "white" }}
-        // allow-scripts: needed for the injected resize script.
-        // No allow-same-origin so email scripts cannot access parent frame,
-        // cookies, or application storage.
-        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-        title="Email content"
-      />
-    );
-  }
+  const srcDoc = type === "html" ? prepareHtml(body) : prepareTextBody(body);
 
   return (
-    <pre className="text-sm text-stone-800 dark:text-stone-200 whitespace-pre-wrap font-sans leading-relaxed">
-      {body}
-    </pre>
+    <iframe
+      ref={iframeRef}
+      srcDoc={srcDoc}
+      className="w-full border-0 block"
+      style={{ minHeight: "200px" }}
+      // allow-scripts: needed for the injected resize script.
+      // No allow-same-origin so email scripts cannot access parent frame,
+      // cookies, or application storage.
+      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+      title="Email content"
+    />
   );
 }
