@@ -181,6 +181,8 @@ export default function EmailListPanel({
   const ptrStartY = useRef(0);
   const ptrCurrentY = useRef(0);
   const ptrTriggerRef = useRef<() => void>(() => {});
+  const ptrTimer1 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const ptrTimer2 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   function toggleSelection(id: string) {
     setSelectedIds((prev) => {
@@ -341,14 +343,17 @@ export default function EmailListPanel({
     };
   });
 
-  // When server re-render finishes, transition to success then idle
+  // When server re-render finishes, transition to success then idle.
+  // Timers are kept in refs so React's effect cleanup can't cancel them when
+  // setRefreshPhase("success") causes a re-render and re-runs this effect.
   useEffect(() => {
     if (!isPending && refreshPhase === "loading") {
       setPullY(0);
       setRefreshPhase("success");
-      const t1 = setTimeout(() => setRefreshPhase("fading"), 1400);
-      const t2 = setTimeout(() => setRefreshPhase("idle"), 2000);
-      return () => { clearTimeout(t1); clearTimeout(t2); };
+      clearTimeout(ptrTimer1.current);
+      clearTimeout(ptrTimer2.current);
+      ptrTimer1.current = setTimeout(() => setRefreshPhase("fading"), 1400);
+      ptrTimer2.current = setTimeout(() => setRefreshPhase("idle"), 2000);
     }
   }, [isPending, refreshPhase]);
 

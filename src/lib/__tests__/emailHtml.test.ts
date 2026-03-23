@@ -5,19 +5,35 @@ import { prepareHtml, prepareTextBody } from "../emailHtml";
 describe("prepareHtml", () => {
   it("injects into existing <head>", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    assert.ok(result.startsWith("<html><head><style>"));
-    assert.ok(result.includes("</style><script>"));
+    // viewport meta is injected first, then style, then script
+    assert.ok(result.includes('<meta name="viewport"'), "should inject viewport meta");
+    assert.ok(result.includes("<style>"), "should inject style");
+    assert.ok(result.includes("<script>"), "should inject script");
   });
 
   it("preserves existing head attributes", () => {
     const result = prepareHtml('<html><head lang="x"></head><body></body></html>');
-    assert.ok(result.includes('<head lang="x"><style>'));
+    assert.ok(result.includes('<head lang="x">'), "should preserve head attributes");
+    assert.ok(result.includes("<style>"), "should still inject style");
   });
 
   it("wraps bare HTML with no <head>", () => {
     const result = prepareHtml("<p>hello</p>");
     assert.ok(result.startsWith("<html><head>"));
     assert.ok(result.includes("<body><p>hello</p></body>"));
+  });
+
+  it("injects width=device-width viewport meta to prevent mobile bleed", () => {
+    const result = prepareHtml("<html><head></head><body>hi</body></html>");
+    assert.ok(result.includes('width=device-width'), "should set width=device-width");
+    assert.ok(result.includes('initial-scale=1'), "should set initial-scale=1");
+  });
+
+  it("replaces a fixed-width viewport meta from the original email", () => {
+    const email = '<html><head><meta name="viewport" content="width=600"></head><body></body></html>';
+    const result = prepareHtml(email);
+    assert.ok(!result.includes('content="width=600"'), "original fixed-width viewport should be removed");
+    assert.ok(result.includes('width=device-width'), "device-width viewport should be injected");
   });
 
   it("sets overflow:hidden to prevent iframe internal scrollbar", () => {

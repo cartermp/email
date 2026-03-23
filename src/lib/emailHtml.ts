@@ -17,11 +17,15 @@
  * Resizing: injected script reports document height via postMessage so the
  * iframe grows to fit its content.
  *
- * Mobile: max-width:100% on html prevents fixed-width email tables from
- * causing horizontal bleed/overflow on narrow viewports.
+ * Mobile: a width=device-width viewport meta overrides any fixed-width
+ * viewport the email may specify (common in newsletters: width=600) so the
+ * iframe's layout viewport matches the element width on narrow screens.
  */
 export function prepareHtml(html: string): string {
   const hasNativeDark = /prefers-color-scheme\s*:\s*dark/i.test(html);
+
+  // Strip any existing viewport meta so our replacement wins.
+  html = html.replace(/<meta[^>]*name=["']viewport["'][^>]*>/gi, "");
 
   const baseStyle = hasNativeDark
     ? "html,body{overflow:hidden;max-width:100%}"
@@ -38,6 +42,7 @@ export function prepareHtml(html: string): string {
       `document.head.appendChild(ds);}`;
 
   const inject = [
+    `<meta name="viewport" content="width=device-width,initial-scale=1">`,
     `<style>${baseStyle}</style>`,
     `<script>(function(){
   ${darkAdaptJs}
