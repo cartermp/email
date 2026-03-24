@@ -9,8 +9,9 @@ interface Props {
 
 export default function InboxPanelLayout({ list, children }: Props) {
   const pathname = usePathname();
-  // On mobile, show the detail panel when viewing an email
-  const showDetail = pathname.startsWith("/email/");
+  // On mobile, show the detail panel when viewing an email or thread
+  const showDetail =
+    pathname.startsWith("/email/") || pathname.startsWith("/thread/");
 
   return (
     <div className="flex h-full w-full">
