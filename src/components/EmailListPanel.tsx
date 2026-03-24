@@ -104,6 +104,11 @@ export default function EmailListPanel({
   const selectedThreadId = pathname.startsWith("/thread/")
     ? pathname.slice("/thread/".length)
     : undefined;
+  // Single-email threads navigate to /email/[id]; resolve the threadId so
+  // the list row stays highlighted correctly for both URL shapes.
+  const selectedEmailId = pathname.startsWith("/email/")
+    ? pathname.slice("/email/".length)
+    : undefined;
 
   const view: View = pathname.startsWith("/drafts") ? "drafts" : "inbox";
 
@@ -310,8 +315,11 @@ export default function EmailListPanel({
   // Auto-mark as read when navigating to a thread
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (!selectedThreadId) return;
-    const thread = visibleThreads.find((t) => t.threadId === selectedThreadId);
+    const thread = selectedThreadId
+      ? visibleThreads.find((t) => t.threadId === selectedThreadId)
+      : selectedEmailId
+      ? visibleThreads.find((t) => t.count === 1 && t.latestEmail.id === selectedEmailId)
+      : undefined;
     if (!thread) return;
     const unreadIds = thread.allEmails
       .filter(
@@ -324,7 +332,7 @@ export default function EmailListPanel({
       setClientReadIds((prev) => new Set([...prev, ...unreadIds]));
       bulkMarkAsRead(unreadIds);
     }
-  }, [selectedThreadId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedThreadId, selectedEmailId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // -------------------------------------------------------------------------
   // Load more
@@ -649,14 +657,20 @@ export default function EmailListPanel({
           {!isSearching &&
             visibleThreads.map((thread, idx) => {
               const { latestEmail, senders } = thread;
-              const isRouteSelected = thread.threadId === selectedThreadId;
+              const threadHref =
+                thread.count === 1
+                  ? `/email/${thread.latestEmail.id}`
+                  : `/thread/${thread.threadId}`;
+              const isRouteSelected =
+                thread.threadId === selectedThreadId ||
+                (thread.count === 1 && thread.latestEmail.id === selectedEmailId);
               const isChecked = thread.allEmails.some((e) => selectedIds.has(e.id));
               const isUnread =
                 thread.allEmails.some(
                   (e) =>
                     (clientUnreadIds.has(e.id) || !e.keywords?.["$seen"]) &&
                     !clientReadIds.has(e.id)
-                ) && thread.threadId !== selectedThreadId;
+                ) && !isRouteSelected;
 
               const showPinnedDivider =
                 !isInSearchMode && pinnedThreadCount > 0 && idx === 0;
@@ -747,7 +761,7 @@ export default function EmailListPanel({
 
                     {/* Text content */}
                     <Link
-                      href={`/thread/${thread.threadId}`}
+                      href={threadHref}
                       onClick={(e) => {
                         if (selectionMode) {
                           e.preventDefault();

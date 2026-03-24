@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { EmailAddress } from "@/lib/types";
 import { WEBMAIL_DOMAINS, colorFor, initialsFor } from "@/lib/senderAvatar";
 
@@ -15,13 +15,15 @@ interface Props {
 
 export default function SenderAvatar({ from, size = 36 }: Props) {
   const [imgFailed, setImgFailed] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const sender = from?.[0] ?? null;
   const domain = sender?.email.match(/@(.+)$/)?.[1]?.toLowerCase() ?? null;
   const initials = initialsFor(from);
   const color = colorFor(sender?.email ?? "");
 
-  const useIcon = !!domain && !WEBMAIL_DOMAINS.has(domain) && !imgFailed && !failedDomains.has(domain);
+  const useIcon = !!domain && !WEBMAIL_DOMAINS.has(domain) && !imgFailed && (!mounted || !failedDomains.has(domain));
   const faviconUrl = useIcon
     ? `https://logo.clearbit.com/${domain}`
     : null;
