@@ -1,4 +1,5 @@
 import { Email, Identity, JMAPSession, Mailbox } from "./types";
+import { log } from "./logger";
 
 const SESSION_URL = "https://api.fastmail.com/jmap/session";
 
@@ -29,14 +30,32 @@ export async function jmapCall(
   apiUrl: string,
   methodCalls: MethodCall[]
 ): Promise<{ methodResponses: [string, Record<string, unknown>, string][] }> {
+  const t = Date.now();
+  const methods = methodCalls.map(([name]) => name);
+  // accountId is present in every method call's params object
+  const accountId = methodCalls[0]?.[1]?.accountId as string | undefined;
+
   const res = await fetch(apiUrl, {
     method: "POST",
     headers: { ...authHeader(), "Content-Type": "application/json" },
     body: JSON.stringify({ using: JMAP_USING, methodCalls }),
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`JMAP call failed: ${res.statusText}`);
-  return res.json();
+
+  if (!res.ok) {
+    log.error(
+      { methods, method_count: methodCalls.length, account_id: accountId, http_status: res.status, duration_ms: Date.now() - t },
+      "jmap.error"
+    );
+    throw new Error(`JMAP call failed: ${res.statusText}`);
+  }
+
+  const data: { methodResponses: [string, Record<string, unknown>, string][] } = await res.json();
+  log.info(
+    { methods, method_count: methodCalls.length, account_id: accountId, response_count: data.methodResponses.length, duration_ms: Date.now() - t },
+    "jmap.call"
+  );
+  return data;
 }
 
 // Get the primary mail account ID from a session
@@ -488,14 +507,20 @@ export async function downloadBlobAsText(
   blobId: string,
   name = "file"
 ): Promise<string> {
+  const t = Date.now();
   const url = downloadUrl
     .replace(/\{accountId\}/, accountId)
     .replace(/\{blobId\}/, blobId)
     .replace(/\{name\}/, encodeURIComponent(name))
     .replace(/\{type\}/, "text%2Fcalendar");
   const res = await fetch(url, { headers: authHeader(), cache: "no-store" });
-  if (!res.ok) throw new Error(`Blob download failed: ${res.statusText}`);
-  return res.text();
+  if (!res.ok) {
+    log.error({ blob_id: blobId, http_status: res.status, duration_ms: Date.now() - t }, "jmap.blob_download.error");
+    throw new Error(`Blob download failed: ${res.statusText}`);
+  }
+  const text = await res.text();
+  log.info({ blob_id: blobId, bytes: text.length, duration_ms: Date.now() - t }, "jmap.blob_download");
+  return text;
 }
 
 export async function uploadBlob(
@@ -504,14 +529,20 @@ export async function uploadBlob(
   data: ArrayBuffer,
   contentType: string
 ): Promise<{ blobId: string; type: string; size: number }> {
+  const t = Date.now();
   const url = uploadUrl.replace("{accountId}", accountId);
   const res = await fetch(url, {
     method: "POST",
     headers: { ...authHeader(), "Content-Type": contentType },
     body: data,
   });
-  if (!res.ok) throw new Error(`Blob upload failed: ${res.statusText}`);
-  return res.json();
+  if (!res.ok) {
+    log.error({ content_type: contentType, bytes: data.byteLength, http_status: res.status, duration_ms: Date.now() - t }, "jmap.blob_upload.error");
+    throw new Error(`Blob upload failed: ${res.statusText}`);
+  }
+  const result: { blobId: string; type: string; size: number } = await res.json();
+  log.info({ blob_id: result.blobId, content_type: contentType, bytes: data.byteLength, duration_ms: Date.now() - t }, "jmap.blob_upload");
+  return result;
 }
 
 export interface InlineImage {
@@ -745,6 +776,7 @@ export async function searchContacts(
   accountId: string,
   query: string
 ): Promise<ContactSuggestion[]> {
+  const t = Date.now();
   // Contacts use a separate JMAP capability — issue a dedicated request
   // rather than mixing into the mail-capability batch.
   const res = await fetch(apiUrl, {
@@ -771,7 +803,12 @@ export async function searchContacts(
     cache: "no-store",
   });
 
-  if (!res.ok) return [];
+  const duration_ms = Date.now() - t;
+
+  if (!res.ok) {
+    log.warn({ query, http_status: res.status, duration_ms }, "jmap.contacts.error");
+    return [];
+  }
 
   const data = await res.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -784,5 +821,7 @@ export async function searchContacts(
       if (entry.value) results.push({ name: name || entry.value, email: entry.value });
     }
   }
+
+  log.info({ query, results: results.length, duration_ms }, "jmap.contacts");
   return results;
 }

@@ -2,17 +2,22 @@
 
 import { getSession, getAccountId, getIdentities, markAsRead, markAsUnread, sendCalendarReply } from "@/lib/jmap";
 import { parseIcs, buildCalendarReply } from "@/lib/ics";
+import { log } from "@/lib/logger";
 
 export async function markEmailAsRead(emailId: string): Promise<void> {
+  const t = Date.now();
   const session = await getSession();
   const accountId = getAccountId(session);
   await markAsRead(session.apiUrl, accountId, emailId);
+  log.info({ email_id: emailId, duration_ms: Date.now() - t }, "action.mark_read");
 }
 
 export async function markEmailAsUnread(emailId: string): Promise<void> {
+  const t = Date.now();
   const session = await getSession();
   const accountId = getAccountId(session);
   await markAsUnread(session.apiUrl, accountId, emailId);
+  log.info({ email_id: emailId, duration_ms: Date.now() - t }, "action.mark_unread");
 }
 
 export async function sendCalendarReplyAction(
@@ -20,6 +25,7 @@ export async function sendCalendarReplyAction(
   response: "ACCEPTED" | "DECLINED" | "TENTATIVE",
   inReplyToMessageId?: string
 ): Promise<void> {
+  const t = Date.now();
   const session = await getSession();
   const accountId = getAccountId(session);
   const identities = await getIdentities(session.apiUrl, accountId);
@@ -57,4 +63,14 @@ export async function sendCalendarReplyAction(
     replyIcs,
     inReplyToMessageId
   );
+
+  log.info({
+    response,
+    event_summary: event.summary,
+    event_start: event.dtStart,
+    organizer: to.email,
+    from: identity.email,
+    in_reply_to_message_id: inReplyToMessageId,
+    duration_ms: Date.now() - t,
+  }, "action.calendar_reply");
 }
