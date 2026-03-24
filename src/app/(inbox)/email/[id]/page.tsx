@@ -1,13 +1,7 @@
-import Link from "next/link";
-import { getSession, getAccountId, getEmail, downloadBlobAsText } from "@/lib/jmap";
-import { formatAddressList, formatFullDate } from "@/lib/format";
+import { getSession, getAccountId, getEmail } from "@/lib/jmap";
 import { notFound } from "next/navigation";
-import EmailBody from "@/components/EmailBody";
-import PinButton from "@/components/PinButton";
-import CalendarEventCard, { CalendarEventData } from "@/components/CalendarEventCard";
-import MarkUnreadButton from "@/components/MarkUnreadButton";
+import EmailDetailView from "@/components/EmailDetailView";
 import MobileBackButton from "@/components/MobileBackButton";
-import { parseIcs } from "@/lib/ics";
 
 export const dynamic = "force-dynamic";
 
@@ -23,170 +17,15 @@ export default async function EmailPage({ params }: Props) {
 
   if (!email) return notFound();
 
-  // ── Resolve body ──────────────────────────────────────────────
-  let body: string | null = null;
-  let bodyType: "html" | "text" = "text";
-
-  if (email.htmlBody?.length > 0) {
-    const part = email.htmlBody[0];
-    if (part.partId && email.bodyValues?.[part.partId]) {
-      body = email.bodyValues[part.partId].value;
-      bodyType = "html";
-    }
-  }
-  if (!body && email.textBody?.length > 0) {
-    const part = email.textBody[0];
-    if (part.partId && email.bodyValues?.[part.partId]) {
-      body = email.bodyValues[part.partId].value;
-      bodyType = "text";
-    }
-  }
-
-  // ── Detect calendar invite ────────────────────────────────────
-  let calendarEvent: CalendarEventData | null = null;
-
-  // Check text body parts (text/calendar inline)
-  const inlineCalPart = email.textBody?.find((p) => p.type === "text/calendar");
-  // Check attachments (text/calendar as attachment)
-  const attachedCalPart = email.attachments?.find((p) => p.type === "text/calendar");
-
-  const calPart = inlineCalPart ?? attachedCalPart;
-
-  if (calPart) {
-    try {
-      let icsText: string | null = null;
-
-      // If it's an inline part with a partId, the value may already be in bodyValues
-      if (calPart.partId && email.bodyValues?.[calPart.partId]) {
-        icsText = email.bodyValues[calPart.partId].value;
-      } else if (calPart.blobId) {
-        // Download the blob
-        icsText = await downloadBlobAsText(
-          session.downloadUrl,
-          accountId,
-          calPart.blobId,
-          calPart.name ?? "invite.ics"
-        );
-      }
-
-      if (icsText) {
-        const event = parseIcs(icsText);
-        if (event) {
-          // Find current user's PARTSTAT by matching the reply-to or from address
-          // Best-effort: check all identities... for now find any ACCEPTED/DECLINED attendee
-          // that looks like the account holder (the "to" address of the invite email)
-          const myEmails = new Set(
-            (email.to ?? []).map((a) => a.email.toLowerCase())
-          );
-          const myAttendee = event.attendees.find((a) =>
-            myEmails.has(a.email.toLowerCase())
-          );
-
-          calendarEvent = {
-            icsText,
-            method: event.method,
-            summary: event.summary,
-            dtStart: event.dtStart?.toISOString() ?? null,
-            dtEnd: event.dtEnd?.toISOString() ?? null,
-            allDay: event.allDay,
-            location: event.location,
-            organizerName: event.organizer?.name ?? null,
-            organizerEmail: event.organizer?.email ?? null,
-            myCurrentPartstat: myAttendee?.partstat ?? null,
-            inReplyToMessageId: email.messageId?.[0],
-          };
-        }
-      }
-    } catch {
-      // Non-fatal: if we can't parse the calendar part, skip the card
-    }
-  }
-
-  const hasMultipleRecipients =
-    (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;
-
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
       <div className="max-w-3xl mx-auto px-8 py-8">
         <MobileBackButton label="Inbox" />
-
-        {/* Subject */}
-        <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 mb-5 leading-snug">
-          {email.subject || "(no subject)"}
-        </h1>
-
-        {/* Metadata */}
-        <dl
-          className="grid gap-x-4 gap-y-1 mb-4 text-sm"
-          style={{ gridTemplateColumns: "max-content 1fr" }}
-        >
-          <dt className="text-stone-400 dark:text-stone-500 text-right">From</dt>
-          <dd className="text-stone-700 dark:text-stone-300">
-            {formatAddressList(email.from)}
-          </dd>
-
-          {email.to && email.to.length > 0 && (
-            <>
-              <dt className="text-stone-400 dark:text-stone-500 text-right">To</dt>
-              <dd className="text-stone-700 dark:text-stone-300">
-                {formatAddressList(email.to)}
-              </dd>
-            </>
-          )}
-          {email.cc && email.cc.length > 0 && (
-            <>
-              <dt className="text-stone-400 dark:text-stone-500 text-right">Cc</dt>
-              <dd className="text-stone-700 dark:text-stone-300">
-                {formatAddressList(email.cc)}
-              </dd>
-            </>
-          )}
-          <dt className="text-stone-400 dark:text-stone-500 text-right">Date</dt>
-          <dd className="text-stone-500 dark:text-stone-400">
-            {formatFullDate(email.receivedAt)}
-          </dd>
-        </dl>
-
-        {/* Action buttons */}
-        <div className="flex items-center gap-2 mb-6 pb-6 border-b border-stone-200 dark:border-stone-700">
-          <PinButton
-            emailId={email.id}
-            initiallyPinned={!!email.keywords?.["$flagged"]}
-          />
-          <MarkUnreadButton emailId={email.id} />
-          <Link
-            href={`/compose?mode=reply&id=${email.id}`}
-            className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-          >
-            Reply
-          </Link>
-          {hasMultipleRecipients && (
-            <Link
-              href={`/compose?mode=reply-all&id=${email.id}`}
-              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-            >
-              Reply All
-            </Link>
-          )}
-          <Link
-            href={`/compose?mode=forward&id=${email.id}`}
-            className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-          >
-            Forward
-          </Link>
-        </div>
-
-        {/* Calendar invite card */}
-        {calendarEvent && <CalendarEventCard event={calendarEvent} />}
-
-        {/* Body */}
-        {body ? (
-          <EmailBody body={body} type={bodyType} />
-        ) : (
-          <p className="text-stone-400 dark:text-stone-500 text-sm">
-            No body content.
-          </p>
-        )}
+        <EmailDetailView
+          email={email}
+          downloadUrl={session.downloadUrl}
+          accountId={accountId}
+        />
       </div>
     </div>
   );
