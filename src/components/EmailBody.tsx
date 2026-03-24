@@ -6,9 +6,10 @@ import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 interface Props {
   body: string;
   type: "html" | "text";
+  stripQuotes?: boolean;
 }
 
-export default function EmailBody({ body, type }: Props) {
+export default function EmailBody({ body, type, stripQuotes }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -50,7 +51,10 @@ export default function EmailBody({ body, type }: Props) {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  const srcDoc = type === "html" ? prepareHtml(body) : prepareTextBody(body);
+  const srcDoc =
+    type === "html"
+      ? prepareHtml(body, { stripQuotes })
+      : prepareTextBody(body, { stripQuotes });
 
   return (
     <div ref={wrapperRef} style={{ minHeight: "200px", overflow: "hidden" }}>

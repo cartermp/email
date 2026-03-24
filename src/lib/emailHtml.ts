@@ -20,7 +20,37 @@
  * than the available space. This handles the iOS Safari limitation where
  * <meta viewport> is ignored inside iframes and content lays out at ~980px.
  */
-export function prepareHtml(html: string): string {
+// JS injected into HTML emails to remove quoted reply sections.
+// Targets the most common quote containers across major email clients.
+const STRIP_QUOTES_JS = `(function(){
+  var sels=[
+    'blockquote[type="cite"]',
+    '.gmail_quote','.gmail_extra',
+    '#divRplyFwdMsg','#appendonsend',
+    '.yahoo_quoted',
+    'div[id^="mail-editor-reference-message"]'
+  ];
+  sels.forEach(function(s){
+    var els=document.querySelectorAll(s);
+    for(var i=0;i<els.length;i++){els[i].parentNode&&els[i].parentNode.removeChild(els[i]);}
+  });
+  // Remove "On [date], [name] wrote:" attribution line immediately before a removed quote.
+  // After removal above, look for trailing <br> + attribution text nodes and drop them.
+  function trimTrailingAttribution(node){
+    if(!node)return;
+    var ch=node.childNodes;
+    for(var i=ch.length-1;i>=0;i--){
+      var n=ch[i];
+      if(n.nodeType===3&&n.nodeValue&&n.nodeValue.trim()==='')continue;
+      if(n.nodeType===1&&n.tagName==='BR'){n.parentNode.removeChild(n);continue;}
+      if(n.nodeType===3&&/wrote:\\s*$/.test(n.nodeValue)){n.parentNode.removeChild(n);}
+      break;
+    }
+  }
+  trimTrailingAttribution(document.body);
+})();`;
+
+export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): string {
   const hasNativeDark = /prefers-color-scheme\s*:\s*dark/i.test(html);
 
   // Strip any existing viewport meta — we control sizing from outside.
@@ -40,6 +70,8 @@ export function prepareHtml(html: string): string {
       `ds.textContent='html{filter:invert(1) hue-rotate(180deg)}img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}';` +
       `document.head.appendChild(ds);}`;
 
+  const stripQuotesJs = opts?.stripQuotes ? STRIP_QUOTES_JS : "";
+
   const inject = [
     `<style>${baseStyle}</style>`,
     `<script>(function(){
@@ -57,6 +89,7 @@ export function prepareHtml(html: string): string {
   }
   send();
   window.addEventListener('load',function(){
+    ${stripQuotesJs}
     send();
     var imgs=document.getElementsByTagName('img');
     for(var i=0;i<imgs.length;i++){
@@ -79,7 +112,23 @@ export function prepareHtml(html: string): string {
  * Uses the same resize/dark-mode infrastructure as prepareHtml so the
  * rendered output matches the app's visual style.
  */
-export function prepareTextBody(text: string): string {
+export function prepareTextBody(text: string, opts?: { stripQuotes?: boolean }): string {
+  if (opts?.stripQuotes) {
+    // Find the first quoted line or "On ... wrote:" attribution and trim from there.
+    const lines = text.split("\n");
+    let cutAt = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (/^>/.test(lines[i])) {
+        // Also include the attribution line immediately before it, if present.
+        cutAt = i > 0 && /wrote:\s*$/.test(lines[i - 1].trim()) ? i - 1 : i;
+        // Walk back over any blank lines before the attribution.
+        while (cutAt > 0 && lines[cutAt - 1].trim() === "") cutAt--;
+        break;
+      }
+    }
+    if (cutAt > 0) text = lines.slice(0, cutAt).join("\n").trimEnd();
+  }
+
   const escaped = text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")

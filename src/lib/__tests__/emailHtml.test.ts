@@ -165,4 +165,93 @@ describe("prepareTextBody", () => {
     const result = prepareTextBody("text");
     assert.ok(result.includes("overflow:hidden"));
   });
+
+  describe("stripQuotes option", () => {
+    it("strips lines starting with > from plain text", () => {
+      const text = "Thanks for the update.\n\n> On Monday, Bob wrote:\n> some quoted text\n> more quoted text";
+      const result = prepareTextBody(text, { stripQuotes: true });
+      assert.ok(!result.includes("&gt; some quoted text"), "quoted lines should be removed");
+      assert.ok(result.includes("Thanks for the update."), "original content should be preserved");
+    });
+
+    it("strips the attribution line before quoted text", () => {
+      const text = "Got it.\n\nOn Monday, Bob wrote:\n> the previous message";
+      const result = prepareTextBody(text, { stripQuotes: true });
+      assert.ok(!result.includes("On Monday, Bob wrote:"), "attribution line should be removed");
+      assert.ok(result.includes("Got it."), "original content should be preserved");
+    });
+
+    it("strips blank lines between content and attribution", () => {
+      const text = "Reply here.\n\n\nOn Thu, Alice wrote:\n> quoted";
+      const result = prepareTextBody(text, { stripQuotes: true });
+      // Everything from the blank lines onward should be gone
+      assert.ok(!result.includes("On Thu, Alice wrote:"), "attribution should be removed");
+      assert.ok(!result.includes("&gt; quoted"), "quoted content should be removed");
+      assert.ok(result.includes("Reply here."), "reply should be preserved");
+    });
+
+    it("leaves text untouched when there are no quoted lines", () => {
+      const text = "No quotes here.\nJust plain text.";
+      const result = prepareTextBody(text, { stripQuotes: true });
+      assert.ok(result.includes("No quotes here."), "text should be unchanged");
+      assert.ok(result.includes("Just plain text."), "text should be unchanged");
+    });
+
+    it("does not strip when stripQuotes is false", () => {
+      const text = "My reply.\n\n> quoted line";
+      const result = prepareTextBody(text, { stripQuotes: false });
+      assert.ok(result.includes("&gt; quoted line"), "quoted line should be present when stripping is off");
+    });
+
+    it("does not strip when stripQuotes is omitted", () => {
+      const text = "My reply.\n\n> quoted line";
+      const result = prepareTextBody(text);
+      assert.ok(result.includes("&gt; quoted line"), "quoted line should be present by default");
+    });
+  });
+});
+
+describe("prepareHtml stripQuotes option", () => {
+  const selectors = [
+    { name: "Gmail (.gmail_quote)", html: '<div class="gmail_quote">quoted</div>' },
+    { name: "Apple Mail (blockquote[type=cite])", html: '<blockquote type="cite">quoted</blockquote>' },
+    { name: "Outlook (#divRplyFwdMsg)", html: '<div id="divRplyFwdMsg">quoted</div>' },
+    { name: "Yahoo (.yahoo_quoted)", html: '<div class="yahoo_quoted">quoted</div>' },
+  ];
+
+  for (const { name, html } of selectors) {
+    it(`injects JS to remove ${name} quote container`, () => {
+      const email = `<html><head></head><body><p>My reply</p>${html}</body></html>`;
+      const result = prepareHtml(email, { stripQuotes: true });
+      // The injected script should contain the relevant CSS selector
+      const selector = html.match(/class="([^"]+)"/)?.[1]
+        ? `.${html.match(/class="([^"]+)"/)![1]}`
+        : html.match(/id="([^"]+)"/)?.[1]
+        ? `#${html.match(/id="([^"]+)"/)![1]}`
+        : 'blockquote[type="cite"]';
+      assert.ok(result.includes(selector), `should inject selector for ${name}: ${selector}`);
+    });
+  }
+
+  it("does not inject quote-stripping JS when stripQuotes is false", () => {
+    const email = '<html><head></head><body><p>hi</p></body></html>';
+    const result = prepareHtml(email, { stripQuotes: false });
+    assert.ok(!result.includes("querySelectorAll"), "querySelectorAll should not be injected when stripping is off");
+  });
+
+  it("does not inject quote-stripping JS by default", () => {
+    const email = '<html><head></head><body><p>hi</p></body></html>';
+    const result = prepareHtml(email);
+    assert.ok(!result.includes("querySelectorAll"), "querySelectorAll should not be injected by default");
+  });
+
+  it("quote-stripping runs after load so DOM is fully parsed", () => {
+    const email = '<html><head></head><body><div class="gmail_quote">quoted</div></body></html>';
+    const result = prepareHtml(email, { stripQuotes: true });
+    // The strip-quotes IIFE must be inside the load event listener, not at the top level,
+    // so it runs after the full document is parsed.
+    const loadListenerMatch = result.match(/addEventListener\('load',function\(\)\{([\s\S]*?)\}\)/);
+    assert.ok(loadListenerMatch, "should have a load event listener");
+    assert.ok(loadListenerMatch![1].includes("gmail_quote"), "strip-quotes JS should run inside the load listener");
+  });
 });

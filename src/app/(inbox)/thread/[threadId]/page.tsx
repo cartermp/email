@@ -1,5 +1,5 @@
 import { getSession, getAccountId, getThreadEmails } from "@/lib/jmap";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import MobileBackButton from "@/components/MobileBackButton";
 import ThreadView from "@/components/ThreadView";
 
@@ -16,6 +16,7 @@ export default async function ThreadPage({ params }: Props) {
   const emails = await getThreadEmails(session.apiUrl, accountId, threadId);
 
   if (!emails.length) return notFound();
+  if (emails.length === 1) redirect(`/email/${emails[0].id}`);
 
   // Subject from the most recent email in the thread
   const subject = emails[emails.length - 1].subject ?? "(no subject)";

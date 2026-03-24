@@ -318,7 +318,7 @@ export default function EmailListPanel({
     const thread = selectedThreadId
       ? visibleThreads.find((t) => t.threadId === selectedThreadId)
       : selectedEmailId
-      ? visibleThreads.find((t) => t.count === 1 && t.latestEmail.id === selectedEmailId)
+      ? visibleThreads.find((t) => t.latestEmail.id === selectedEmailId)
       : undefined;
     if (!thread) return;
     const unreadIds = thread.allEmails
@@ -657,13 +657,10 @@ export default function EmailListPanel({
           {!isSearching &&
             visibleThreads.map((thread, idx) => {
               const { latestEmail, senders } = thread;
-              const threadHref =
-                thread.count === 1
-                  ? `/email/${thread.latestEmail.id}`
-                  : `/thread/${thread.threadId}`;
+              const threadHref = `/thread/${thread.threadId}`;
               const isRouteSelected =
                 thread.threadId === selectedThreadId ||
-                (thread.count === 1 && thread.latestEmail.id === selectedEmailId);
+                thread.latestEmail.id === selectedEmailId;
               const isChecked = thread.allEmails.some((e) => selectedIds.has(e.id));
               const isUnread =
                 thread.allEmails.some(
