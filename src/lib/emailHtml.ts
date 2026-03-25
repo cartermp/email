@@ -88,8 +88,16 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
   send();
+  function openLinksInNewTab(){
+    var links=document.getElementsByTagName('a');
+    for(var i=0;i<links.length;i++){
+      links[i].setAttribute('target','_blank');
+      links[i].setAttribute('rel','noopener noreferrer');
+    }
+  }
   window.addEventListener('load',function(){
     ${stripQuotesJs}
+    openLinksInNewTab();
     send();
     var imgs=document.getElementsByTagName('img');
     for(var i=0;i<imgs.length;i++){
