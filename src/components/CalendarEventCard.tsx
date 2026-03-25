@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { sendCalendarReplyAction } from "@/app/(inbox)/email/[id]/actions";
 
 export interface CalendarEventData {
@@ -49,49 +49,91 @@ function formatEventDateRange(
   return `${datePart} · ${startTime}`;
 }
 
-const PARTSTAT_LABEL: Record<string, string> = {
-  ACCEPTED: "You accepted",
-  DECLINED: "You declined",
-  TENTATIVE: "You tentatively accepted",
-  "NEEDS-ACTION": "",
-};
+export type CalendarResponse = "ACCEPTED" | "DECLINED" | "TENTATIVE";
+type Response = CalendarResponse;
 
-type Response = "ACCEPTED" | "DECLINED" | "TENTATIVE";
-
-export default function CalendarEventCard({ event }: { event: CalendarEventData }) {
-  const [sentResponse, setSentResponse] = useState<Response | null>(
-    (event.myCurrentPartstat && event.myCurrentPartstat !== "NEEDS-ACTION")
-      ? (event.myCurrentPartstat as Response)
-      : null
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3 h-3">
+      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+    </svg>
   );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+const BUTTON_CONFIG: {
+  response: Response;
+  label: string;
+  sentLabel: string;
+  active: string;
+}[] = [
+  {
+    response: "ACCEPTED",
+    label: "Accept",
+    sentLabel: "Accepted",
+    active: "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400",
+  },
+  {
+    response: "TENTATIVE",
+    label: "Maybe",
+    sentLabel: "Maybe",
+    active: "border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
+  },
+  {
+    response: "DECLINED",
+    label: "Decline",
+    sentLabel: "Declined",
+    active: "border-red-400 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400",
+  },
+];
+
+const IDLE = "border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100";
+
+interface Props {
+  event: CalendarEventData;
+  // Allows a parent (e.g. ThreadView) to persist the response across
+  // unmount/remount cycles (collapse → re-expand).
+  persistedResponse?: CalendarResponse | null;
+  onResponseSent?: (r: CalendarResponse) => void;
+}
+
+export default function CalendarEventCard({ event, persistedResponse, onResponseSent }: Props) {
+  const initial =
+    persistedResponse !== undefined
+      ? persistedResponse
+      : event.myCurrentPartstat && event.myCurrentPartstat !== "NEEDS-ACTION"
+        ? (event.myCurrentPartstat as Response)
+        : null;
+
+  const [sentResponse, setSentResponse] = useState<Response | null>(initial);
+  const [pendingResponse, setPendingResponse] = useState<Response | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
 
   const isCancelled = event.method === "CANCEL";
+  const isBusy = pendingResponse !== null;
 
-  function respond(response: Response) {
+  async function respond(response: Response) {
+    if (isBusy || response === sentResponse) return;
     setError(null);
-    startTransition(async () => {
-      try {
-        await sendCalendarReplyAction(
-          event.icsText,
-          response,
-          event.inReplyToMessageId
-        );
-        setSentResponse(response);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to send response");
-      }
-    });
+    setPendingResponse(response);
+    try {
+      await sendCalendarReplyAction(event.icsText, response, event.inReplyToMessageId);
+      setSentResponse(response);
+      onResponseSent?.(response);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to send response");
+    } finally {
+      setPendingResponse(null);
+    }
   }
-
-  const buttonClass = (response: Response, activeColor: string) =>
-    [
-      "px-3 py-1.5 text-xs rounded-md border transition-colors",
-      sentResponse === response
-        ? activeColor
-        : "border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100",
-    ].join(" ");
 
   return (
     <div className="mb-6 rounded-xl border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800/50 overflow-hidden">
@@ -145,57 +187,32 @@ export default function CalendarEventCard({ event }: { event: CalendarEventData 
           <p className="text-sm text-stone-500 dark:text-stone-400 italic">
             This event has been cancelled.
           </p>
-        ) : sentResponse ? (
-          <>
-            <span className="text-sm text-stone-500 dark:text-stone-400">
-              {PARTSTAT_LABEL[sentResponse] ?? sentResponse}
-            </span>
-            <button
-              onClick={() => setSentResponse(null)}
-              className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 underline"
-            >
-              Change
-            </button>
-          </>
         ) : (
           <>
-            <button
-              onClick={() => respond("ACCEPTED")}
-              disabled={isPending}
-              className={buttonClass(
-                "ACCEPTED",
-                "border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400"
-              )}
-            >
-              Accept
-            </button>
-            <button
-              onClick={() => respond("TENTATIVE")}
-              disabled={isPending}
-              className={buttonClass(
-                "TENTATIVE",
-                "border-amber-400 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400"
-              )}
-            >
-              Maybe
-            </button>
-            <button
-              onClick={() => respond("DECLINED")}
-              disabled={isPending}
-              className={buttonClass(
-                "DECLINED",
-                "border-red-400 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
-              )}
-            >
-              Decline
-            </button>
-            {isPending && (
-              <span className="text-xs text-stone-400 dark:text-stone-500 ml-1">Sending…</span>
+            {BUTTON_CONFIG.map(({ response, label, sentLabel, active }) => {
+              const isSent = sentResponse === response;
+              const isPending = pendingResponse === response;
+              return (
+                <button
+                  key={response}
+                  onClick={() => respond(response)}
+                  disabled={isBusy}
+                  className={[
+                    "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors disabled:cursor-default",
+                    isSent || isPending ? active : IDLE,
+                    isBusy && !isSent && !isPending ? "opacity-40" : "",
+                  ].join(" ")}
+                >
+                  {isPending && <SpinnerIcon />}
+                  {isSent && !isPending && <CheckIcon />}
+                  {isSent ? sentLabel : label}
+                </button>
+              );
+            })}
+            {error && (
+              <p className="w-full text-xs text-red-500 dark:text-red-400 mt-1">{error}</p>
             )}
           </>
-        )}
-        {error && (
-          <p className="w-full text-xs text-red-500 dark:text-red-400 mt-1">{error}</p>
         )}
       </div>
     </div>

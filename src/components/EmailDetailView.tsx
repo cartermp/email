@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { downloadBlobAsText } from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { Email } from "@/lib/types";
 import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
-import CalendarEventCard, { CalendarEventData } from "@/components/CalendarEventCard";
+import CalendarEventCard from "@/components/CalendarEventCard";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
-import { parseIcs } from "@/lib/ics";
+import { resolveCalendarEvent } from "@/lib/calendarDetect";
 
 interface Props {
   email: Email;
@@ -35,56 +34,7 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
   }
 
   // ── Detect calendar invite ────────────────────────────────────
-  let calendarEvent: CalendarEventData | null = null;
-
-  const inlineCalPart = email.textBody?.find((p) => p.type === "text/calendar");
-  const attachedCalPart = email.attachments?.find((p) => p.type === "text/calendar");
-  const calPart = inlineCalPart ?? attachedCalPart;
-
-  if (calPart) {
-    try {
-      let icsText: string | null = null;
-
-      if (calPart.partId && email.bodyValues?.[calPart.partId]) {
-        icsText = email.bodyValues[calPart.partId].value;
-      } else if (calPart.blobId) {
-        icsText = await downloadBlobAsText(
-          downloadUrl,
-          accountId,
-          calPart.blobId,
-          calPart.name ?? "invite.ics"
-        );
-      }
-
-      if (icsText) {
-        const event = parseIcs(icsText);
-        if (event) {
-          const myEmails = new Set(
-            (email.to ?? []).map((a) => a.email.toLowerCase())
-          );
-          const myAttendee = event.attendees.find((a) =>
-            myEmails.has(a.email.toLowerCase())
-          );
-
-          calendarEvent = {
-            icsText,
-            method: event.method,
-            summary: event.summary,
-            dtStart: event.dtStart?.toISOString() ?? null,
-            dtEnd: event.dtEnd?.toISOString() ?? null,
-            allDay: event.allDay,
-            location: event.location,
-            organizerName: event.organizer?.name ?? null,
-            organizerEmail: event.organizer?.email ?? null,
-            myCurrentPartstat: myAttendee?.partstat ?? null,
-            inReplyToMessageId: email.messageId?.[0],
-          };
-        }
-      }
-    } catch {
-      // Non-fatal
-    }
-  }
+  const calendarEvent = await resolveCalendarEvent(email, downloadUrl, accountId);
 
   const hasMultipleRecipients =
     (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;

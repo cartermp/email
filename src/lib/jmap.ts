@@ -681,14 +681,15 @@ export async function sendCalendarReply(
   subject: string,
   textBody: string,
   icsText: string,
-  inReplyToId?: string
+  inReplyToId?: string,
+  sentMailboxId?: string
 ): Promise<void> {
   // Upload the ICS blob
   const icsBytes = new TextEncoder().encode(icsText).buffer as ArrayBuffer;
   const { blobId } = await uploadBlob(uploadUrl, accountId, icsBytes, "text/calendar");
 
   const emailCreate: Record<string, unknown> = {
-    mailboxIds: {},
+    mailboxIds: sentMailboxId ? { [sentMailboxId]: true } : {},
     from: [from],
     to: [to],
     subject,

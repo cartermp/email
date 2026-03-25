@@ -1,6 +1,6 @@
 "use server";
 
-import { getSession, getAccountId, getIdentities, markAsRead, markAsUnread, sendCalendarReply } from "@/lib/jmap";
+import { getSession, getAccountId, getIdentities, getMailboxes, markAsRead, markAsUnread, sendCalendarReply } from "@/lib/jmap";
 import { parseIcs, buildCalendarReply } from "@/lib/ics";
 import { log } from "@/lib/logger";
 
@@ -28,9 +28,13 @@ export async function sendCalendarReplyAction(
   const t = Date.now();
   const session = await getSession();
   const accountId = getAccountId(session);
-  const identities = await getIdentities(session.apiUrl, accountId);
+  const [identities, mailboxes] = await Promise.all([
+    getIdentities(session.apiUrl, accountId),
+    getMailboxes(session.apiUrl, accountId),
+  ]);
   const identity = identities[0];
   if (!identity) throw new Error("No identity found");
+  const sentMailboxId = mailboxes.find((m) => m.role === "sent")?.id;
 
   const event = parseIcs(icsText);
   if (!event) throw new Error("Could not parse calendar event");
@@ -61,7 +65,8 @@ export async function sendCalendarReplyAction(
     subject,
     textBody,
     replyIcs,
-    inReplyToMessageId
+    inReplyToMessageId,
+    sentMailboxId
   );
 
   log.info({

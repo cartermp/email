@@ -5,6 +5,7 @@ import Link from "next/link";
 import SenderAvatar from "@/components/SenderAvatar";
 import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
+import CalendarEventCard, { CalendarEventData, CalendarResponse } from "@/components/CalendarEventCard";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 
@@ -39,11 +40,14 @@ function resolveBody(email: Email): { body: string; type: "html" | "text" } | nu
 
 interface ItemProps {
   email: Email;
+  calendarEvent: CalendarEventData | null;
+  persistedResponse: CalendarResponse | null | undefined;
+  onResponseSent: (r: CalendarResponse) => void;
   expanded: boolean;
   onToggle: () => void;
 }
 
-function EmailStackItem({ email, expanded, onToggle }: ItemProps) {
+function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSent, expanded, onToggle }: ItemProps) {
   const isUnread = !email.keywords?.["$seen"];
   const resolved = resolveBody(email);
   const hasMultipleRecipients =
@@ -149,6 +153,17 @@ function EmailStackItem({ email, expanded, onToggle }: ItemProps) {
             </Link>
           </div>
 
+          {/* Calendar invite */}
+          {calendarEvent && (
+            <div className="px-4 pt-4">
+              <CalendarEventCard
+                event={calendarEvent}
+                persistedResponse={persistedResponse}
+                onResponseSent={onResponseSent}
+              />
+            </div>
+          )}
+
           {/* Body */}
           {resolved ? (
             <EmailBody body={resolved.body} type={resolved.type} stripQuotes />
@@ -169,14 +184,19 @@ function EmailStackItem({ email, expanded, onToggle }: ItemProps) {
 
 interface Props {
   emails: Email[]; // sorted oldest → newest
+  calendarEvents: (CalendarEventData | null)[];
 }
 
-export default function ThreadView({ emails }: Props) {
+export default function ThreadView({ emails, calendarEvents }: Props) {
   // Start with the most recent email expanded
   const lastId = emails[emails.length - 1]?.id;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
     () => new Set(lastId ? [lastId] : [])
   );
+
+  // Persists RSVP responses across collapse/expand so CalendarEventCard
+  // doesn't lose its confirmed state when it unmounts and remounts.
+  const [rsvpResponses, setRsvpResponses] = useState<Record<string, CalendarResponse>>({});
 
   function toggle(id: string) {
     setExpandedIds((prev) => {
@@ -192,10 +212,13 @@ export default function ThreadView({ emails }: Props) {
 
   return (
     <div className="space-y-2 pb-8">
-      {emails.map((email) => (
+      {emails.map((email, i) => (
         <EmailStackItem
           key={email.id}
           email={email}
+          calendarEvent={calendarEvents[i] ?? null}
+          persistedResponse={rsvpResponses[email.id]}
+          onResponseSent={(r) => setRsvpResponses((prev) => ({ ...prev, [email.id]: r }))}
           expanded={expandedIds.has(email.id)}
           onToggle={() => toggle(email.id)}
         />

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import MobileBackButton from "@/components/MobileBackButton";
 import EmailDetailView from "@/components/EmailDetailView";
 import ThreadView from "@/components/ThreadView";
+import { resolveCalendarEvent } from "@/lib/calendarDetect";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,10 @@ export default async function ThreadPage({ params }: Props) {
 
   const subject = emails[emails.length - 1].subject ?? "(no subject)";
 
+  const calendarEvents = await Promise.all(
+    emails.map((e) => resolveCalendarEvent(e, session.downloadUrl, accountId))
+  );
+
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
       <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
@@ -45,7 +50,7 @@ export default async function ThreadPage({ params }: Props) {
         <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 mb-6 leading-snug">
           {subject}
         </h1>
-        <ThreadView emails={emails} />
+        <ThreadView emails={emails} calendarEvents={calendarEvents} />
       </div>
     </div>
   );
