@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import SenderAvatar from "@/components/SenderAvatar";
 import EmailBody from "@/components/EmailBody";
+import PinButton from "@/components/PinButton";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 
@@ -125,6 +126,7 @@ function EmailStackItem({ email, expanded, onToggle }: ItemProps) {
 
           {/* Action buttons */}
           <div className="px-4 py-2.5 flex items-center gap-2 border-b border-stone-100 dark:border-stone-700/50">
+            <PinButton emailId={email.id} initiallyPinned={!!email.keywords?.["$flagged"]} />
             <Link
               href={`/compose?mode=reply&id=${email.id}`}
               className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"

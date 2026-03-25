@@ -8,7 +8,7 @@ import { Email } from "@/lib/types";
 import { isPinned, mergeEmailUpdates, groupIntoThreads, ThreadSummary } from "@/lib/emailList";
 import { formatAddressList, formatDate } from "@/lib/format";
 import { markEmailAsRead } from "@/app/(inbox)/email/[id]/actions";
-import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox } from "@/app/(inbox)/actions";
+import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox, togglePinAction } from "@/app/(inbox)/actions";
 
 interface Props {
   unreads: Email[];
@@ -822,6 +822,34 @@ export default function EmailListPanel({
                         </p>
                       )}
                     </Link>
+
+                    {/* Quick-pin button — shown on hover or when already pinned */}
+                    {!selectionMode && (
+                      <button
+                        title={thread.isPinned ? "Unpin" : "Pin"}
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const ids = thread.allEmails.map((em) => em.id);
+                          const next = !thread.isPinned;
+                          ids.forEach((id) =>
+                            window.dispatchEvent(
+                              new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
+                            )
+                          );
+                          await bulkSetPin(ids, next);
+                          router.refresh();
+                        }}
+                        className={[
+                          "shrink-0 p-1 rounded transition-all",
+                          thread.isPinned
+                            ? "opacity-100 text-amber-400 hover:text-amber-500"
+                            : "opacity-0 group-hover:opacity-100 text-stone-300 dark:text-stone-600 hover:text-amber-400",
+                        ].join(" ")}
+                      >
+                        <IconPin />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
