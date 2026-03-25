@@ -30,6 +30,17 @@ export default async function ComposePage({ searchParams }: Props) {
     return 0;
   });
 
+  // Fastmail stores the signature with a leading `-- \n` separator; strip it
+  // so withSignature can add exactly one canonical separator.
+  const rawSig = sorted[0]?.textSignature ?? "";
+  const signature = rawSig.replace(/^--[ \t]*\r?\n/, "").trimStart();
+
+  // Inserts the sig block before any quoted/forwarded content.
+  function withSignature(body: string): string {
+    const sigBlock = signature ? `\n\n-- \n${signature}` : "";
+    return body ? `${sigBlock}\n\n${body}` : sigBlock;
+  }
+
   let initialTo = "";
   let initialCc = "";
   let initialBcc = "";
@@ -97,7 +108,7 @@ export default async function ComposePage({ searchParams }: Props) {
         initialSubject = reSubject(email.subject);
         inReplyToId = email.messageId?.[0];
         replyThreadId = email.threadId;
-        initialBody = buildReplyQuote(dateStr, fromStr, bodyText);
+        initialBody = withSignature(buildReplyQuote(dateStr, fromStr, bodyText));
       } else if (mode === "reply-all") {
         title = "Reply All";
         initialTo = fromStr;
@@ -108,7 +119,7 @@ export default async function ComposePage({ searchParams }: Props) {
         initialSubject = reSubject(email.subject);
         inReplyToId = email.messageId?.[0];
         replyThreadId = email.threadId;
-        initialBody = buildReplyQuote(dateStr, fromStr, bodyText);
+        initialBody = withSignature(buildReplyQuote(dateStr, fromStr, bodyText));
       } else if (mode === "forward") {
         title = "Forward";
         initialSubject = fwdSubject(email.subject);
@@ -122,13 +133,13 @@ export default async function ComposePage({ searchParams }: Props) {
         }
         // The markdown body carries the plain-text fallback (text/plain part
         // of the sent email) and what's shown in the editor.
-        initialBody = buildForwardQuote({
+        initialBody = withSignature(buildForwardQuote({
           from: addrList(email.from),
           to: addrList(email.to),
           date: dateStr,
           subject: email.subject ?? "",
           body: bodyText,
-        });
+        }));
       }
     }
   }
@@ -148,7 +159,7 @@ export default async function ComposePage({ searchParams }: Props) {
           initialCc={initialCc}
           initialBcc={initialBcc}
           initialSubject={initialSubject}
-          initialBody={initialBody}
+          initialBody={draftId ? initialBody : initialBody || withSignature("")}
           inReplyToId={inReplyToId}
           replyThreadId={replyThreadId}
           initialDraftId={initialDraftId}

@@ -362,6 +362,17 @@ export async function getIdentities(
   return (result.list as Identity[]) ?? [];
 }
 
+export async function updateIdentitySignature(
+  apiUrl: string,
+  accountId: string,
+  identityId: string,
+  textSignature: string
+): Promise<void> {
+  await jmapCall(apiUrl, [
+    ["Identity/set", { accountId, update: { [identityId]: { textSignature } } }, "0"],
+  ]);
+}
+
 export async function setPin(
   apiUrl: string,
   accountId: string,
