@@ -628,7 +628,10 @@ export async function sendEmail(
 
   if (cc && cc.length > 0) emailCreate.cc = parseAddresses(cc);
   if (bcc && bcc.length > 0) emailCreate.bcc = parseAddresses(bcc);
-  if (inReplyToId) emailCreate.inReplyTo = [inReplyToId];
+  if (inReplyToId) {
+    emailCreate.inReplyTo = [inReplyToId];
+    emailCreate.references = [inReplyToId];
+  }
 
   const data = await jmapCall(apiUrl, [
     ["Email/set", { accountId, create: { draft: emailCreate } }, "0"],

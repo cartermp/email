@@ -36,6 +36,7 @@ export default async function ComposePage({ searchParams }: Props) {
   let initialSubject = "";
   let initialBody = "";
   let inReplyToId: string | undefined;
+  let replyThreadId: string | undefined;
   let title = "New Message";
   let initialDraftId: string | undefined;
   let forwardedHtml: string | undefined;
@@ -95,6 +96,7 @@ export default async function ComposePage({ searchParams }: Props) {
         initialTo = fromStr;
         initialSubject = reSubject(email.subject);
         inReplyToId = email.messageId?.[0];
+        replyThreadId = email.threadId;
         initialBody = buildReplyQuote(dateStr, fromStr, bodyText);
       } else if (mode === "reply-all") {
         title = "Reply All";
@@ -105,6 +107,7 @@ export default async function ComposePage({ searchParams }: Props) {
         initialCc = others.map(formatAddressRFC).join(", ");
         initialSubject = reSubject(email.subject);
         inReplyToId = email.messageId?.[0];
+        replyThreadId = email.threadId;
         initialBody = buildReplyQuote(dateStr, fromStr, bodyText);
       } else if (mode === "forward") {
         title = "Forward";
@@ -147,6 +150,7 @@ export default async function ComposePage({ searchParams }: Props) {
           initialSubject={initialSubject}
           initialBody={initialBody}
           inReplyToId={inReplyToId}
+          replyThreadId={replyThreadId}
           initialDraftId={initialDraftId}
           forwardedHtml={forwardedHtml}
         />

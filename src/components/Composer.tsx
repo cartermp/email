@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 
@@ -173,6 +174,7 @@ interface Props {
   initialSubject?: string;
   initialBody?: string;
   inReplyToId?: string;
+  replyThreadId?: string;
   initialDraftId?: string;
   forwardedHtml?: string;
 }
@@ -202,9 +204,11 @@ export default function Composer({
   initialSubject = "",
   initialBody = "",
   inReplyToId,
+  replyThreadId,
   initialDraftId,
   forwardedHtml,
 }: Props) {
+  const router = useRouter();
   const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
   const [to, setTo] = useState(initialTo);
   const [cc, setCc] = useState(initialCc);
@@ -438,7 +442,11 @@ export default function Composer({
         setDraftId(null);
       }
 
-      setSent(true);
+      if (replyThreadId) {
+        router.push(`/thread/${replyThreadId}`);
+      } else {
+        setSent(true);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
@@ -455,6 +463,8 @@ export default function Composer({
     markdown,
     uploading,
     inReplyToId,
+    replyThreadId,
+    router,
   ]);
 
   if (sent) {
