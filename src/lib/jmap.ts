@@ -423,6 +423,42 @@ export async function listDrafts(
   return (result.list as Email[]) ?? [];
 }
 
+export async function listSentEmails(
+  apiUrl: string,
+  accountId: string,
+  sentMailboxId: string,
+  limit = 50
+): Promise<{ emails: Email[]; total: number }> {
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/query",
+      {
+        accountId,
+        filter: { inMailbox: sentMailboxId },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        limit,
+        position: 0,
+      },
+      "q",
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
+        properties: EMAIL_LIST_PROPERTIES,
+      },
+      "g",
+    ],
+  ]);
+  const [, qResult] = data.methodResponses[0];
+  const [, gResult] = data.methodResponses[1];
+  return {
+    emails: (gResult.list as Email[]) ?? [],
+    total: (qResult.total as number) ?? 0,
+  };
+}
+
 export async function saveDraft(
   apiUrl: string,
   accountId: string,

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Email } from "@/lib/types";
 import { isPinned, mergeEmailUpdates, groupIntoThreads, ThreadSummary } from "@/lib/emailList";
 import { formatAddressList, formatDate } from "@/lib/format";
@@ -17,12 +17,13 @@ interface Props {
   readTotal: number;
   inboxId: string;
   drafts?: Email[];
+  sentEmails?: Email[];
   pinnedEmails?: Email[];
   archiveMailboxId?: string;
   trashMailboxId?: string;
 }
 
-type View = "inbox" | "drafts";
+type View = "inbox" | "drafts" | "sent";
 
 // ---------------------------------------------------------------------------
 // Inline SVG icons
@@ -95,12 +96,14 @@ export default function EmailListPanel({
   readTotal,
   inboxId,
   drafts = [],
+  sentEmails = [],
   pinnedEmails = [],
   archiveMailboxId,
   trashMailboxId,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const selectedThreadId = pathname.startsWith("/thread/")
     ? pathname.slice("/thread/".length)
     : undefined;
@@ -110,7 +113,11 @@ export default function EmailListPanel({
     ? pathname.slice("/email/".length)
     : undefined;
 
-  const view: View = pathname.startsWith("/drafts") ? "drafts" : "inbox";
+  const view: View = pathname.startsWith("/drafts")
+    ? "drafts"
+    : pathname.startsWith("/sent") || searchParams.get("from") === "sent"
+    ? "sent"
+    : "inbox";
 
   // -------------------------------------------------------------------------
   // Read / unread client-side overrides
@@ -236,7 +243,7 @@ export default function EmailListPanel({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (view === "drafts") setSearchQuery("");
+    if (view === "drafts" || view === "sent") setSearchQuery("");
   }, [view]);
 
   const isInSearchMode = searchQuery.trim().length > 0;
@@ -895,6 +902,45 @@ export default function EmailListPanel({
                 <div className="text-xs truncate text-stone-500 dark:text-stone-400">
                   {draft.subject || "(no subject)"}
                 </div>
+              </Link>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Sent list */}
+      {view === "sent" && (
+        <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
+          {sentEmails.length === 0 ? (
+            <p className="p-6 text-sm text-stone-400 dark:text-stone-500">No sent emails.</p>
+          ) : (
+            sentEmails.map((email) => (
+              <Link
+                key={email.id}
+                href={`/email/${email.id}?from=sent`}
+                className={[
+                  "flex flex-col gap-0.5 px-4 py-2.5 border-b border-stone-100 dark:border-stone-700/60 transition-colors",
+                  email.id === selectedEmailId
+                    ? "bg-stone-200 dark:bg-stone-800"
+                    : "hover:bg-stone-100 dark:hover:bg-stone-900",
+                ].join(" ")}
+              >
+                <div className="flex items-baseline gap-2">
+                  <span className="flex-1 text-sm truncate text-stone-600 dark:text-stone-400">
+                    {email.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
+                  </span>
+                  <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
+                    {formatDate(email.receivedAt)}
+                  </span>
+                </div>
+                <div className="text-xs truncate text-stone-500 dark:text-stone-400">
+                  {email.subject || "(no subject)"}
+                </div>
+                {email.preview && (
+                  <p className="text-xs text-stone-400 dark:text-stone-500 truncate">
+                    {email.preview}
+                  </p>
+                )}
               </Link>
             ))
           )}

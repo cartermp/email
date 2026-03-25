@@ -49,23 +49,36 @@ export default async function RootLayout({
             >
               Drafts
             </Link>
+            <Link
+              href="/sent"
+              className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
+            >
+              Sent
+            </Link>
 
-            {session && (
-              <form
-                className="mt-auto"
-                action={async () => {
-                  "use server";
-                  await signOut({ redirectTo: "/login" });
-                }}
+            <div className="mt-auto flex flex-col gap-1">
+              <Link
+                href="/settings"
+                className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
               >
-                <button
-                  type="submit"
-                  className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
+                Settings
+              </Link>
+              {session && (
+                <form
+                  action={async () => {
+                    "use server";
+                    await signOut({ redirectTo: "/login" });
+                  }}
                 >
-                  Sign out
-                </button>
-              </form>
-            )}
+                  <button
+                    type="submit"
+                    className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
+                  >
+                    Sign out
+                  </button>
+                </form>
+              )}
+            </div>
           </nav>
 
           {/* Main content */}
