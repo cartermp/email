@@ -50,8 +50,6 @@ interface ItemProps {
 function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSent, expanded, onToggle }: ItemProps) {
   const isUnread = !email.keywords?.["$seen"];
   const resolved = resolveBody(email);
-  const hasMultipleRecipients =
-    (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;
 
   return (
     <div
@@ -137,14 +135,12 @@ function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSen
             >
               Reply
             </Link>
-            {hasMultipleRecipients && (
-              <Link
-                href={`/compose?mode=reply-all&id=${email.id}`}
-                className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-              >
-                Reply All
-              </Link>
-            )}
+            <Link
+              href={`/compose?mode=reply-all&id=${email.id}`}
+              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+            >
+              Reply All
+            </Link>
             <Link
               href={`/compose?mode=forward&id=${email.id}`}
               className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
