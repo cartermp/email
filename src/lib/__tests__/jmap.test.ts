@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getAccountId, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox } from "../jmap";
+import { getAccountId, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox, sendEmail } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -363,5 +363,245 @@ describe("moveEmailsToMailbox", () => {
       { id: "e1", mailboxIds: {} },
     ], "trash");
     assert.equal(lastCall()[1].accountId, "my-account");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sendEmail
+// ---------------------------------------------------------------------------
+
+describe("sendEmail", () => {
+  const BASE = {
+    identityId: "ident-1",
+    from: { name: "Alice", email: "alice@example.com" },
+    to: ["bob@example.com"],
+    subject: "Test subject",
+    textBody: "Hello",
+    htmlBody: "<p>Hello</p>",
+  };
+
+  function setupMock() {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/setResponse",        { created: { draft: { id: "email-123" } } }, "0"],
+        ["EmailSubmission/setResponse", { created: { submission: { id: "sub-456" } } }, "1"],
+      ]),
+    ];
+  }
+
+  function draftBodyStructure() {
+    return (capturedBodies[0] as any).methodCalls[0][1].create.draft.bodyStructure;
+  }
+
+  function draft() {
+    return (capturedBodies[0] as any).methodCalls[0][1].create.draft;
+  }
+
+  // ── Body structure ────────────────────────────────────────────────────────
+
+  it("uses multipart/alternative with no inline images or attachments", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    const bs = draftBodyStructure();
+    assert.equal(bs.type, "multipart/alternative");
+    assert.equal(bs.subParts.length, 2);
+    assert.equal(bs.subParts[0].partId, "text");
+    assert.equal(bs.subParts[1].partId, "html");
+  });
+
+  it("uses multipart/related when there are inline images but no attachments", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      inlineImages: [{ id: "img-1", blobId: "blob-abc", type: "image/png" }],
+    });
+    const bs = draftBodyStructure();
+    assert.equal(bs.type, "multipart/related");
+    assert.equal(bs.subParts[0].type, "multipart/alternative");
+  });
+
+  it("sets cid and disposition:inline on each inline image", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      inlineImages: [{ id: "img-1", blobId: "blob-abc", type: "image/png" }],
+    });
+    const img = draftBodyStructure().subParts[1];
+    assert.equal(img.blobId, "blob-abc");
+    assert.equal(img.type, "image/png");
+    assert.equal(img.cid, "img-1@mail");
+    assert.equal(img.disposition, "inline");
+  });
+
+  it("wraps in multipart/mixed when there are attachments but no inline images", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      attachments: [{ blobId: "blob-pdf", name: "doc.pdf", type: "application/pdf" }],
+    });
+    const bs = draftBodyStructure();
+    assert.equal(bs.type, "multipart/mixed");
+    assert.equal(bs.subParts[0].type, "multipart/alternative");
+  });
+
+  it("sets name and disposition:attachment on each attachment", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      attachments: [{ blobId: "blob-pdf", name: "report.pdf", type: "application/pdf" }],
+    });
+    const att = draftBodyStructure().subParts[1];
+    assert.equal(att.blobId, "blob-pdf");
+    assert.equal(att.name, "report.pdf");
+    assert.equal(att.type, "application/pdf");
+    assert.equal(att.disposition, "attachment");
+  });
+
+  it("includes multiple attachments as separate subParts in multipart/mixed", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      attachments: [
+        { blobId: "b1", name: "a.pdf", type: "application/pdf" },
+        { blobId: "b2", name: "b.zip", type: "application/zip" },
+      ],
+    });
+    const bs = draftBodyStructure();
+    assert.equal(bs.type, "multipart/mixed");
+    assert.equal(bs.subParts.length, 3); // alternative + 2 attachments
+    assert.equal(bs.subParts[1].blobId, "b1");
+    assert.equal(bs.subParts[2].blobId, "b2");
+  });
+
+  it("nests multipart/related inside multipart/mixed when both present", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      inlineImages: [{ id: "img-1", blobId: "blob-img", type: "image/jpeg" }],
+      attachments: [{ blobId: "blob-pdf", name: "report.pdf", type: "application/pdf" }],
+    });
+    const bs = draftBodyStructure();
+    assert.equal(bs.type, "multipart/mixed");
+    assert.equal(bs.subParts[0].type, "multipart/related");
+    assert.equal(bs.subParts[0].subParts[0].type, "multipart/alternative");
+    assert.equal(bs.subParts[1].disposition, "attachment");
+  });
+
+  it("treats empty attachments array the same as no attachments", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", { ...BASE, attachments: [] });
+    assert.equal(draftBodyStructure().type, "multipart/alternative");
+  });
+
+  it("treats empty inlineImages array the same as no inline images", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", { ...BASE, inlineImages: [] });
+    assert.equal(draftBodyStructure().type, "multipart/alternative");
+  });
+
+  // ── Return value ──────────────────────────────────────────────────────────
+
+  it("returns the emailId and submissionId from the JMAP response", async () => {
+    setupMock();
+    const result = await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    assert.equal(result.emailId, "email-123");
+    assert.equal(result.submissionId, "sub-456");
+  });
+
+  // ── Address parsing ───────────────────────────────────────────────────────
+
+  it("parses formatted To addresses into name/email objects", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      to: ["Bob Smith <bob@example.com>", "carol@example.com"],
+    });
+    assert.equal(draft().to[0].name, "Bob Smith");
+    assert.equal(draft().to[0].email, "bob@example.com");
+    assert.equal(draft().to[1].name, null);
+    assert.equal(draft().to[1].email, "carol@example.com");
+  });
+
+  it("includes CC when provided", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      cc: ["cc@example.com"],
+    });
+    assert.ok(Array.isArray(draft().cc));
+    assert.equal(draft().cc[0].email, "cc@example.com");
+  });
+
+  it("includes BCC when provided", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      bcc: ["bcc@example.com"],
+    });
+    assert.ok(Array.isArray(draft().bcc));
+    assert.equal(draft().bcc[0].email, "bcc@example.com");
+  });
+
+  it("omits cc and bcc fields when not provided", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    assert.equal(draft().cc, undefined);
+    assert.equal(draft().bcc, undefined);
+  });
+
+  // ── Threading ─────────────────────────────────────────────────────────────
+
+  it("sets inReplyTo and references when inReplyToId is provided", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      inReplyToId: "original-msg-id",
+    });
+    assert.deepEqual(draft().inReplyTo, ["original-msg-id"]);
+    assert.deepEqual(draft().references, ["original-msg-id"]);
+  });
+
+  it("omits inReplyTo and references when inReplyToId is absent", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    assert.equal(draft().inReplyTo, undefined);
+    assert.equal(draft().references, undefined);
+  });
+
+  // ── Mailbox placement ─────────────────────────────────────────────────────
+
+  it("places the draft in sentMailboxId when provided", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", {
+      ...BASE,
+      sentMailboxId: "sent-mbox",
+    });
+    assert.deepEqual(draft().mailboxIds, { "sent-mbox": true });
+  });
+
+  it("uses an empty mailboxIds when sentMailboxId is absent", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    assert.deepEqual(draft().mailboxIds, {});
+  });
+
+  // ── JMAP protocol ─────────────────────────────────────────────────────────
+
+  it("sends exactly two method calls: Email/set and EmailSubmission/set", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    const calls = (capturedBodies[0] as any).methodCalls;
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], "Email/set");
+    assert.equal(calls[1][0], "EmailSubmission/set");
+  });
+
+  it("references #draft in the EmailSubmission/set call", async () => {
+    setupMock();
+    await sendEmail("https://api.example.com/jmap", "acct1", BASE);
+    const submissionCreate = (capturedBodies[0] as any).methodCalls[1][1].create.submission;
+    assert.equal(submissionCreate.emailId, "#draft");
+    assert.equal(submissionCreate.identityId, "ident-1");
   });
 });
