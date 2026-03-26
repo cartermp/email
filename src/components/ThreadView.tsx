@@ -6,6 +6,7 @@ import SenderAvatar from "@/components/SenderAvatar";
 import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
 import CalendarEventCard, { CalendarEventData, CalendarResponse } from "@/components/CalendarEventCard";
+import AttachmentList from "@/components/AttachmentList";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 
@@ -167,6 +168,13 @@ function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSen
             <p className="px-4 py-6 text-sm text-stone-400 dark:text-stone-500">
               No content.
             </p>
+          )}
+
+          {/* Attachments */}
+          {email.attachments?.length > 0 && (
+            <div className="px-4">
+              <AttachmentList attachments={email.attachments} />
+            </div>
           )}
         </div>
       )}

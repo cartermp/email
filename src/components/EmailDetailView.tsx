@@ -5,6 +5,7 @@ import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
 import CalendarEventCard from "@/components/CalendarEventCard";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
+import AttachmentList from "@/components/AttachmentList";
 import { resolveCalendarEvent } from "@/lib/calendarDetect";
 
 interface Props {
@@ -117,6 +118,11 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
         <p className="text-stone-400 dark:text-stone-500 text-sm">
           No body content.
         </p>
+      )}
+
+      {/* Attachments */}
+      {email.attachments?.length > 0 && (
+        <AttachmentList attachments={email.attachments} />
       )}
     </>
   );
