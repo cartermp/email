@@ -8,3 +8,9 @@
 :root {
   color-scheme: light dark;
 }
+
+@media print {
+  /* Allow content to expand to full height for printing */
+  html, body { height: auto !important; overflow: visible !important; }
+  body > div, main { height: auto !important; overflow: visible !important; }
+}

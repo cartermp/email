@@ -1,5 +1,6 @@
 import { getSession, getAccountId, getThreadEmails } from "@/lib/jmap";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import MobileBackButton from "@/components/MobileBackButton";
 import EmailDetailView from "@/components/EmailDetailView";
 import ThreadView from "@/components/ThreadView";
@@ -47,9 +48,18 @@ export default async function ThreadPage({ params }: Props) {
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
       <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
         <MobileBackButton label="Inbox" />
-        <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 mb-6 leading-snug">
-          {subject}
-        </h1>
+        <div className="flex items-start justify-between gap-4 mb-6">
+          <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 leading-snug">
+            {subject}
+          </h1>
+          <Link
+            href={`/print/thread/${threadId}`}
+            target="_blank"
+            className="shrink-0 text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+          >
+            Print
+          </Link>
+        </div>
         <ThreadView emails={emails} calendarEvents={calendarEvents} />
       </div>
     </div>

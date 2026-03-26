@@ -32,7 +32,7 @@ export default async function RootLayout({
         {/* Row: desktop sidebar + main content */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Sidebar — desktop only */}
-          <nav className="hidden md:flex w-44 shrink-0 flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
+          <nav className="hidden md:flex print:hidden w-44 shrink-0 flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
             <span className="text-sm font-semibold text-stone-900 dark:text-stone-100 px-2 mb-4">
               Mail
             </span>
@@ -86,7 +86,7 @@ export default async function RootLayout({
         </div>
 
         {/* Mobile bottom nav — hidden on desktop */}
-        <MobileNav />
+        <div className="print:hidden"><MobileNav /></div>
       </body>
     </html>
   );
