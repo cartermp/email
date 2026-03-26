@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
   const t = Date.now();
   try {
     const body = await req.json();
-    const { identityId, to, cc, bcc, subject, textBody, htmlBody, inlineImages, inReplyToId } = body;
+    const { identityId, to, cc, bcc, subject, textBody, htmlBody, inlineImages, attachments, inReplyToId } = body;
 
     if (!identityId || !to?.length || !subject || !textBody) {
       log.warn({ identityId: !!identityId, to_count: to?.length ?? 0, has_subject: !!subject, has_body: !!textBody }, "route.send.bad_request");
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
       textBody,
       htmlBody,
       inlineImages,
+      attachments,
       inReplyToId,
       sentMailboxId,
     });
@@ -52,6 +53,7 @@ export async function POST(req: NextRequest) {
       text_len: textBody.length,
       html_len: htmlBody?.length ?? 0,
       inline_image_count: inlineImages?.length ?? 0,
+      attachment_count: attachments?.length ?? 0,
       is_reply: !!inReplyToId,
       in_reply_to_id: inReplyToId,
       email_id: result.emailId,

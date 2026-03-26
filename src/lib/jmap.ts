@@ -619,6 +619,7 @@ export async function sendEmail(
     textBody,
     htmlBody,
     inlineImages,
+    attachments,
     inReplyToId,
     sentMailboxId,
   }: {
@@ -631,6 +632,7 @@ export async function sendEmail(
     textBody: string;
     htmlBody: string;
     inlineImages?: InlineImage[];
+    attachments?: { blobId: string; name: string; type: string }[];
     inReplyToId?: string;
     sentMailboxId?: string;
   }
@@ -645,7 +647,7 @@ export async function sendEmail(
     ],
   };
 
-  const bodyStructure =
+  const contentPart =
     inlineImages && inlineImages.length > 0
       ? {
           type: "multipart/related",
@@ -660,6 +662,22 @@ export async function sendEmail(
           ],
         }
       : alternativePart;
+
+  const bodyStructure =
+    attachments && attachments.length > 0
+      ? {
+          type: "multipart/mixed",
+          subParts: [
+            contentPart,
+            ...attachments.map((att) => ({
+              type: att.type,
+              blobId: att.blobId,
+              name: att.name,
+              disposition: "attachment",
+            })),
+          ],
+        }
+      : contentPart;
 
   const emailCreate: Record<string, unknown> = {
     mailboxIds: sentMailboxId ? { [sentMailboxId]: true } : {},

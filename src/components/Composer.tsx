@@ -166,6 +166,14 @@ interface InlineImage {
   type: string;
 }
 
+interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  blobId: string;
+}
+
 interface Props {
   identities: Identity[];
   initialTo?: string;
@@ -223,6 +231,7 @@ export default function Composer({
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const [inlineImages, setInlineImages] = useState<InlineImage[]>([]);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(0);
 
   // Draft state
@@ -234,10 +243,15 @@ export default function Composer({
   const isInitialRender = useRef(true);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const inlineImagesRef = useRef(inlineImages);
+  const attachmentsRef = useRef(attachments);
   useEffect(() => {
     inlineImagesRef.current = inlineImages;
   }, [inlineImages]);
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
 
   // Keep draftId ref in sync
   useEffect(() => {
@@ -372,6 +386,29 @@ export default function Composer({
     [markdown]
   );
 
+  const handleAttach = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      const id = `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setUploading((n) => n + 1);
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/upload", { method: "POST", body: fd });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? "Upload failed");
+        }
+        const { blobId } = await res.json();
+        setAttachments((prev) => [...prev, { id, name: file.name, size: file.size, type: file.type || "application/octet-stream", blobId }]);
+      } catch (err) {
+        setError(`Attachment upload failed: ${err instanceof Error ? err.message : "unknown error"}`);
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  }, []);
+
   const handleDiscard = useCallback(async () => {
     if (!draftIdRef.current) {
       window.history.back();
@@ -424,6 +461,11 @@ export default function Composer({
           inlineImages: inlineImagesRef.current.map(({ id, blobId, type }) => ({
             id,
             blobId,
+            type,
+          })),
+          attachments: attachmentsRef.current.map(({ blobId, name, type }) => ({
+            blobId,
+            name,
             type,
           })),
           inReplyToId: inReplyToId ?? undefined,
@@ -480,6 +522,7 @@ export default function Composer({
             setSubject("");
             setMarkdown("");
             setInlineImages([]);
+            setAttachments([]);
             setDraftId(null);
             draftIdRef.current = null;
             setSaveStatus("idle");
@@ -654,6 +697,34 @@ export default function Composer({
         )}
       </div>
 
+      {/* Attachment pills */}
+      {attachments.length > 0 && (
+        <div className="border-t border-stone-100 dark:border-stone-800 px-6 py-2 flex flex-wrap gap-2 bg-white dark:bg-stone-900">
+          {attachments.map((att) => (
+            <div
+              key={att.id}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-stone-100 dark:bg-stone-800 text-xs text-stone-700 dark:text-stone-300"
+            >
+              <span className="truncate max-w-[160px]">{att.name}</span>
+              <span className="text-stone-400 dark:text-stone-500 shrink-0">
+                {att.size < 1024 * 1024
+                  ? `${(att.size / 1024).toFixed(0)} KB`
+                  : `${(att.size / (1024 * 1024)).toFixed(1)} MB`}
+              </span>
+              <button
+                onClick={() => setAttachments((prev) => prev.filter((a) => a.id !== att.id))}
+                className="ml-0.5 text-stone-400 dark:text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 transition-colors shrink-0"
+                aria-label={`Remove ${att.name}`}
+              >
+                <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                  <path d="M5.28 4.22a.75.75 0 0 0-1.06 1.06L6.94 8l-2.72 2.72a.75.75 0 1 0 1.06 1.06L8 9.06l2.72 2.72a.75.75 0 1 0 1.06-1.06L9.06 8l2.72-2.72a.75.75 0 0 0-1.06-1.06L8 6.94 5.28 4.22Z" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Footer */}
       <div className="border-t border-stone-200 dark:border-stone-800 px-6 py-3 flex items-center gap-4 bg-white dark:bg-stone-900">
         <button
@@ -669,6 +740,23 @@ export default function Composer({
         >
           Discard
         </button>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 transition-colors flex items-center gap-1"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+            <path fillRule="evenodd" d="M15.621 4.379a3 3 0 0 0-4.242 0l-7 7a1.5 1.5 0 0 0 2.122 2.121l7-7a3 3 0 0 0-4.242-4.242l-7 7a4.5 4.5 0 0 0 6.364 6.365l7-7a.75.75 0 0 1 1.06 1.06l-7 7a6 6 0 0 1-8.486-8.486l7.001-7a4.5 4.5 0 0 1 6.364 6.364l-7 7a3 3 0 0 1-4.243-4.243l7-7a1.5 1.5 0 0 1 2.121 2.121l-7 7a.75.75 0 1 1-1.06-1.06l7-7a3 3 0 0 0 0-4.242Z" clipRule="evenodd" />
+          </svg>
+          Attach
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          className="hidden"
+          onChange={(e) => { handleAttach(e.target.files); e.target.value = ""; }}
+        />
         {error && <span className="text-xs text-red-500">{error}</span>}
       </div>
     </div>
