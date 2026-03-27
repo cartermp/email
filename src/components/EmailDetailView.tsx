@@ -80,7 +80,7 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
       </dl>
 
       {/* Action buttons */}
-      <div className="flex items-center gap-2 mb-6 pb-6 border-b border-stone-200 dark:border-stone-700">
+      <div className="flex flex-wrap items-center gap-2 mb-6 pb-6 border-b border-stone-200 dark:border-stone-700">
         <PinButton
           emailId={email.id}
           initiallyPinned={!!email.keywords?.["$flagged"]}
@@ -88,28 +88,28 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
         <MarkUnreadButton emailId={email.id} />
         <Link
           href={`/compose?mode=reply&id=${email.id}`}
-          className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+          className="whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
         >
           Reply
         </Link>
         {hasMultipleRecipients && (
           <Link
             href={`/compose?mode=reply-all&id=${email.id}`}
-            className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+            className="whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
           >
             Reply All
           </Link>
         )}
         <Link
           href={`/compose?mode=forward&id=${email.id}`}
-          className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+          className="whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
         >
           Forward
         </Link>
         <Link
           href={`/print/${email.id}`}
           target="_blank"
-          className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+          className="whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
         >
           Print
         </Link>
