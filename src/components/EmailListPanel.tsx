@@ -739,11 +739,6 @@ export default function EmailListPanel({
                       {!selectionMode && isUnread && (
                         <div className="w-2 h-2 rounded-full bg-blue-500" />
                       )}
-                      {!selectionMode && thread.isPinned && !isUnread && (
-                        <svg viewBox="0 0 24 24" fill="currentColor" className="w-2.5 h-2.5 text-amber-400">
-                          <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
-                        </svg>
-                      )}
                     </div>
 
                     {/* Avatar — morphs to checkbox on hover / in selection mode */}
@@ -832,11 +827,6 @@ export default function EmailListPanel({
                           <span className="shrink-0 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400">
                             {thread.count}
                           </span>
-                        )}
-                        {thread.isPinned && !selectionMode && (
-                          <svg viewBox="0 0 24 24" fill="currentColor" className="w-3 h-3 text-amber-400 shrink-0">
-                            <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
-                          </svg>
                         )}
                       </div>
                       {/* Preview */}
