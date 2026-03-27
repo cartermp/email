@@ -59,7 +59,7 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
   const baseStyle = hasNativeDark
     ? "html,body{overflow:hidden;height:auto!important}"
     : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;color-scheme:light;height:auto!important}" +
-      "table{max-width:100%!important}img{max-width:100%!important;height:auto!important}";
+      "img{max-width:100%!important;height:auto!important}";
 
   // Dark mode: use JS matchMedia so it works even when color-scheme:light
   // suppresses CSS media queries inside the iframe.
