@@ -21,11 +21,13 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("<body><p>hello</p></body>"));
   });
 
-  it("reports scrollWidth in the postMessage so the parent can scale externally", () => {
+  it("reports content width via getBoundingClientRect so the parent can scale externally", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
     // The parent (EmailBody) scales the iframe element itself when content is
-    // wider than the container — it needs scrollWidth to compute the ratio.
-    assert.ok(result.includes("scrollWidth"), "should report scrollWidth");
+    // wider than the container. We use getBoundingClientRect (not scrollWidth)
+    // to measure width because scrollWidth includes child margin overflow in
+    // Chrome, which can cause an infinite resize loop.
+    assert.ok(result.includes("getBoundingClientRect"), "should use getBoundingClientRect to measure content width");
     assert.ok(result.includes("width:w"), "should include width in the postMessage payload");
   });
 

@@ -82,10 +82,14 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
       document.body?document.body.scrollHeight:0,
       document.documentElement.scrollHeight
     );
-    var w=Math.max(
-      document.body?document.body.scrollWidth:0,
-      document.documentElement.scrollWidth
-    );
+    var w=document.documentElement.clientWidth||0;
+    if(document.body){
+      var all=document.body.getElementsByTagName('*');
+      for(var i=0;i<all.length;i++){
+        var rr=all[i].getBoundingClientRect().right;
+        if(rr>w)w=rr;
+      }
+    }
     if(h===lastH&&w===lastW)return;
     lastH=h;lastW=w;
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
@@ -167,10 +171,14 @@ body{
       document.body?document.body.scrollHeight:0,
       document.documentElement.scrollHeight
     );
-    var w=Math.max(
-      document.body?document.body.scrollWidth:0,
-      document.documentElement.scrollWidth
-    );
+    var w=document.documentElement.clientWidth||0;
+    if(document.body){
+      var all=document.body.getElementsByTagName('*');
+      for(var i=0;i<all.length;i++){
+        var rr=all[i].getBoundingClientRect().right;
+        if(rr>w)w=rr;
+      }
+    }
     if(h===lastH&&w===lastW)return;
     lastH=h;lastW=w;
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
