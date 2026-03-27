@@ -21,13 +21,15 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("<body><p>hello</p></body>"));
   });
 
-  it("reports content width via getBoundingClientRect so the parent can scale externally", () => {
+  it("reports content width via direct body children so the parent can scale externally", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
     // The parent (EmailBody) scales the iframe element itself when content is
-    // wider than the container. We use getBoundingClientRect (not scrollWidth)
-    // to measure width because scrollWidth includes child margin overflow in
-    // Chrome, which can cause an infinite resize loop.
-    assert.ok(result.includes("getBoundingClientRect"), "should use getBoundingClientRect to measure content width");
+    // wider than the container. We measure only direct body children using
+    // offsetLeft+offsetWidth (not scrollWidth or getBCR on all descendants)
+    // because descending into nested tables picks up inner-element margin
+    // overflow, which creates an infinite resize loop.
+    assert.ok(result.includes("document.body.children"), "should iterate direct body children");
+    assert.ok(result.includes("offsetWidth"), "should use offsetWidth to measure content width");
     assert.ok(result.includes("width:w"), "should include width in the postMessage payload");
   });
 

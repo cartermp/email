@@ -82,11 +82,17 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
       document.body?document.body.scrollHeight:0,
       document.documentElement.scrollHeight
     );
+    // Measure width via direct body children only (offsetLeft+offsetWidth).
+    // Using scrollWidth or descending into nested elements picks up inner-table
+    // margin/position micro-overflow (a few px) which creates an infinite
+    // scale loop. The direct-child offsetWidth gives the outer wrapper's true
+    // layout width (which expands correctly for min-width constraints) without
+    // leaking sub-element overflow.
     var w=document.documentElement.clientWidth||0;
     if(document.body){
-      var all=document.body.getElementsByTagName('*');
-      for(var i=0;i<all.length;i++){
-        var rr=all[i].getBoundingClientRect().right;
+      var ch=document.body.children;
+      for(var i=0;i<ch.length;i++){
+        var rr=ch[i].offsetLeft+ch[i].offsetWidth;
         if(rr>w)w=rr;
       }
     }
@@ -173,9 +179,9 @@ body{
     );
     var w=document.documentElement.clientWidth||0;
     if(document.body){
-      var all=document.body.getElementsByTagName('*');
-      for(var i=0;i<all.length;i++){
-        var rr=all[i].getBoundingClientRect().right;
+      var ch=document.body.children;
+      for(var i=0;i<ch.length;i++){
+        var rr=ch[i].offsetLeft+ch[i].offsetWidth;
         if(rr>w)w=rr;
       }
     }
