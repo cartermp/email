@@ -21,7 +21,7 @@ export default function InboxPanelLayout({ list, children }: Props) {
       <div
         className={[
           "flex-col border-r border-stone-200 dark:border-stone-700 h-full overflow-hidden",
-          "md:flex md:w-72 md:shrink-0",
+          "md:flex md:w-96 md:shrink-0",
           showDetail ? "hidden" : "flex w-full",
         ].join(" ")}
       >

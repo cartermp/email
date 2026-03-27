@@ -702,7 +702,7 @@ export default function EmailListPanel({
               const senderLabel =
                 senders
                   .slice(0, 3)
-                  .map((s) => s.name?.split(" ")[0] ?? s.email.split("@")[0])
+                  .map((s) => s.name ?? s.email.split("@")[0])
                   .join(", ") || "(no sender)";
 
               return (
