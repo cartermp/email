@@ -57,8 +57,8 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
   html = html.replace(/<meta[^>]*name=["']viewport["'][^>]*>/gi, "");
 
   const baseStyle = hasNativeDark
-    ? "html,body{overflow:hidden}"
-    : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;color-scheme:light}" +
+    ? "html,body{overflow:hidden;height:auto!important}"
+    : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;color-scheme:light;height:auto!important}" +
       "table{max-width:100%!important}img{max-width:100%!important;height:auto!important}";
 
   // Dark mode: use JS matchMedia so it works even when color-scheme:light
@@ -76,6 +76,7 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
     `<style>${baseStyle}</style>`,
     `<script>(function(){
   ${darkAdaptJs}
+  var lastH=0,lastW=0;
   function send(){
     var h=Math.max(
       document.body?document.body.scrollHeight:0,
@@ -85,6 +86,8 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
       document.body?document.body.scrollWidth:0,
       document.documentElement.scrollWidth
     );
+    if(h===lastH&&w===lastW)return;
+    lastH=h;lastW=w;
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
   send();
@@ -158,6 +161,7 @@ body{
     s.textContent='body{color:#e7e5e4!important;background:#1c1917!important}';
     document.head.appendChild(s);
   }
+  var lastH=0,lastW=0;
   function send(){
     var h=Math.max(
       document.body?document.body.scrollHeight:0,
@@ -167,6 +171,8 @@ body{
       document.body?document.body.scrollWidth:0,
       document.documentElement.scrollWidth
     );
+    if(h===lastH&&w===lastW)return;
+    lastH=h;lastW=w;
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
   send();

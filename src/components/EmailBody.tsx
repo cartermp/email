@@ -12,6 +12,7 @@ interface Props {
 export default function EmailBody({ body, type, stripQuotes }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const lastDimsRef = useRef({ h: 0, w: 0 });
 
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
@@ -24,6 +25,8 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
       const naturalH: number = e.data.height;
       const naturalW: number = e.data.width ?? 0;
       if (!naturalH || naturalH <= 0) return;
+      if (naturalH === lastDimsRef.current.h && naturalW === lastDimsRef.current.w) return;
+      lastDimsRef.current = { h: naturalH, w: naturalW };
 
       const availW = wrapper.clientWidth;
 
