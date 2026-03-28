@@ -11,19 +11,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     authorized({ auth: session, request }) {
       const isAuthed = !!session?.user;
-      const { pathname, searchParams } = request.nextUrl;
-      const isRsc = searchParams.has("_rsc");
-      // Structured JSON so this lands in the same log stream as pino output.
-      console.log(JSON.stringify({
-        level: isAuthed ? 30 : 40,
-        time: new Date().toISOString(),
-        service: "email",
-        msg: isAuthed ? "proxy.allow" : "proxy.redirect",
-        method: request.method,
-        pathname,
-        is_rsc: isRsc,
-        user: session?.user?.email ?? null,
-      }));
+      // Only log when auth fails (redirect) — allow is too noisy (fires on
+      // every request, including RSC refetches and static assets).
+      if (!isAuthed) {
+        const { pathname, searchParams } = request.nextUrl;
+        console.log(JSON.stringify({
+          level: 40,
+          time: new Date().toISOString(),
+          service: "email",
+          msg: "proxy.redirect",
+          method: request.method,
+          pathname,
+          is_rsc: searchParams.has("_rsc"),
+          user: null,
+        }));
+      }
       return isAuthed;
     },
   },
