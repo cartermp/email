@@ -53,6 +53,16 @@ export function buildReplyQuote(
   return `\n\n---\n\n*On ${date}, ${from} wrote:*\n\n${quoted}`;
 }
 
+/**
+ * Strip all leading `-- \n` signature separators from a Fastmail-stored
+ * signature string. Fastmail (and other clients) prepend `-- \n` to the
+ * signature content; this removes every such prefix so callers can insert
+ * exactly one canonical separator themselves.
+ */
+export function stripSignatureSeparator(sig: string): string {
+  return sig.replace(/^(--[ \t]*\r?\n)+/, "").trimStart();
+}
+
 export function buildForwardQuote({
   from,
   to,

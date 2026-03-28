@@ -7,6 +7,7 @@ import {
   buildReplyQuote,
   buildForwardQuote,
   htmlToPlainText,
+  stripSignatureSeparator,
 } from "@/lib/compose";
 import Composer from "@/components/Composer";
 import MobileBackButton from "@/components/MobileBackButton";
@@ -30,15 +31,20 @@ export default async function ComposePage({ searchParams }: Props) {
     return 0;
   });
 
-  // Fastmail stores the signature with a leading `-- \n` separator; strip it
-  // so withSignature can add exactly one canonical separator.
+  // Use the raw signature content, stripping any stored `-- \n` prefix that
+  // Fastmail or other clients may have prepended, so withSignature can add
+  // exactly one canonical separator.
   const rawSig = sorted[0]?.textSignature ?? "";
-  const signature = rawSig.replace(/^--[ \t]*\r?\n/, "").trimStart();
+  const signature = stripSignatureSeparator(rawSig);
 
-  // Inserts the sig block before any quoted/forwarded content.
+  // Inserts the sig block (with RFC-3676 `-- \n` separator) before any
+  // quoted/forwarded content.
   function withSignature(body: string): string {
     const sigBlock = signature ? `\n\n-- \n${signature}` : "";
-    return body ? `${sigBlock}\n\n${body}` : sigBlock;
+    // Trim leading newlines from body so the sig block's trailing \n\n doesn't
+    // double-up with the leading \n\n that buildReplyQuote / buildForwardQuote
+    // prepend, which would otherwise produce 4 blank lines.
+    return body ? `${sigBlock}\n\n${body.trimStart()}` : sigBlock;
   }
 
   let initialTo = "";

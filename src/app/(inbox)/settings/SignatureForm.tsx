@@ -2,16 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { saveSignatureAction } from "./actions";
+import { stripSignatureSeparator } from "@/lib/compose";
 
 interface Props {
   identityLabel?: string;
   initialSignature: string;
 }
 
-// Strip the leading `-- \n` separator that Fastmail stores as part of the
+// Strip all leading `-- \n` separators that Fastmail stores as part of the
 // signature — the form lets the user edit only the content below the line.
 function stripSepPrefix(sig: string): string {
-  return sig.replace(/^--[ \t]*\r?\n/, "").trimStart();
+  return stripSignatureSeparator(sig);
 }
 
 export default function SignatureForm({ identityLabel, initialSignature }: Props) {

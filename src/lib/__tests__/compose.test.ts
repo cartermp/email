@@ -7,6 +7,7 @@ import {
   buildReplyQuote,
   buildForwardQuote,
   htmlToPlainText,
+  stripSignatureSeparator,
 } from "../compose";
 
 describe("reSubject", () => {
@@ -152,5 +153,45 @@ describe("buildForwardQuote", () => {
     assert.ok(result.includes("**Date:** Mon Jan 1"));
     assert.ok(result.includes("**Subject:** Hello"));
     assert.ok(result.includes("original body"));
+  });
+});
+
+describe("stripSignatureSeparator", () => {
+  it("strips a single `-- \\n` prefix", () => {
+    assert.equal(stripSignatureSeparator("-- \nPhillip\nhttps://example.com"), "Phillip\nhttps://example.com");
+  });
+
+  it("strips multiple stacked `-- \\n` prefixes (regression: double-separator bug)", () => {
+    // Fastmail stores `-- \n` + content; if content itself starts with `-- \n`
+    // (e.g. user saved the separator as part of their signature), stripping
+    // must remove all leading occurrences, not just one.
+    assert.equal(
+      stripSignatureSeparator("-- \n-- \nPhillip\nhttps://example.com"),
+      "Phillip\nhttps://example.com"
+    );
+  });
+
+  it("strips `--\\n` without trailing space", () => {
+    assert.equal(stripSignatureSeparator("--\nPhillip"), "Phillip");
+  });
+
+  it("strips `--\\t\\n` with a tab", () => {
+    assert.equal(stripSignatureSeparator("--\t\nPhillip"), "Phillip");
+  });
+
+  it("strips CRLF variant `-- \\r\\n`", () => {
+    assert.equal(stripSignatureSeparator("-- \r\nPhillip"), "Phillip");
+  });
+
+  it("leaves content alone when there is no separator prefix", () => {
+    assert.equal(stripSignatureSeparator("Phillip\nhttps://example.com"), "Phillip\nhttps://example.com");
+  });
+
+  it("returns empty string for empty input", () => {
+    assert.equal(stripSignatureSeparator(""), "");
+  });
+
+  it("trims leading whitespace after stripping the separator", () => {
+    assert.equal(stripSignatureSeparator("-- \n  Phillip"), "Phillip");
   });
 });
