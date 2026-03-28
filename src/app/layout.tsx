@@ -33,35 +33,35 @@ export default async function RootLayout({
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Sidebar — desktop only */}
           <nav className="hidden md:flex print:hidden w-44 shrink-0 flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
-            <span className="text-sm font-semibold text-stone-900 dark:text-stone-100 px-2 mb-4">
-              Mail
+            <span className="text-xs font-bold tracking-widest uppercase text-stone-900 dark:text-stone-100 px-2 mb-4">
+              [ Mail ]
             </span>
 
             <Link
               href="/"
-              className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
+              className="text-xs tracking-wider uppercase text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 transition-colors"
             >
-              Inbox
+              &gt; Inbox
             </Link>
             <Link
               href="/drafts"
-              className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
+              className="text-xs tracking-wider uppercase text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 transition-colors"
             >
-              Drafts
+              &gt; Drafts
             </Link>
             <Link
               href="/sent"
-              className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
+              className="text-xs tracking-wider uppercase text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 transition-colors"
             >
-              Sent
+              &gt; Sent
             </Link>
 
             <div className="mt-auto flex flex-col gap-1">
               <Link
                 href="/settings"
-                className="text-sm text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 rounded-md transition-colors"
+                className="text-xs tracking-wider uppercase text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 px-2 py-1.5 transition-colors"
               >
-                Settings
+                &gt; Settings
               </Link>
               {session && (
                 <form
@@ -72,7 +72,7 @@ export default async function RootLayout({
                 >
                   <button
                     type="submit"
-                    className="text-xs text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
+                    className="text-xs tracking-wider uppercase text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300 px-2 py-1 transition-colors"
                   >
                     Sign out
                   </button>

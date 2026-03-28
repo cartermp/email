@@ -1,16 +1,80 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  /* Monospace everywhere for the retro terminal feel */
+  --font-sans: var(--font-geist-mono);
   --font-mono: var(--font-geist-mono);
+
+  /* CRT phosphor amber — neutral scale (stone palette) */
+  /* Light: warm parchment cream  |  Dark: near-black with amber cast */
+  --color-stone-50:  #faf7f0;
+  --color-stone-100: #f0e8d8;
+  --color-stone-200: #ddd0b0;
+  --color-stone-300: #c4ae78;
+  --color-stone-400: #a08848;
+  --color-stone-500: #7c6830;
+  --color-stone-600: #5c4c1c;
+  --color-stone-700: #3d3010;
+  --color-stone-800: #231c08;
+  --color-stone-900: #140e02;
+  --color-stone-950: #0a0802;
+
+  /* CRT phosphor amber — accent scale (blue palette remapped to amber/gold) */
+  --color-blue-50:  #fffaed;
+  --color-blue-100: #fef3c7;
+  --color-blue-200: #fde68a;
+  --color-blue-300: #fcd34d;
+  --color-blue-400: #fbbf24;
+  --color-blue-500: #f59e0b;
+  --color-blue-600: #d97706;
+  --color-blue-700: #b45309;
+  --color-blue-800: #92400e;
+  --color-blue-900: #451a03;
+  --color-blue-950: #27140a;
+
+  /* Sharp, blocky corners */
+  --radius-sm:  0px;
+  --radius:     0px;
+  --radius-md:  0px;
+  --radius-lg:  0px;
+  --radius-xl:  0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
 }
 
 :root {
   color-scheme: light dark;
 }
 
+/* CRT scanline overlay — subtle horizontal lines across the whole viewport */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.04) 2px,
+    rgba(0, 0, 0, 0.04) 4px
+  );
+}
+
+/* Dark mode: faint phosphor glow on text */
+@media (prefers-color-scheme: dark) {
+  body {
+    text-shadow: 0 0 8px rgba(200, 150, 10, 0.18);
+  }
+  /* Suppress glow inside interactive controls where it looks noisy */
+  input, textarea, select, button {
+    text-shadow: none;
+  }
+}
+
 @media print {
-  /* Allow content to expand to full height for printing */
   html, body { height: auto !important; overflow: visible !important; }
   body > div, main { height: auto !important; overflow: visible !important; }
+  body::after { display: none; }
 }
