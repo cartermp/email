@@ -9,6 +9,7 @@ import { isPinned, mergeEmailUpdates, groupIntoThreads, ThreadSummary } from "@/
 import { formatAddressList, formatDate } from "@/lib/format";
 import { markEmailAsRead } from "@/app/(inbox)/email/[id]/actions";
 import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox, togglePinAction } from "@/app/(inbox)/actions";
+import { deleteDraftAction } from "@/app/compose/actions";
 
 interface Props {
   unreads: Email[];
@@ -166,6 +167,12 @@ export default function EmailListPanel({
     // Server state is authoritative after a refresh; clear optimistic removals
     setArchivedIds(new Set());
   }, [unreads, reads, pinnedEmails]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // -------------------------------------------------------------------------
+  // Drafts — local copy for optimistic deletion
+  // -------------------------------------------------------------------------
+  const [draftsList, setDraftsList] = useState<Email[]>(drafts);
+  useEffect(() => { setDraftsList(drafts); }, [drafts]);
 
   // -------------------------------------------------------------------------
   // Selection state
@@ -889,27 +896,44 @@ export default function EmailListPanel({
       {/* Drafts list */}
       {view === "drafts" && (
         <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
-          {drafts.length === 0 ? (
+          {draftsList.length === 0 ? (
             <p className="p-6 text-sm text-stone-400 dark:text-stone-500">No drafts.</p>
           ) : (
-            drafts.map((draft) => (
-              <Link
+            draftsList.map((draft) => (
+              <div
                 key={draft.id}
-                href={`/compose?draftId=${draft.id}`}
-                className="flex flex-col gap-0.5 px-4 py-2.5 border-b border-stone-100 dark:border-stone-700/60 hover:bg-stone-100 dark:hover:bg-stone-900 transition-colors"
+                className="group relative flex items-center border-b border-stone-100 dark:border-stone-700/60 hover:bg-stone-100 dark:hover:bg-stone-900 transition-colors"
               >
-                <div className="flex items-center gap-2">
-                  <span className="flex-1 text-sm truncate text-stone-500 dark:text-stone-400">
-                    {draft.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
-                  </span>
-                  <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
-                    {formatDate(draft.receivedAt)}
-                  </span>
-                </div>
-                <div className="text-xs truncate text-stone-500 dark:text-stone-400">
-                  {draft.subject || "(no subject)"}
-                </div>
-              </Link>
+                <Link
+                  href={`/compose?draftId=${draft.id}`}
+                  className="flex flex-col gap-0.5 px-4 py-2.5 flex-1 min-w-0"
+                >
+                  <div className="flex items-center gap-2 pr-6">
+                    <span className="flex-1 text-sm truncate text-stone-500 dark:text-stone-400">
+                      {draft.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
+                    </span>
+                    <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
+                      {formatDate(draft.receivedAt)}
+                    </span>
+                  </div>
+                  <div className="text-xs truncate text-stone-500 dark:text-stone-400">
+                    {draft.subject || "(no subject)"}
+                  </div>
+                </Link>
+                <button
+                  title="Delete draft"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDraftsList((prev) => prev.filter((d) => d.id !== draft.id));
+                    await deleteDraftAction(draft.id);
+                    router.refresh();
+                  }}
+                  className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-stone-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+                >
+                  <IconTrash />
+                </button>
+              </div>
             ))
           )}
         </div>

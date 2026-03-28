@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getAccountId, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox, sendEmail } from "../jmap";
+import { getAccountId, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox, sendEmail, deleteDraft } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -603,5 +603,50 @@ describe("sendEmail", () => {
     const submissionCreate = (capturedBodies[0] as any).methodCalls[1][1].create.submission;
     assert.equal(submissionCreate.emailId, "#draft");
     assert.equal(submissionCreate.identityId, "ident-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// deleteDraft
+// ---------------------------------------------------------------------------
+
+describe("deleteDraft", () => {
+  function setupMock() {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/setResponse", { destroyed: ["draft-abc"] }, "0"],
+      ]),
+    ];
+  }
+
+  it("sends a single Email/set destroy call", async () => {
+    setupMock();
+    await deleteDraft("https://api.example.com/jmap", "acct1", "draft-abc");
+    const calls = (capturedBodies[0] as any).methodCalls;
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], "Email/set");
+  });
+
+  it("passes the draft id in the destroy array", async () => {
+    setupMock();
+    await deleteDraft("https://api.example.com/jmap", "acct1", "draft-abc");
+    const args = (capturedBodies[0] as any).methodCalls[0][1];
+    assert.deepEqual(args.destroy, ["draft-abc"]);
+  });
+
+  it("passes the accountId", async () => {
+    setupMock();
+    await deleteDraft("https://api.example.com/jmap", "acct1", "draft-abc");
+    const args = (capturedBodies[0] as any).methodCalls[0][1];
+    assert.equal(args.accountId, "acct1");
+  });
+
+  it("does not include an update or create alongside the destroy", async () => {
+    setupMock();
+    await deleteDraft("https://api.example.com/jmap", "acct1", "draft-abc");
+    const args = (capturedBodies[0] as any).methodCalls[0][1];
+    assert.equal(args.update, undefined);
+    assert.equal(args.create, undefined);
   });
 });

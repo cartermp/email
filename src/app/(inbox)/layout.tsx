@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getSession, getAccountId, getMailboxes, listInboxEmails, listDrafts, listPinnedEmails, listSentEmails } from "@/lib/jmap";
+import { log } from "@/lib/logger";
 import EmailListPanel from "@/components/EmailListPanel";
 import InboxPanelLayout from "@/components/InboxPanelLayout";
 
@@ -10,6 +11,7 @@ export default async function InboxLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const t = Date.now();
   const session = await getSession();
   const accountId = getAccountId(session);
   const mailboxes = await getMailboxes(session.apiUrl, accountId);
@@ -32,6 +34,20 @@ export default async function InboxLayout({
       : Promise.resolve({ emails: [], total: 0 }),
   ]);
   const { unreads, unreadTotal, reads, readTotal } = inbox_emails;
+
+  log.info({
+    unread_count: unreads.length,
+    unread_total: unreadTotal,
+    read_count: reads.length,
+    read_total: readTotal,
+    draft_count: drafts.length,
+    pinned_count: pinned.length,
+    sent_count: sentResult.emails.length,
+    sent_total: sentResult.total,
+    has_drafts_mailbox: !!draftsMailbox,
+    has_sent_mailbox: !!sentMailbox,
+    duration_ms: Date.now() - t,
+  }, "layout.inbox.load");
 
   return (
     <InboxPanelLayout

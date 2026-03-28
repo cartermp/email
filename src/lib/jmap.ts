@@ -137,6 +137,7 @@ export async function listInboxEmails(
   mailboxId: string,
   limit = 50
 ): Promise<{ unreads: Email[]; unreadTotal: number; reads: Email[]; readTotal: number }> {
+  const t = Date.now();
   const data = await jmapCall(apiUrl, [
     ["Email/query", {
       accountId,
@@ -165,12 +166,15 @@ export async function listInboxEmails(
   const [, ug] = data.methodResponses[1];
   const [, rq] = data.methodResponses[2];
   const [, rg] = data.methodResponses[3];
-  return {
-    unreads: (ug.list as Email[]) ?? [],
-    unreadTotal: (uq.total as number) ?? 0,
-    reads: (rg.list as Email[]) ?? [],
-    readTotal: (rq.total as number) ?? 0,
-  };
+  const unreads = (ug.list as Email[]) ?? [];
+  const reads = (rg.list as Email[]) ?? [];
+  const unreadTotal = (uq.total as number) ?? 0;
+  const readTotal = (rq.total as number) ?? 0;
+  log.info(
+    { mailbox_id: mailboxId, unread_count: unreads.length, unread_total: unreadTotal, read_count: reads.length, read_total: readTotal, duration_ms: Date.now() - t },
+    "jmap.list_inbox"
+  );
+  return { unreads, unreadTotal, reads, readTotal };
 }
 
 export async function loadMoreEmailsFiltered(
@@ -398,6 +402,7 @@ export async function listDrafts(
   accountId: string,
   draftsMailboxId: string
 ): Promise<Email[]> {
+  const t = Date.now();
   const data = await jmapCall(apiUrl, [
     [
       "Email/query",
@@ -419,8 +424,15 @@ export async function listDrafts(
       "1",
     ],
   ]);
-  const [, result] = data.methodResponses[1];
-  return (result.list as Email[]) ?? [];
+  const [, qResult] = data.methodResponses[0];
+  const [, gResult] = data.methodResponses[1];
+  const emails = (gResult.list as Email[]) ?? [];
+  const total = (qResult.total as number) ?? 0;
+  log.info(
+    { mailbox_id: draftsMailboxId, count: emails.length, total, duration_ms: Date.now() - t },
+    "jmap.list_drafts"
+  );
+  return emails;
 }
 
 export async function listSentEmails(
@@ -429,6 +441,7 @@ export async function listSentEmails(
   sentMailboxId: string,
   limit = 50
 ): Promise<{ emails: Email[]; total: number }> {
+  const t = Date.now();
   const data = await jmapCall(apiUrl, [
     [
       "Email/query",
@@ -453,10 +466,13 @@ export async function listSentEmails(
   ]);
   const [, qResult] = data.methodResponses[0];
   const [, gResult] = data.methodResponses[1];
-  return {
-    emails: (gResult.list as Email[]) ?? [],
-    total: (qResult.total as number) ?? 0,
-  };
+  const emails = (gResult.list as Email[]) ?? [];
+  const total = (qResult.total as number) ?? 0;
+  log.info(
+    { mailbox_id: sentMailboxId, count: emails.length, total, duration_ms: Date.now() - t },
+    "jmap.list_sent"
+  );
+  return { emails, total };
 }
 
 export async function saveDraft(
