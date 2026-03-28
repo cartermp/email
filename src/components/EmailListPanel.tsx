@@ -715,13 +715,13 @@ export default function EmailListPanel({
               return (
                 <div key={thread.threadId}>
                   {showPinnedDivider && (
-                    <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/60 border-b border-stone-200 dark:border-stone-700">
-                      Pinned
+                    <div className="px-4 py-1 text-[10px] tracking-widest text-stone-400 dark:text-stone-400 border-y border-stone-300 dark:border-stone-500">
+                      // pinned
                     </div>
                   )}
                   {showRestDivider && (
-                    <div className="px-4 py-1 text-[10px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500 bg-stone-100 dark:bg-stone-800/60 border-b border-stone-200 dark:border-stone-700">
-                      All mail
+                    <div className="px-4 py-1 text-[10px] tracking-widest text-stone-400 dark:text-stone-400 border-y border-stone-300 dark:border-stone-500">
+                      // all mail
                     </div>
                   )}
 
@@ -812,7 +812,7 @@ export default function EmailListPanel({
                           "text-sm truncate",
                           isUnread
                             ? "font-semibold text-stone-900 dark:text-stone-100"
-                            : "text-stone-600 dark:text-stone-400",
+                            : "text-stone-600 dark:text-stone-300",
                         ].join(" ")}>
                           {senderLabel}
                         </span>

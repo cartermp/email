@@ -16,20 +16,21 @@ export const WEBMAIL_DOMAINS = new Set([
   "yandex.com", "yandex.ru",
 ]);
 
-// Muted-but-distinct palette, consistent across light/dark modes
+// Avatar backgrounds: visible against the near-black row bg (#060e06).
+// Dark enough to not compete with text, bright enough to be distinct (~3:1 vs bg).
 export const PALETTE = [
-  "#4f86c6", // steel blue
-  "#7c5cbf", // muted violet
-  "#b85c8a", // dusty rose
-  "#c4773a", // warm amber
-  "#3a9e82", // teal
-  "#5e7fc2", // periwinkle
-  "#b05555", // muted red
-  "#4a9e4e", // forest green
-  "#8a6bbf", // lavender
-  "#b07840", // caramel
-  "#3a8faa", // slate cyan
-  "#7a8fbf", // cool grey-blue
+  "#1a5c2a", // medium dark green
+  "#245a1e", // medium forest
+  "#1e5030", // dark teal-green
+  "#2a5c1a", // medium olive-green
+  "#1a5a3a", // dark sea-green
+  "#285020", // dark medium green
+  "#1e4a2e", // cool dark green
+  "#244c1c", // dark leafy green
+  "#204e34", // dark evergreen
+  "#2a4e1a", // yellow-green dark
+  "#1c4e28", // dark green variant
+  "#264828", // deep teal
 ];
 
 export function colorFor(seed: string): string {

@@ -30,7 +30,7 @@ export default function SenderAvatar({ from, size = 36 }: Props) {
 
   return (
     <div
-      className="rounded-full flex items-center justify-center overflow-hidden shrink-0 ring-1 ring-black/5 dark:ring-white/10"
+      className="rounded-full flex items-center justify-center overflow-hidden shrink-0 ring-1 ring-black/10 dark:ring-stone-300/40"
       style={{
         width: size,
         height: size,
@@ -57,7 +57,7 @@ export default function SenderAvatar({ from, size = 36 }: Props) {
         </div>
       ) : (
         <span
-          className="text-white font-semibold leading-none select-none"
+          className="font-semibold leading-none select-none text-stone-200 dark:text-stone-200"
           style={{ fontSize: Math.round(size * 0.37) }}
         >
           {initials}

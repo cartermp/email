@@ -1,38 +1,55 @@
 @import "tailwindcss";
 
 @theme inline {
-  /* Monospace everywhere for the retro terminal feel */
-  --font-sans: var(--font-geist-mono);
-  --font-mono: var(--font-geist-mono);
+  /* Share Tech Mono — clean terminal font (not pixel, just monospace) */
+  --font-sans: var(--font-share-tech-mono);
+  --font-mono: var(--font-share-tech-mono);
 
-  /* CRT phosphor amber — neutral scale (stone palette) */
-  /* Light: warm parchment cream  |  Dark: near-black with amber cast */
-  --color-stone-50:  #faf7f0;
-  --color-stone-100: #f0e8d8;
-  --color-stone-200: #ddd0b0;
-  --color-stone-300: #c4ae78;
-  --color-stone-400: #a08848;
-  --color-stone-500: #7c6830;
-  --color-stone-600: #5c4c1c;
-  --color-stone-700: #3d3010;
-  --color-stone-800: #231c08;
-  --color-stone-900: #140e02;
-  --color-stone-950: #0a0802;
+  /* "Dark terminal with green accents" palette
+     Primary text = off-white phosphor (near-white with green tint)
+     UI chrome    = green (nav, buttons, indicators, labels)
+     Background   = near-black
 
-  /* CRT phosphor amber — accent scale (blue palette remapped to amber/gold) */
-  --color-blue-50:  #fffaed;
-  --color-blue-100: #fef3c7;
-  --color-blue-200: #fde68a;
-  --color-blue-300: #fcd34d;
-  --color-blue-400: #fbbf24;
-  --color-blue-500: #f59e0b;
-  --color-blue-600: #d97706;
-  --color-blue-700: #b45309;
-  --color-blue-800: #92400e;
-  --color-blue-900: #451a03;
-  --color-blue-950: #27140a;
+     Dark mode text tiers (contrast vs #060e06 bg):
+       stone-100 = #e0ece0  off-white phosphor  (~15:1) — unread senders, body text
+       stone-200 = #a8c8a8  light gray-green    (~11:1) — unread subjects, key values
+       stone-300 = #80b880  medium-bright green  (~9:1) — nav chrome labels
+       stone-400 = #7a8a7a  neutral gray-green   (~6:1) — read senders/subjects, muted
+       stone-500 = #607060  neutral grey-green   (~4:1) — preview text, timestamps
+     Background tiers:
+       stone-800 = #0a1c0a  hover / selection surface
+       stone-900 = #060e06  main dark bg
+       stone-950 = #030704  sidebar bg
+     Note: stone-400/500 are intentionally more neutral (less saturated) than
+     stone-300, so content text reads as "dimmer" while staying readable.      */
+  --color-stone-50:  #f0f5f0;
+  --color-stone-100: #e0ece0;
+  --color-stone-200: #a8c8a8;
+  --color-stone-300: #80b880;
+  --color-stone-400: #7a8a7a;
+  --color-stone-500: #607060;
+  --color-stone-600: #1e3e1e;
+  --color-stone-700: #122a12;
+  --color-stone-800: #0a1c0a;
+  --color-stone-900: #060e06;
+  --color-stone-950: #030704;
 
-  /* Sharp, blocky corners */
+  /* Phosphor green — accent scale (blue → vivid terminal green)
+     These are the "active" / "interactive" greens: selected rows, button borders,
+     unread dots, focused outlines. Vivid so they stand out against off-white text. */
+  --color-blue-50:  #f0fff4;
+  --color-blue-100: #dcfce7;
+  --color-blue-200: #bbf7d0;
+  --color-blue-300: #4ade80;
+  --color-blue-400: #22c55e;
+  --color-blue-500: #16a34a;
+  --color-blue-600: #15803d;
+  --color-blue-700: #166534;
+  --color-blue-800: #14532d;
+  --color-blue-900: #052e16;
+  --color-blue-950: #022912;
+
+  /* Sharp, blocky corners — no roundness */
   --radius-sm:  0px;
   --radius:     0px;
   --radius-md:  0px;
@@ -46,7 +63,7 @@
   color-scheme: light dark;
 }
 
-/* CRT scanline overlay — subtle horizontal lines across the whole viewport */
+/* Subtle scanlines — barely visible, just a hint */
 body::after {
   content: "";
   position: fixed;
@@ -56,20 +73,33 @@ body::after {
   background: repeating-linear-gradient(
     0deg,
     transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.04) 2px,
-    rgba(0, 0, 0, 0.04) 4px
+    transparent 3px,
+    rgba(0, 0, 0, 0.03) 3px,
+    rgba(0, 0, 0, 0.03) 4px
   );
 }
 
-/* Dark mode: faint phosphor glow on text */
+/* Dark mode: subtle phosphor glow on body text */
 @media (prefers-color-scheme: dark) {
   body {
-    text-shadow: 0 0 8px rgba(200, 150, 10, 0.18);
+    text-shadow: 0 0 8px rgba(180, 220, 180, 0.12);
   }
-  /* Suppress glow inside interactive controls where it looks noisy */
   input, textarea, select, button {
     text-shadow: none;
+  }
+}
+
+/* Green terminal caret */
+input, textarea {
+  caret-color: #22c55e;
+}
+
+/* Focused inputs: vivid green accent outline */
+@media (prefers-color-scheme: dark) {
+  input:focus, textarea:focus {
+    outline: 1px solid #22c55e !important;
+    outline-offset: 0 !important;
+    box-shadow: 0 0 0 1px #22c55e, 0 0 6px rgba(34, 197, 94, 0.25) !important;
   }
 }
 
