@@ -4,6 +4,7 @@ import { useState } from "react";
 import { sendCalendarReplyAction } from "@/app/(inbox)/email/[id]/actions";
 
 export interface CalendarEventData {
+  emailId: string;
   icsText: string;
   method: string;
   summary: string;
@@ -125,7 +126,7 @@ export default function CalendarEventCard({ event, persistedResponse, onResponse
     setError(null);
     setPendingResponse(response);
     try {
-      await sendCalendarReplyAction(event.icsText, response, event.inReplyToMessageId);
+      await sendCalendarReplyAction(event.icsText, response, event.emailId, event.inReplyToMessageId);
       setSentResponse(response);
       onResponseSent?.(response);
     } catch (e) {

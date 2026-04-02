@@ -1,6 +1,6 @@
 "use server";
 
-import { getSession, getAccountId, getIdentities, getMailboxes, markAsRead, markAsUnread, sendCalendarReply } from "@/lib/jmap";
+import { getSession, getAccountId, getIdentities, getMailboxes, markAsRead, markAsUnread, sendCalendarReply, setKeywordsOnMany } from "@/lib/jmap";
 import { parseIcs, buildCalendarReply } from "@/lib/ics";
 import { log } from "@/lib/logger";
 
@@ -23,6 +23,7 @@ export async function markEmailAsUnread(emailId: string): Promise<void> {
 export async function sendCalendarReplyAction(
   icsText: string,
   response: "ACCEPTED" | "DECLINED" | "TENTATIVE",
+  emailId: string,
   inReplyToMessageId?: string
 ): Promise<void> {
   const t = Date.now();
@@ -68,6 +69,14 @@ export async function sendCalendarReplyAction(
     inReplyToMessageId,
     sentMailboxId
   );
+
+  // Persist the RSVP choice as a keyword on the invitation email so the
+  // response survives page navigation and re-loads.
+  await setKeywordsOnMany(session.apiUrl, accountId, [emailId], {
+    "keywords/$rsvp_accepted": response === "ACCEPTED" ? true : null,
+    "keywords/$rsvp_tentative": response === "TENTATIVE" ? true : null,
+    "keywords/$rsvp_declined": response === "DECLINED" ? true : null,
+  });
 
   log.info({
     response,

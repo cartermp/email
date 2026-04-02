@@ -50,7 +50,17 @@ export async function resolveCalendarEvent(
       return recipientEmails.has(ae) && ae !== organizerEmail;
     });
 
+    // Prefer a keyword-persisted RSVP response (set when the user responds via
+    // this client) over the raw ICS PARTSTAT, which is often stale (NEEDS-ACTION)
+    // even after the user has already responded.
+    const keywordPartstat =
+      email.keywords?.["$rsvp_accepted"] ? "ACCEPTED" :
+      email.keywords?.["$rsvp_tentative"] ? "TENTATIVE" :
+      email.keywords?.["$rsvp_declined"] ? "DECLINED" :
+      null;
+
     return {
+      emailId: email.id,
       icsText,
       method: event.method,
       summary: event.summary,
@@ -60,7 +70,7 @@ export async function resolveCalendarEvent(
       location: event.location,
       organizerName: event.organizer?.name ?? null,
       organizerEmail: event.organizer?.email ?? null,
-      myCurrentPartstat: myAttendee?.partstat ?? null,
+      myCurrentPartstat: keywordPartstat ?? myAttendee?.partstat ?? null,
       inReplyToMessageId: email.messageId?.[0],
     };
   } catch {
