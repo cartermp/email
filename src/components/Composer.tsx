@@ -107,7 +107,7 @@ function RecipientInput({
   }
 
   return (
-    <div className="relative flex-1 min-w-0">
+    <div className="relative flex-1 min-w-0 flex items-center">
       <input
         ref={inputRef}
         type="text"
@@ -485,7 +485,7 @@ export default function Composer({
       }
 
       if (replyThreadId) {
-        router.push(`/thread/${replyThreadId}`);
+        router.replace(`/thread/${replyThreadId}`);
       } else {
         setSent(true);
       }
@@ -677,6 +677,12 @@ export default function Composer({
             ref={textareaRef}
             value={markdown}
             onChange={(e) => setMarkdown(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.metaKey && e.key === "Enter") {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
             onPaste={handlePaste}
             placeholder={
               "Write your email in Markdown…\n\n**Bold**, *italic*, `code`, lists, links — all supported.\nPaste an image anywhere to embed it."
