@@ -435,7 +435,11 @@ export default function Composer({
     setError(null);
     setSending(true);
     try {
-      const rawHtml = await marked.parse(markdown);
+      // Ensure the email signature separator (-- ) is always preceded by a
+      // blank line. Without this, a single newline before "-- " causes marked
+      // to treat the preceding text as a setext h2 heading.
+      const safeMarkdown = markdown.replace(/([^\n])\n(-- )/g, "$1\n\n$2");
+      const rawHtml = await marked.parse(safeMarkdown);
       const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
       const composedBody = forwardedHtml
         ? htmlWithCids + appendForwardedHtml(forwardedHtml)
@@ -776,7 +780,9 @@ function wrapEmailHtml(body: string): string {
 <meta charset="utf-8">
 <style>
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; color: #1a1a1a; max-width: 640px; margin: 0 auto; padding: 24px; }
-  h1, h2, h3 { font-weight: 600; margin: 1.5em 0 0.5em; }
+  h1 { font-size: 1.3em; font-weight: 600; margin: 1.5em 0 0.5em; }
+  h2 { font-size: 1.15em; font-weight: 600; margin: 1.5em 0 0.5em; }
+  h3 { font-size: 1em; font-weight: 600; margin: 1.5em 0 0.5em; }
   p { margin: 0 0 1em; }
   img { max-width: 100%; height: auto; display: block; margin: 1em 0; }
   code { font-family: monospace; background: #f4f4f5; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }

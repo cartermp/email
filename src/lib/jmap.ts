@@ -291,6 +291,7 @@ export async function getEmail(
           "to",
           "cc",
           "replyTo",
+          "inReplyTo",
           "receivedAt",
           "preview",
           "keywords",

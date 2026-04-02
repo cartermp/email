@@ -77,6 +77,10 @@ export default async function ComposePage({ searchParams }: Props) {
         }
       }
       title = "Draft";
+      if (draft.inReplyTo?.[0]) {
+        inReplyToId = draft.inReplyTo[0];
+        replyThreadId = draft.threadId;
+      }
     }
   } else if (id && (mode === "reply" || mode === "reply-all" || mode === "forward")) {
     const email = await getEmail(session.apiUrl, accountId, id);

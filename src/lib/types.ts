@@ -40,6 +40,7 @@ export interface Email {
   to: EmailAddress[] | null;
   cc: EmailAddress[] | null;
   replyTo: EmailAddress[] | null;
+  inReplyTo: string[] | null;
   receivedAt: string;
   preview: string;
   bodyValues: Record<string, { value: string; charset: string; isEncodingProblem: boolean; isTruncated: boolean }>;
