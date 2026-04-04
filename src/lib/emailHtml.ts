@@ -58,24 +58,17 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
 
   const baseStyle = hasNativeDark
     ? "html,body{overflow:hidden;height:auto!important}"
-    : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;color-scheme:light;height:auto!important}" +
-      "img{max-width:100%!important;height:auto!important}";
-
-  // Dark mode: use JS matchMedia so it works even when color-scheme:light
-  // suppresses CSS media queries inside the iframe.
-  const darkAdaptJs = hasNativeDark
-    ? ""
-    : `if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches){` +
-      `var ds=document.createElement('style');` +
-      `ds.textContent='html{filter:invert(1) hue-rotate(180deg)}img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}';` +
-      `document.head.appendChild(ds);}`;
+    : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important}" +
+      "img{max-width:100%!important;height:auto!important}" +
+      "@media(prefers-color-scheme:dark){" +
+      "html{filter:invert(1) hue-rotate(180deg)}" +
+      "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}";
 
   const stripQuotesJs = opts?.stripQuotes ? STRIP_QUOTES_JS : "";
 
   const inject = [
     `<style>${baseStyle}</style>`,
     `<script>(function(){
-  ${darkAdaptJs}
   var lastH=0,lastW=0;
   function send(){
     var h=Math.max(

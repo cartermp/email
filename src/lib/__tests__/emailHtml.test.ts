@@ -58,27 +58,20 @@ describe("prepareHtml", () => {
   describe("light-mode emails (no native dark mode)", () => {
     const lightEmail = "<html><head></head><body>plain</body></html>";
 
-    it("locks rendering to light with color-scheme:light", () => {
-      const result = prepareHtml(lightEmail);
-      assert.ok(result.includes("color-scheme:light"));
-    });
-
     it("sets a white background", () => {
       const result = prepareHtml(lightEmail);
       assert.ok(result.includes("background-color:#ffffff"));
     });
 
-    it("injects dark-mode filter inversion via JS matchMedia, not CSS @media", () => {
+    it("injects dark-mode filter inversion via CSS @media (prefers-color-scheme:dark)", () => {
       const result = prepareHtml(lightEmail);
-      // Must use window.matchMedia so it fires even when color-scheme:light
-      // suppresses CSS media queries inside the sandboxed iframe.
-      assert.ok(result.includes("matchMedia") && result.includes("prefers-color-scheme:dark"),
-        "should use matchMedia to detect dark mode");
+      // color-scheme:light suppresses both CSS @media and window.matchMedia in modern
+      // browsers, so we must NOT set it. Use a plain CSS @media block instead.
+      assert.ok(!result.includes("color-scheme:light"), "must not set color-scheme:light");
       assert.ok(result.includes("filter:invert(1) hue-rotate(180deg)"),
         "should inject invert filter for dark mode");
-      // Must NOT rely on a CSS @media block for the inversion
-      assert.ok(!result.match(/@media[^{]*prefers-color-scheme[^{]*dark[^{]*\{[^}]*filter/),
-        "dark mode filter must not be in a CSS @media rule");
+      assert.ok(result.match(/@media\(prefers-color-scheme:dark\)/),
+        "dark mode filter must be in a CSS @media rule");
     });
 
     it("injects counter-filter on img/video/picture/canvas to preserve image colors", () => {

@@ -92,12 +92,17 @@ async function main() {
 
   for (const email of emails as Record<string, unknown>[]) {
     const id = email.id as string;
-    const file = path.join(OUT_DIR, `${id}.json`);
+    const subject = (email.subject as string | undefined) ?? "";
+    const slug = subject
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/, "")
+      .slice(0, 60);
+    const file = path.join(OUT_DIR, `${slug ? slug + "_" : ""}${id}.json`);
     fs.writeFileSync(file, JSON.stringify(email, null, 2));
-    const subject = (email.subject as string) ?? "(no subject)";
     const hasHtml = (email.htmlBody as unknown[])?.length > 0;
     const hasText = (email.textBody as unknown[])?.length > 0;
-    console.log(`✓ ${id} — ${subject} [${hasHtml ? "html" : ""}${hasText ? " text" : ""}]`);
+    console.log(`✓ ${id} — ${subject || "(no subject)"} [${hasHtml ? "html" : ""}${hasText ? " text" : ""}]`);
   }
 
   console.log(`\nWrote ${emails.length} fixtures to ${OUT_DIR}`);
