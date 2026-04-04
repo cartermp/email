@@ -14,6 +14,12 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastDimsRef = useRef({ h: 0, w: 0 });
 
+  // Reset stale dimensions whenever the email content changes so the next
+  // resize message from the new document is never silently skipped.
+  useEffect(() => {
+    lastDimsRef.current = { h: 0, w: 0 };
+  }, [body, type]);
+
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
       const iframe = iframeRef.current;
@@ -60,7 +66,7 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
       : prepareTextBody(body, { stripQuotes });
 
   return (
-    <div ref={wrapperRef} style={{ minHeight: "200px", overflow: "hidden", position: "relative", zIndex: 10000 }}>
+    <div ref={wrapperRef} className="bg-white dark:bg-black" style={{ minHeight: "200px", overflow: "hidden", position: "relative", zIndex: 10000 }}>
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
