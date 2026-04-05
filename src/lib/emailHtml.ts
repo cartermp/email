@@ -61,6 +61,9 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
     : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important}" +
       "img{max-width:100%!important;height:auto!important}" +
       "@media(prefers-color-scheme:dark){" +
+      // Pre-filter background: #f1f9f1 → invert(1) hue-rotate(180deg) → #060e06 (app stone-900)
+      // so the email background blends with the client's dark theme.
+      "html,body{background-color:#f1f9f1}" +
       "html{filter:invert(1) hue-rotate(180deg)}" +
       "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}";
 

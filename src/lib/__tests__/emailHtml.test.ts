@@ -74,6 +74,13 @@ describe("prepareHtml", () => {
         "dark mode filter must be in a CSS @media rule");
     });
 
+    it("sets app-matching dark background (#f1f9f1 pre-filter → #060e06 stone-900 post-filter)", () => {
+      const result = prepareHtml(lightEmail);
+      // #f1f9f1 → invert(1) hue-rotate(180deg) → #060e06 (app stone-900)
+      // so the email background blends with the client dark theme instead of going pure black.
+      assert.ok(result.includes("#f1f9f1"), "dark mode @media block should set background-color:#f1f9f1");
+    });
+
     it("injects counter-filter on img/video/picture/canvas to preserve image colors", () => {
       const result = prepareHtml(lightEmail);
       // These elements get the same filter applied twice (self-inverse).
