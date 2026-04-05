@@ -128,6 +128,7 @@ export function prepareHtml(
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
   send();
+  window.addEventListener('message',function(e){if(e.data==='iframe-ping')send();});
   function openLinksInNewTab(){
     var links=document.getElementsByTagName('a');
     for(var i=0;i<links.length;i++){
@@ -221,6 +222,7 @@ body{
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
   send();
+  window.addEventListener('message',function(e){if(e.data==='iframe-ping')send();});
   window.addEventListener('load',send);
   if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement);}
 })();</script>

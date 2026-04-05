@@ -14,8 +14,6 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastDimsRef = useRef({ h: 0, w: 0 });
 
-  // Reset stale dimensions whenever the email content changes so the next
-  // resize message from the new document is never silently skipped.
   useEffect(() => {
     lastDimsRef.current = { h: 0, w: 0 };
   }, [body, type]);
@@ -37,10 +35,6 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
       const availW = wrapper.clientWidth;
 
       if (naturalW > availW + 2 && availW > 0) {
-        // Content is wider than the container (common for HTML newsletters on
-        // mobile — iOS Safari ignores <meta viewport> inside iframes so layout
-        // happens at ~980 px). Scale the iframe element down from the outside
-        // so the full content fits without any internal rewriting.
         const scale = availW / naturalW;
         iframe.style.width = naturalW + "px";
         iframe.style.height = naturalH + "px";
@@ -48,7 +42,6 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
         iframe.style.transformOrigin = "top left";
         wrapper.style.height = Math.ceil(naturalH * scale) + "px";
       } else {
-        // Content fits — normal sizing.
         iframe.style.width = "100%";
         iframe.style.height = naturalH + "px";
         iframe.style.transform = "";
@@ -57,6 +50,13 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
     };
 
     window.addEventListener("message", handleMessage);
+
+    // On hard refresh the iframe loads from the SSR HTML before this
+    // listener exists and the initial postMessages are lost. Ping the
+    // iframe now that the listener is attached; the iframe script responds
+    // by calling send() again.
+    iframeRef.current?.contentWindow?.postMessage("iframe-ping", "*");
+
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
@@ -71,9 +71,6 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
         ref={iframeRef}
         srcDoc={srcDoc}
         className="w-full border-0 block"
-        // allow-scripts: needed for the injected resize script.
-        // No allow-same-origin so email scripts cannot access parent frame,
-        // cookies, or application storage.
         sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
         title="Email content"
       />
