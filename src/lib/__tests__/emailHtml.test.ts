@@ -74,11 +74,19 @@ describe("prepareHtml", () => {
         "dark mode filter must be in a CSS @media rule");
     });
 
-    it("sets app-matching dark background (#f1f9f1 pre-filter → #060e06 stone-900 post-filter)", () => {
+    it("sets app-matching dark background and text colour via pre-filter values", () => {
       const result = prepareHtml(lightEmail);
-      // #f1f9f1 → invert(1) hue-rotate(180deg) → #060e06 (app stone-900)
-      // so the email background blends with the client dark theme instead of going pure black.
-      assert.ok(result.includes("#f1f9f1"), "dark mode @media block should set background-color:#f1f9f1");
+      // html gets stone-900 directly (no filter on html) to avoid browser bg-escape quirk
+      assert.ok(result.includes("#060e06"), "dark @media block should set html background-color:#060e06");
+      // body pre-filter bg: #f1f9f1 → filter → #060e06 (stone-900)
+      assert.ok(result.includes("#f1f9f1"), "dark @media block should set body background-color:#f1f9f1");
+      // body pre-filter color: #131f13 → filter → #e0ece0 (stone-100)
+      assert.ok(result.includes("#131f13"), "dark @media block should set body color:#131f13");
+    });
+
+    it("injects default font-family on html,body so unstyled emails match the client font", () => {
+      const result = prepareHtml(lightEmail);
+      assert.ok(result.includes("font-family:"), "should inject font-family on html,body");
     });
 
     it("injects counter-filter on img/video/picture/canvas to preserve image colors", () => {

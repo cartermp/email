@@ -61,11 +61,13 @@ export function prepareHtml(
 
   const baseStyle = hasNativeDark
     ? "html,body{overflow:hidden;height:auto!important}"
-    : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important}" +
+    : `html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important;font-family:${theme.fontFamily}}` +
       "img{max-width:100%!important;height:auto!important}" +
       "@media(prefers-color-scheme:dark){" +
-      `html,body{background-color:${theme.htmlDarkPreFilterBg}}` +
-      "html{filter:invert(1) hue-rotate(180deg)}" +
+      // html gets the actual dark colour directly — no filter on html avoids
+      // browser quirks where the html/body background escapes the filter scope.
+      `html{background-color:${theme.htmlDarkBg}}` +
+      `body{filter:invert(1) hue-rotate(180deg);background-color:${theme.bodyDarkPreFilterBg};color:${theme.bodyDarkPreFilterColor}}` +
       "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}";
 
   const stripQuotesJs = opts?.stripQuotes ? STRIP_QUOTES_JS : "";
