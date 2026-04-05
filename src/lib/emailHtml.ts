@@ -19,6 +19,30 @@
  * <meta viewport> is ignored inside iframes and content lays out at ~980px.
  */
 import { defaultEmailRenderTheme, type EmailRenderTheme } from "./emailRenderTheme";
+
+// Linkify bare URLs in HTML text content at the string level (server-side),
+// so no browser DOM manipulation is needed. Skips content inside <a>, <script>,
+// and <style> tags. Tracks <a> nesting so already-linked URLs are not re-wrapped.
+const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
+const TOKEN_RE = /(<script[\s\S]*?<\/script\s*>|<style[\s\S]*?<\/style\s*>|<\/a\s*>|<a[\s>][^>]*>|<[^>]*>)|([^<]*)/gi;
+function linkifyHtmlText(html: string): string {
+  let inAnchor = 0;
+  return html.replace(TOKEN_RE, (_match, tag: string | undefined, text: string | undefined) => {
+    if (tag !== undefined) {
+      if (/^<\/a/i.test(tag)) inAnchor = Math.max(0, inAnchor - 1);
+      else if (/^<a[\s>]/i.test(tag)) inAnchor++;
+      return tag;
+    }
+    if (!text || inAnchor > 0) return text ?? "";
+    return text.replace(URL_RE, (url) => {
+      const trimmed = url.replace(/[.,;:!?)]+$/, "");
+      const rest = url.slice(trimmed.length);
+      const safeHref = trimmed.replace(/&/g, "&amp;");
+      return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${trimmed}</a>${rest}`;
+    });
+  });
+}
+
 // JS injected into HTML emails to remove quoted reply sections.
 // Targets the most common quote containers across major email clients.
 const STRIP_QUOTES_JS = `(function(){
@@ -59,9 +83,13 @@ export function prepareHtml(
   // Strip any existing viewport meta — we control sizing from outside.
   html = html.replace(/<meta[^>]*name=["']viewport["'][^>]*>/gi, "");
 
+  // Auto-link bare URLs in text content (server-side, no DOM manipulation needed).
+  html = linkifyHtmlText(html);
+
   const baseStyle = hasNativeDark
     ? "html,body{overflow:hidden;height:auto!important}"
     : `html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important;font-family:${theme.fontFamily}}` +
+      "a{cursor:pointer}" +
       "img{max-width:100%!important;height:auto!important}" +
       "@media(prefers-color-scheme:dark){" +
       // html gets the actual dark colour directly — no filter on html avoids

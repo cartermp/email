@@ -55,6 +55,34 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("postMessage"));
   });
 
+  describe("bare URL linkification", () => {
+    it("converts a bare URL in text to a clickable link", () => {
+      const result = prepareHtml('<html><head></head><body>see https://example.com for info</body></html>');
+      assert.ok(result.includes('<a href="https://example.com"'), "bare URL should become an anchor");
+      assert.ok(result.includes('target="_blank"'), "link should open in new tab");
+      assert.ok(result.includes('rel="noopener noreferrer"'), "link should have noopener rel");
+    });
+
+    it("does not double-link URLs already inside an <a> tag", () => {
+      const input = '<html><head></head><body><a href="https://example.com">https://example.com</a></body></html>';
+      const result = prepareHtml(input);
+      const count = (result.match(/<a /g) ?? []).length;
+      assert.equal(count, 1, "should not create a nested anchor");
+    });
+
+    it("trims trailing punctuation from linkified URLs", () => {
+      const result = prepareHtml('<html><head></head><body>visit https://example.com.</body></html>');
+      assert.ok(result.includes('<a href="https://example.com"'), "trailing period should not be part of href");
+      assert.ok(result.includes('</a>.'), "period should appear after the closing anchor tag");
+    });
+
+    it("does not linkify URLs inside <script> blocks", () => {
+      const result = prepareHtml('<html><head><script>var u="https://example.com"</script></head><body></body></html>');
+      // The URL inside the script should not be wrapped in an <a> tag
+      assert.ok(!result.includes('<a href="https://example.com"'), "URL in script should not be linkified");
+    });
+  });
+
   describe("light-mode emails (no native dark mode)", () => {
     const lightEmail = "<html><head></head><body>plain</body></html>";
 
@@ -265,5 +293,84 @@ describe("prepareHtml stripQuotes option", () => {
     const loadListenerMatch = result.match(/addEventListener\('load',function\(\)\{([\s\S]*?)\}\)/);
     assert.ok(loadListenerMatch, "should have a load event listener");
     assert.ok(loadListenerMatch![1].includes("gmail_quote"), "strip-quotes JS should run inside the load listener");
+  });
+});
+
+describe("linkifyHtmlText (via prepareHtml)", () => {
+  function wrap(body: string) {
+    return `<html><head></head><body>${body}</body></html>`;
+  }
+
+  it("linkifies a bare URL in a table cell — Capitol Hill regression", () => {
+    const email = wrap(
+      '<table><tr><td>Click here: https://www.soundtransit.org/ride-with-us/changes-affect-my-ride/navigating-service-disruptions#1line</td></tr></table>'
+    );
+    const result = prepareHtml(email);
+    assert.ok(
+      result.includes('<a href="https://www.soundtransit.org/ride-with-us/changes-affect-my-ride/navigating-service-disruptions#1line"'),
+      "URL with hash fragment inside a table cell should be linkified"
+    );
+  });
+
+  it("linkifies multiple bare URLs in the same text block", () => {
+    const result = prepareHtml(wrap("See https://example.com and https://other.org for details."));
+    assert.ok(result.includes('<a href="https://example.com"'), "first URL should be linked");
+    assert.ok(result.includes('<a href="https://other.org"'), "second URL should be linked");
+  });
+
+  it("trims trailing period so sentence-ending URLs parse correctly", () => {
+    const result = prepareHtml(wrap("Visit https://example.com. That's the site."));
+    assert.ok(result.includes('<a href="https://example.com"'), "href should not include trailing period");
+    assert.ok(result.includes("</a>."), "period should follow the closing tag");
+  });
+
+  it("trims trailing closing parenthesis", () => {
+    const result = prepareHtml(wrap("(see https://example.com)"));
+    assert.ok(result.includes('<a href="https://example.com"'), "href should not include trailing paren");
+    assert.ok(result.includes("</a>)"), "paren should follow the closing tag");
+  });
+
+  it("preserves query parameters including & in the href", () => {
+    const result = prepareHtml(wrap("Track: https://example.com/path?a=1&b=2"));
+    assert.ok(
+      result.includes('href="https://example.com/path?a=1&amp;b=2"'),
+      "& in query string should be escaped as &amp; in href attribute"
+    );
+  });
+
+  it("does not double-link a URL that is already wrapped in <a>", () => {
+    const input = wrap('<a href="https://example.com">https://example.com</a>');
+    const result = prepareHtml(input);
+    const anchorCount = (result.match(/<a /g) ?? []).length;
+    assert.equal(anchorCount, 1, "should not create a nested anchor around an already-linked URL");
+  });
+
+  it("does not linkify a URL in a <script> block", () => {
+    const input = '<html><head><script>var u="https://tracker.example.com/pixel"</script></head><body>hi</body></html>';
+    const result = prepareHtml(input);
+    assert.ok(!result.includes('<a href="https://tracker.example.com'), "URL inside script must not be linkified");
+  });
+
+  it("does not linkify a URL in a <style> block", () => {
+    const input = '<html><head><style>body{background:url(https://example.com/bg.png)}</style></head><body>hi</body></html>';
+    const result = prepareHtml(input);
+    assert.ok(!result.includes('<a href="https://example.com/bg.png"'), "URL inside style must not be linkified");
+  });
+
+  it("does not modify emails with no bare URLs", () => {
+    const email = wrap("<p>Hello world. No URLs here.</p>");
+    const result = prepareHtml(email);
+    assert.ok(!result.includes("<a href="), "no anchors should be injected when there are no bare URLs");
+  });
+
+  it("linkified anchor opens in a new tab", () => {
+    const result = prepareHtml(wrap("Go to https://example.com now."));
+    assert.ok(result.includes('target="_blank"'), "linkified URL should have target=_blank");
+    assert.ok(result.includes('rel="noopener noreferrer"'), "linkified URL should have noopener rel");
+  });
+
+  it("injects cursor:pointer on anchors so hover cursor works inside the sandboxed iframe", () => {
+    const result = prepareHtml(wrap("<p>hello</p>"));
+    assert.ok(result.includes("a{cursor:pointer}"), "cursor:pointer must be in the injected style");
   });
 });
