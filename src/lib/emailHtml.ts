@@ -8,8 +8,6 @@
  *   to the html element. This flips white→black and dark text→light text.
  *   A counter-filter on img/video restores images to their original colors
  *   (applying the same filter twice is self-inverse for images).
- *   color-scheme:light prevents the browser from auto-adapting UI controls
- *   on top of our filter.
  *
  * Scrolling: overflow:hidden on html,body prevents the iframe from ever
  * getting its own scrollbar; the parent container handles all scrolling.
@@ -20,6 +18,7 @@
  * than the available space. This handles the iOS Safari limitation where
  * <meta viewport> is ignored inside iframes and content lays out at ~980px.
  */
+import { defaultEmailRenderTheme, type EmailRenderTheme } from "./emailRenderTheme";
 // JS injected into HTML emails to remove quoted reply sections.
 // Targets the most common quote containers across major email clients.
 const STRIP_QUOTES_JS = `(function(){
@@ -50,7 +49,11 @@ const STRIP_QUOTES_JS = `(function(){
   trimTrailingAttribution(document.body);
 })();`;
 
-export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): string {
+export function prepareHtml(
+  html: string,
+  opts?: { stripQuotes?: boolean; theme?: EmailRenderTheme },
+): string {
+  const theme = opts?.theme ?? defaultEmailRenderTheme;
   const hasNativeDark = /prefers-color-scheme\s*:\s*dark/i.test(html);
 
   // Strip any existing viewport meta — we control sizing from outside.
@@ -61,9 +64,7 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
     : "html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important}" +
       "img{max-width:100%!important;height:auto!important}" +
       "@media(prefers-color-scheme:dark){" +
-      // Pre-filter background: #f1f9f1 → invert(1) hue-rotate(180deg) → #060e06 (app stone-900)
-      // so the email background blends with the client's dark theme.
-      "html,body{background-color:#f1f9f1}" +
+      `html,body{background-color:${theme.htmlDarkPreFilterBg}}` +
       "html{filter:invert(1) hue-rotate(180deg)}" +
       "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}";
 
@@ -129,7 +130,11 @@ export function prepareHtml(html: string, opts?: { stripQuotes?: boolean }): str
  * Uses the same resize/dark-mode infrastructure as prepareHtml so the
  * rendered output matches the app's visual style.
  */
-export function prepareTextBody(text: string, opts?: { stripQuotes?: boolean }): string {
+export function prepareTextBody(
+  text: string,
+  opts?: { stripQuotes?: boolean; theme?: EmailRenderTheme },
+): string {
+  const theme = opts?.theme ?? defaultEmailRenderTheme;
   if (opts?.stripQuotes) {
     // Find the first quoted line or "On ... wrote:" attribution and trim from there.
     const lines = text.split("\n");
@@ -164,7 +169,7 @@ body{
 <script>(function(){
   if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches){
     var s=document.createElement('style');
-    s.textContent='body{color:#e7e5e4!important;background:#1c1917!important}';
+    s.textContent='body{color:${theme.textDarkColor}!important;background:${theme.textDarkBg}!important}';
     document.head.appendChild(s);
   }
   var lastH=0,lastW=0;

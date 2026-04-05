@@ -146,14 +146,14 @@ describe("prepareTextBody", () => {
     assert.ok(result.includes("line one\nline two"), "raw text with newlines should be present");
   });
 
-  it("injects dark mode via JS matchMedia with stone palette colors", () => {
+  it("injects dark mode via JS matchMedia with app stone palette colors", () => {
     const result = prepareTextBody("text");
     // Must use matchMedia so dark mode works inside the sandboxed iframe
     assert.ok(result.includes("matchMedia") && result.includes("prefers-color-scheme:dark"),
       "should detect dark mode via matchMedia");
-    // Stone-800 (#1c1917) background and stone-200 (#e7e5e4) text
-    assert.ok(result.includes("#1c1917"), "dark background should use stone-900 (#1c1917)");
-    assert.ok(result.includes("#e7e5e4"), "dark text should use stone-200 (#e7e5e4)");
+    // App stone-900 (#060e06) background, stone-100 (#e0ece0) text
+    assert.ok(result.includes("#060e06"), "dark background should use app stone-900 (#060e06)");
+    assert.ok(result.includes("#e0ece0"), "dark text should use app stone-100 (#e0ece0)");
     // Must NOT use a CSS @media block for dark mode
     assert.ok(!result.match(/@media[^{]*prefers-color-scheme[^{]*dark/),
       "dark mode must not use a CSS @media rule");
