@@ -169,10 +169,9 @@ describe("prepareTextBody", () => {
     assert.ok(!result.includes("<b>"), "raw <b> tag must not appear");
   });
 
-  it("uses system-ui sans-serif font (not monospace)", () => {
+  it("uses the app's theme font (monospace)", () => {
     const result = prepareTextBody("hello");
-    assert.ok(result.includes("sans-serif"), "should use sans-serif font");
-    assert.ok(!result.includes("monospace"), "must not use monospace font");
+    assert.ok(result.includes("monospace"), "should use app monospace font");
   });
 
   it("preserves newlines via white-space:pre-wrap", () => {
@@ -182,17 +181,14 @@ describe("prepareTextBody", () => {
     assert.ok(result.includes("line one\nline two"), "raw text with newlines should be present");
   });
 
-  it("injects dark mode via JS matchMedia with app stone palette colors", () => {
+  it("injects dark mode via CSS media query with app stone palette colors", () => {
     const result = prepareTextBody("text");
-    // Must use matchMedia so dark mode works inside the sandboxed iframe
-    assert.ok(result.includes("matchMedia") && result.includes("prefers-color-scheme:dark"),
-      "should detect dark mode via matchMedia");
+    // Must use CSS @media so dark mode applies before first paint (no flash)
+    assert.ok(result.match(/@media[^{]*prefers-color-scheme[^{]*dark/),
+      "dark mode must use a CSS @media rule");
     // App stone-900 (#060e06) background, stone-100 (#e0ece0) text
     assert.ok(result.includes("#060e06"), "dark background should use app stone-900 (#060e06)");
     assert.ok(result.includes("#e0ece0"), "dark text should use app stone-100 (#e0ece0)");
-    // Must NOT use a CSS @media block for dark mode
-    assert.ok(!result.match(/@media[^{]*prefers-color-scheme[^{]*dark/),
-      "dark mode must not use a CSS @media rule");
   });
 
   it("injects the iframe resize postMessage script", () => {

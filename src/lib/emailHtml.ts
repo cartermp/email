@@ -191,18 +191,17 @@ export function prepareTextBody(
 <style>
 html,body{margin:0;padding:0;overflow:hidden}
 body{
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-family:${theme.fontFamily};
   font-size:14px;line-height:1.6;
   color:#1c1917;background:#ffffff;
   padding:0;word-break:break-word;white-space:pre-wrap;
 }
+@media(prefers-color-scheme:dark){
+  html{background:${theme.textDarkBg}}
+  body{color:${theme.textDarkColor};background:${theme.textDarkBg}}
+}
 </style>
 <script>(function(){
-  if(window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)').matches){
-    var s=document.createElement('style');
-    s.textContent='body{color:${theme.textDarkColor}!important;background:${theme.textDarkBg}!important}';
-    document.head.appendChild(s);
-  }
   var lastH=0,lastW=0;
   function send(){
     var h=Math.max(

@@ -23,7 +23,7 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
     const part = email.htmlBody[0];
     if (part.partId && email.bodyValues?.[part.partId]) {
       body = email.bodyValues[part.partId].value;
-      bodyType = "html";
+      bodyType = part.type === "text/html" ? "html" : "text";
     }
   }
   if (!body && email.textBody?.length > 0) {

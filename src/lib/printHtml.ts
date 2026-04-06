@@ -43,7 +43,7 @@ export function resolvePrintBody(email: Email): {
     const part = email.htmlBody[0];
     if (part.partId && email.bodyValues?.[part.partId]) {
       rawBody = email.bodyValues[part.partId].value;
-      bodyType = "html";
+      bodyType = part.type === "text/html" ? "html" : "text";
     }
   }
   if (!rawBody && email.textBody?.length > 0) {
