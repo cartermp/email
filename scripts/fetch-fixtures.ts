@@ -11,13 +11,53 @@
 import fs from "node:fs";
 import path from "node:path";
 
+function parseEnvValue(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const quote = trimmed[0];
+  if ((quote === '"' || quote === "'") && trimmed.endsWith(quote)) {
+    return trimmed
+      .slice(1, -1)
+      .replace(/\\n/g, "\n")
+      .replace(/\\"/g, '"')
+      .replace(/\\'/g, "'");
+  }
+
+  const commentStart = trimmed.search(/\s#/);
+  return commentStart === -1 ? trimmed : trimmed.slice(0, commentStart).trim();
+}
+
+function loadEnvFile(filePath: string) {
+  for (const line of fs.readFileSync(filePath, "utf8").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    const match = trimmed.match(/^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!match) continue;
+
+    process.env[match[1]] = parseEnvValue(match[2]);
+  }
+}
+
+async function parseJsonResponse<T>(res: Response, label: string): Promise<T> {
+  const text = await res.text();
+
+  if (!res.ok) {
+    throw new Error(`${label} failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`${label} returned non-JSON: ${text.slice(0, 200)}`);
+  }
+}
+
 // Load .env.local manually
 const envPath = path.resolve(process.cwd(), ".env.local");
 if (fs.existsSync(envPath)) {
-  for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
-    const m = line.match(/^([^#=]+)=(.*)$/);
-    if (m) process.env[m[1].trim()] = m[2].trim();
-  }
+  loadEnvFile(envPath);
 }
 
 const TOKEN = process.env.FASTMAIL_API_TOKEN;
@@ -43,14 +83,16 @@ async function jmap(apiUrl: string, methodCalls: unknown[]) {
     },
     body: JSON.stringify({ using: JMAP_USING, methodCalls }),
   });
-  if (!res.ok) throw new Error(`JMAP error: ${res.statusText}`);
-  return res.json() as Promise<{ methodResponses: [string, Record<string, unknown>, string][] }>;
+  return parseJsonResponse<{ methodResponses: [string, Record<string, unknown>, string][] }>(
+    res,
+    "JMAP request"
+  );
 }
 
 async function main() {
   const session = await fetch(SESSION_URL, {
     headers: { Authorization: `Bearer ${TOKEN}` },
-  }).then((r) => r.json()) as Record<string, unknown>;
+  }).then((r) => parseJsonResponse<Record<string, unknown>>(r, "JMAP session"));
 
   const apiUrl = session.apiUrl as string;
   const accountId = (session.primaryAccounts as Record<string, string>)[

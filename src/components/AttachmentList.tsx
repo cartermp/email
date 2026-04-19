@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import SpreadsheetViewer from "@/components/SpreadsheetViewer";
+import { isSpreadsheetAttachment } from "@/lib/spreadsheet";
 import { EmailBodyPart } from "@/lib/types";
 
 function formatSize(bytes: number): string {
@@ -15,8 +17,8 @@ function fileIcon(type: string): string {
   if (type.startsWith("video/")) return "🎬";
   if (type.startsWith("audio/")) return "🎵";
   if (type.includes("zip") || type.includes("tar") || type.includes("gzip")) return "🗜";
-  if (type.includes("word") || type.includes("document")) return "📝";
   if (type.includes("spreadsheet") || type.includes("excel")) return "📊";
+  if (type.includes("word") || type.includes("document")) return "📝";
   return "📎";
 }
 
@@ -102,6 +104,7 @@ interface Props {
 
 export default function AttachmentList({ attachments }: Props) {
   const [previewPdf, setPreviewPdf] = useState<EmailBodyPart | null>(null);
+  const [previewSpreadsheet, setPreviewSpreadsheet] = useState<EmailBodyPart | null>(null);
 
   const visible = attachments.filter((a) => a.type !== "text/calendar" && a.blobId);
   if (visible.length === 0) return null;
@@ -116,10 +119,25 @@ export default function AttachmentList({ attachments }: Props) {
           {visible.map((a) => {
             const name = a.name ?? "attachment";
             const isPdf = a.type === "application/pdf";
+            const isSpreadsheet = isSpreadsheetAttachment(a);
             return isPdf ? (
               <button
                 key={a.blobId}
+                type="button"
                 onClick={() => setPreviewPdf(a)}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors text-sm text-stone-700 dark:text-stone-300 max-w-xs"
+              >
+                <span className="text-base leading-none">{fileIcon(a.type)}</span>
+                <span className="truncate">{name}</span>
+                <span className="text-xs text-stone-400 dark:text-stone-500 shrink-0">
+                  {formatSize(a.size)}
+                </span>
+              </button>
+            ) : isSpreadsheet ? (
+              <button
+                key={a.blobId}
+                type="button"
+                onClick={() => setPreviewSpreadsheet(a)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 transition-colors text-sm text-stone-700 dark:text-stone-300 max-w-xs"
               >
                 <span className="text-base leading-none">{fileIcon(a.type)}</span>
@@ -148,6 +166,16 @@ export default function AttachmentList({ attachments }: Props) {
 
       {previewPdf && (
         <PdfModal attachment={previewPdf} onClose={() => setPreviewPdf(null)} />
+      )}
+      {previewSpreadsheet && (
+        <SpreadsheetViewer
+          attachmentName={previewSpreadsheet.name}
+          attachmentSize={previewSpreadsheet.size}
+          downloadHref={downloadUrl(previewSpreadsheet)}
+          previewHref={downloadUrl(previewSpreadsheet, true)}
+          chrome="modal"
+          onClose={() => setPreviewSpreadsheet(null)}
+        />
       )}
     </>
   );

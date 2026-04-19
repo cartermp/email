@@ -12,6 +12,7 @@ export default function InboxPanelLayout({ list, children }: Props) {
   const showDetail =
     pathname.startsWith("/email/") ||
     pathname.startsWith("/thread/") ||
+    pathname.startsWith("/attachment/") ||
     pathname.startsWith("/settings") ||
     pathname.startsWith("/sent");
 

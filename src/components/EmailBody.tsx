@@ -66,7 +66,7 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
       : prepareTextBody(body, { stripQuotes });
 
   return (
-    <div ref={wrapperRef} className="bg-white dark:bg-stone-900" style={{ minHeight: "200px", overflow: "hidden", position: "relative", zIndex: 10000 }}>
+    <div ref={wrapperRef} className="bg-white dark:bg-stone-900" style={{ minHeight: "200px", overflow: "hidden", position: "relative" }}>
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}
