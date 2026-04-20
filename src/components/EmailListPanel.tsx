@@ -86,6 +86,23 @@ function IconX() {
   );
 }
 
+function IconRefresh({ spinning = false }: { spinning?: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      className={["w-4 h-4", spinning ? "animate-spin" : ""].join(" ")}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L3 8.28" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7.977 14.652H2.985v4.992" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.51 15A9 9 0 0 0 18.36 18.36L21 15.72" />
+    </svg>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -186,22 +203,12 @@ export default function EmailListPanel({
   const longPressPos = useRef({ x: 0, y: 0 });
 
   // -------------------------------------------------------------------------
-  // Pull-to-refresh
+  // Refresh state
   // -------------------------------------------------------------------------
-  const PTR_POCKET = 56;
-  const PTR_TRIGGER = 48;
-
-  const [pullY, setPullY] = useState(0);
-  const [activePull, setActivePull] = useState(false);
   const [refreshPhase, setRefreshPhase] = useState<"idle" | "loading" | "success" | "fading">("idle");
   const [isPending, startTransition] = useTransition();
-  const listRef = useRef<HTMLDivElement>(null);
-  const ptrActive = useRef(false);
-  const ptrStartY = useRef(0);
-  const ptrCurrentY = useRef(0);
-  const ptrTriggerRef = useRef<() => void>(() => {});
-  const ptrTimer1 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const ptrTimer2 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const refreshTimer1 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const refreshTimer2 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   function toggleSelection(id: string) {
     setSelectedIds((prev) => {
@@ -367,79 +374,36 @@ export default function EmailListPanel({
   }
 
   // -------------------------------------------------------------------------
-  // PTR effects
+  // Refresh effects
   // -------------------------------------------------------------------------
-
-  // Keep trigger callback current without stale closures in the touch handler
-  useEffect(() => {
-    ptrTriggerRef.current = () => {
-      setPullY(PTR_POCKET);
-      setActivePull(false);
-      setRefreshPhase("loading");
-      startTransition(() => router.refresh());
-    };
-  });
 
   // When server re-render finishes, transition to success then idle.
   // Timers are kept in refs so React's effect cleanup can't cancel them when
   // setRefreshPhase("success") causes a re-render and re-runs this effect.
   useEffect(() => {
     if (!isPending && refreshPhase === "loading") {
-      setPullY(0);
       setRefreshPhase("success");
-      clearTimeout(ptrTimer1.current);
-      clearTimeout(ptrTimer2.current);
-      ptrTimer1.current = setTimeout(() => setRefreshPhase("fading"), 1400);
-      ptrTimer2.current = setTimeout(() => setRefreshPhase("idle"), 2000);
+      clearTimeout(refreshTimer1.current);
+      clearTimeout(refreshTimer2.current);
+      refreshTimer1.current = setTimeout(() => setRefreshPhase("fading"), 1400);
+      refreshTimer2.current = setTimeout(() => setRefreshPhase("idle"), 2000);
     }
   }, [isPending, refreshPhase]);
 
-  // Non-passive touch listeners so we can call preventDefault during pull
   useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-
-    function onTouchStart(e: TouchEvent) {
-      if (el!.scrollTop === 0 && e.touches.length === 1) {
-        ptrStartY.current = e.touches[0].clientY;
-      }
-    }
-
-    function onTouchMove(e: TouchEvent) {
-      const dy = e.touches[0].clientY - ptrStartY.current;
-      if (el!.scrollTop === 0 && dy > 4) {
-        e.preventDefault();
-        ptrActive.current = true;
-        const resistance = Math.min(dy * 0.45, PTR_POCKET + 12);
-        ptrCurrentY.current = resistance;
-        setPullY(resistance);
-        setActivePull(true);
-      }
-    }
-
-    function onTouchEnd() {
-      if (!ptrActive.current) return;
-      ptrActive.current = false;
-      setActivePull(false);
-      if (ptrCurrentY.current >= PTR_TRIGGER) {
-        ptrTriggerRef.current();
-      } else {
-        setPullY(0);
-      }
-      ptrCurrentY.current = 0;
-    }
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd);
-    el.addEventListener("touchcancel", onTouchEnd);
     return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("touchcancel", onTouchEnd);
+      clearTimeout(refreshTimer1.current);
+      clearTimeout(refreshTimer2.current);
     };
-  }, []); // mount-only: handlers use refs for all mutable state
+  }, []);
+
+  function handleRefresh() {
+    if (refreshPhase === "loading" || isPending) return;
+    clearTimeout(refreshTimer1.current);
+    clearTimeout(refreshTimer2.current);
+    setRefreshPhase("loading");
+    startTransition(() => router.refresh());
+  }
 
   // -------------------------------------------------------------------------
   // Bulk actions
@@ -507,16 +471,30 @@ export default function EmailListPanel({
         <span className="text-sm font-semibold text-stone-700 dark:text-stone-300 capitalize">
           {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : "Sent"}
         </span>
-        <Link
-          href="/compose"
-          className="p-1.5 rounded-md text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 transition-colors"
-          title="Compose"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-            <path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
-            <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
-          </svg>
-        </Link>
+        <div className="flex items-center gap-1">
+          {view === "inbox" && (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshPhase === "loading" || isPending}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 transition-colors disabled:opacity-60 disabled:hover:bg-transparent disabled:cursor-default"
+              title="Refresh mail"
+            >
+              <IconRefresh spinning={refreshPhase === "loading"} />
+              Refresh
+            </button>
+          )}
+          <Link
+            href="/compose"
+            className="p-1.5 rounded-md text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 transition-colors"
+            title="Compose"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
+              <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
+            </svg>
+          </Link>
+        </div>
       </div>
 
       {/* Search (inbox only) */}
@@ -627,32 +605,6 @@ export default function EmailListPanel({
       {view === "inbox" && (
         <div className="relative flex-1 overflow-hidden bg-stone-50 dark:bg-stone-900">
 
-          {/* PTR pocket — only rendered when actively pulling or refreshing */}
-          {(pullY > 0 || refreshPhase === "loading") && (
-          <div
-            className="absolute inset-x-0 top-0 flex items-center justify-center"
-            style={{ height: PTR_POCKET }}
-          >
-            {refreshPhase === "loading" ? (
-              <svg className="w-5 h-5 text-stone-400 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            ) : (
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2}
-                className="w-5 h-5 text-stone-300 dark:text-stone-600"
-                style={{ transform: `rotate(${Math.min(pullY / PTR_TRIGGER, 1) * 180}deg)` }}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
-            )}
-          </div>
-          )}
-
           {/* "Up to date" success pill — floats over the list after refresh */}
           {(refreshPhase === "success" || refreshPhase === "fading") && (
             <div className={[
@@ -668,15 +620,7 @@ export default function EmailListPanel({
             </div>
           )}
 
-          {/* Scrollable list — translates down to reveal PTR pocket */}
-          <div
-            ref={listRef}
-            className={[
-              "absolute inset-0 overflow-y-auto",
-              !activePull ? "transition-transform duration-300 ease-out" : "",
-            ].join(" ")}
-            style={pullY > 0 ? { transform: `translateY(${pullY}px)` } : undefined}
-          >
+          <div className="absolute inset-0 overflow-y-auto">
           {isSearching && (
             <p className="p-4 text-sm text-stone-400 dark:text-stone-500">Searching…</p>
           )}
@@ -716,12 +660,12 @@ export default function EmailListPanel({
                 <div key={thread.threadId}>
                   {showPinnedDivider && (
                     <div className="px-4 py-1 text-[10px] tracking-widest text-stone-400 dark:text-stone-400 border-y border-stone-300 dark:border-stone-500">
-                      // pinned
+                      {"// pinned"}
                     </div>
                   )}
                   {showRestDivider && (
                     <div className="px-4 py-1 text-[10px] tracking-widest text-stone-400 dark:text-stone-400 border-y border-stone-300 dark:border-stone-500">
-                      // all mail
+                      {"// all mail"}
                     </div>
                   )}
 
