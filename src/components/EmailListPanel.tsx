@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
+import { useUnreadCount } from "@/components/UnreadCountProvider";
+import UnreadCountBadge from "@/components/UnreadCountBadge";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Email } from "@/lib/types";
-import { isPinned, mergeEmailUpdates, groupIntoThreads, ThreadSummary } from "@/lib/emailList";
-import { formatAddressList, formatDate } from "@/lib/format";
-import { markEmailAsRead } from "@/app/(inbox)/email/[id]/actions";
-import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox, togglePinAction } from "@/app/(inbox)/actions";
+import { isPinned, mergeEmailUpdates, groupIntoThreads } from "@/lib/emailList";
+import { formatDate } from "@/lib/format";
+import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox } from "@/app/(inbox)/actions";
 import { deleteDraftAction } from "@/app/compose/actions";
+import { dispatchUnreadCountEvent, getReadEmailIds, getUnreadEmailIds, isEmailUnread } from "@/lib/unreadCount";
 
 interface Props {
   unreads: Email[];
@@ -183,7 +185,7 @@ export default function EmailListPanel({
     setExtraReads((prev) => mergeEmailUpdates(prev, fresh));
     // Server state is authoritative after a refresh; clear optimistic removals
     setArchivedIds(new Set());
-  }, [unreads, reads, pinnedEmails]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [unreads, reads, pinnedEmails]);
 
   // -------------------------------------------------------------------------
   // Drafts — local copy for optimistic deletion
@@ -209,14 +211,6 @@ export default function EmailListPanel({
   const [isPending, startTransition] = useTransition();
   const refreshTimer1 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const refreshTimer2 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  function toggleSelection(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -309,7 +303,7 @@ export default function EmailListPanel({
   const hasMoreReads = loadedReads < readTotal;
   const hasMore = !isInSearchMode && (hasMoreUnreads || hasMoreReads);
 
-  const unreadCount = unreadTotal;
+  const unreadCount = useUnreadCount();
   const pinnedThreadCount = isInSearchMode
     ? 0
     : visibleThreads.filter((t) => t.isPinned).length;
@@ -342,15 +336,19 @@ export default function EmailListPanel({
       ? visibleThreads.find((t) => t.latestEmail.id === selectedEmailId)
       : undefined;
     if (!thread) return;
-    const unreadIds = thread.allEmails
-      .filter(
-        (e) =>
-          (!e.keywords?.["$seen"] || clientUnreadIds.has(e.id)) &&
-          !clientReadIds.has(e.id)
-      )
-      .map((e) => e.id);
+    const unreadIds = getUnreadEmailIds(
+      thread.allEmails,
+      clientReadIds,
+      clientUnreadIds
+    );
     if (unreadIds.length > 0) {
       setClientReadIds((prev) => new Set([...prev, ...unreadIds]));
+      setClientUnreadIds((prev) => {
+        const next = new Set(prev);
+        unreadIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      dispatchUnreadCountEvent("read", unreadIds);
       bulkMarkAsRead(unreadIds);
     }
   }, [selectedThreadId, selectedEmailId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -417,19 +415,25 @@ export default function EmailListPanel({
   );
 
   async function handleBulkMarkRead() {
-    const ids = [...selectedIds];
+    const selectedEmails = visibleEmails.filter((email) => selectedIds.has(email.id));
+    const ids = getUnreadEmailIds(selectedEmails, clientReadIds, clientUnreadIds);
+    clearSelection();
+    if (ids.length === 0) return;
     setClientReadIds((prev) => new Set([...prev, ...ids]));
     setClientUnreadIds((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
-    clearSelection();
+    dispatchUnreadCountEvent("read", ids);
     await bulkMarkAsRead(ids);
     router.refresh();
   }
 
   async function handleBulkMarkUnread() {
-    const ids = [...selectedIds];
+    const selectedEmails = visibleEmails.filter((email) => selectedIds.has(email.id));
+    const ids = getReadEmailIds(selectedEmails, clientReadIds, clientUnreadIds);
+    clearSelection();
+    if (ids.length === 0) return;
     setClientUnreadIds((prev) => new Set([...prev, ...ids]));
     setClientReadIds((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
-    clearSelection();
+    dispatchUnreadCountEvent("unread", ids);
     await bulkMarkAsUnread(ids);
     router.refresh();
   }
@@ -468,9 +472,14 @@ export default function EmailListPanel({
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-700 shrink-0">
-        <span className="text-sm font-semibold text-stone-700 dark:text-stone-300 capitalize">
-          {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : "Sent"}
-        </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-semibold text-stone-700 dark:text-stone-300 capitalize">
+            {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : "Sent"}
+          </span>
+          {view === "inbox" && (
+            <UnreadCountBadge count={unreadCount} showZero className="shrink-0" />
+          )}
+        </div>
         <div className="flex items-center gap-1">
           {view === "inbox" && (
             <button
@@ -638,10 +647,8 @@ export default function EmailListPanel({
                 thread.latestEmail.id === selectedEmailId;
               const isChecked = thread.allEmails.some((e) => selectedIds.has(e.id));
               const isUnread =
-                thread.allEmails.some(
-                  (e) =>
-                    (clientUnreadIds.has(e.id) || !e.keywords?.["$seen"]) &&
-                    !clientReadIds.has(e.id)
+                thread.allEmails.some((email) =>
+                  isEmailUnread(email, clientReadIds, clientUnreadIds)
                 ) && !isRouteSelected;
 
               const showPinnedDivider =

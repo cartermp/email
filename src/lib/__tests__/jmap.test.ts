@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getAccountId, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox, sendEmail, deleteDraft } from "../jmap";
+import { getAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox, sendEmail, deleteDraft } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -116,6 +116,14 @@ describe("listInboxEmails", () => {
     assert.deepEqual(calls[2][1].sort, expectedSort);
   });
 
+  it("requests totals for both unread and read queries", async () => {
+    setupMock([], 0, [], 0);
+    await listInboxEmails("https://api.example.com/jmap", "acct1", "mbox1");
+    const calls = (capturedBodies[0] as any).methodCalls;
+    assert.equal(calls[0][1].calculateTotal, true);
+    assert.equal(calls[2][1].calculateTotal, true);
+  });
+
   it("uses distinct method call IDs for each call", async () => {
     setupMock([], 0, [], 0);
     await listInboxEmails("https://api.example.com/jmap", "acct1", "mbox1");
@@ -210,6 +218,13 @@ describe("loadMoreEmailsFiltered", () => {
     assert.deepEqual(call[1].sort, [{ property: "receivedAt", isAscending: false }]);
   });
 
+  it("requests the filtered total from JMAP", async () => {
+    setupMock([], 0);
+    await loadMoreEmailsFiltered("https://api.example.com/jmap", "acct1", "mbox1", "read", 0);
+    const call = (capturedBodies[0] as any).methodCalls[0];
+    assert.equal(call[1].calculateTotal, true);
+  });
+
   it("returns emails and total from the response", async () => {
     const email = makeEmailResponse("e1", false);
     setupMock([email], 99);
@@ -224,6 +239,25 @@ describe("loadMoreEmailsFiltered", () => {
     const result = await loadMoreEmailsFiltered("https://api.example.com/jmap", "acct1", "mbox1", "read", 0);
     assert.deepEqual(result.emails, []);
     assert.equal(result.total, 0);
+  });
+});
+
+describe("getUnreadInboxTotal", () => {
+  function setupMock(total: number) {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/queryResponse", { ids: [], total }, "uq"],
+      ]),
+    ];
+  }
+
+  it("requests total calculation and returns the unread total", async () => {
+    setupMock(4);
+    const result = await getUnreadInboxTotal("https://api.example.com/jmap", "acct1", "mbox1");
+    const call = (capturedBodies[0] as any).methodCalls[0];
+    assert.equal(call[1].calculateTotal, true);
+    assert.equal(result, 4);
   });
 });
 

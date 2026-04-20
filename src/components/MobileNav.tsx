@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useUnreadCount } from "@/components/UnreadCountProvider";
+import UnreadCountBadge from "@/components/UnreadCountBadge";
 
 function InboxIcon() {
   return (
@@ -51,43 +53,53 @@ function SettingsIcon() {
 
 export default function MobileNav() {
   const pathname = usePathname();
+  const unreadTotal = useUnreadCount();
 
   const tabs = [
     {
       href: "/",
       label: "Inbox",
       icon: <InboxIcon />,
-      active: pathname === "/" || pathname.startsWith("/email/"),
+      active:
+        pathname === "/" ||
+        pathname.startsWith("/email/") ||
+        pathname.startsWith("/thread/") ||
+        pathname.startsWith("/attachment/"),
+      badge: unreadTotal,
     },
     {
       href: "/drafts",
       label: "Drafts",
       icon: <DraftsIcon />,
       active: pathname.startsWith("/drafts"),
+      badge: 0,
     },
     {
       href: "/sent",
       label: "Sent",
       icon: <SentIcon />,
       active: pathname.startsWith("/sent"),
+      badge: 0,
     },
     {
       href: "/compose",
       label: "Compose",
       icon: <ComposeIcon />,
       active: pathname.startsWith("/compose"),
+      badge: 0,
     },
     {
       href: "/settings",
       label: "Settings",
       icon: <SettingsIcon />,
       active: pathname.startsWith("/settings"),
+      badge: 0,
     },
   ];
 
   return (
     <nav className="md:hidden shrink-0 flex border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950">
-      {tabs.map(({ href, label, icon, active }) => (
+      {tabs.map(({ href, label, icon, active, badge }) => (
         <Link
           key={href}
           href={href}
@@ -98,7 +110,15 @@ export default function MobileNav() {
               : "text-stone-400 dark:text-stone-600",
           ].join(" ")}
         >
-          {icon}
+          <span className="relative inline-flex">
+            {icon}
+            {badge > 0 && (
+              <UnreadCountBadge
+                count={badge}
+                className="absolute -right-3 -top-2 min-w-4 px-1 text-[9px]"
+              />
+            )}
+          </span>
           {label}
         </Link>
       ))}

@@ -104,6 +104,7 @@ export async function listEmails(
         accountId,
         filter: { inMailbox: mailboxId },
         sort: [{ property: "receivedAt", isAscending: false }],
+        calculateTotal: true,
         limit,
         position,
       },
@@ -143,6 +144,7 @@ export async function listInboxEmails(
       accountId,
       filter: { inMailbox: mailboxId, notKeyword: "$seen" },
       sort: [{ property: "receivedAt", isAscending: false }],
+      calculateTotal: true,
       limit, position: 0,
     }, "uq"],
     ["Email/get", {
@@ -154,6 +156,7 @@ export async function listInboxEmails(
       accountId,
       filter: { inMailbox: mailboxId, hasKeyword: "$seen" },
       sort: [{ property: "receivedAt", isAscending: false }],
+      calculateTotal: true,
       limit, position: 0,
     }, "rq"],
     ["Email/get", {
@@ -177,6 +180,33 @@ export async function listInboxEmails(
   return { unreads, unreadTotal, reads, readTotal };
 }
 
+export async function getUnreadInboxTotal(
+  apiUrl: string,
+  accountId: string,
+  mailboxId: string
+): Promise<number> {
+  const t = Date.now();
+  const data = await jmapCall(apiUrl, [[
+    "Email/query",
+    {
+      accountId,
+      filter: { inMailbox: mailboxId, notKeyword: "$seen" },
+      sort: [{ property: "receivedAt", isAscending: false }],
+      calculateTotal: true,
+      limit: 1,
+      position: 0,
+    },
+    "uq",
+  ]]);
+  const [, result] = data.methodResponses[0];
+  const unreadTotal = (result.total as number) ?? 0;
+  log.info(
+    { mailbox_id: mailboxId, unread_total: unreadTotal, duration_ms: Date.now() - t },
+    "jmap.unread_total"
+  );
+  return unreadTotal;
+}
+
 export async function loadMoreEmailsFiltered(
   apiUrl: string,
   accountId: string,
@@ -194,6 +224,7 @@ export async function loadMoreEmailsFiltered(
       accountId,
       filter: jmapFilter,
       sort: [{ property: "receivedAt", isAscending: false }],
+      calculateTotal: true,
       limit, position,
     }, "0"],
     ["Email/get", {
@@ -407,12 +438,13 @@ export async function listDrafts(
   const data = await jmapCall(apiUrl, [
     [
       "Email/query",
-      {
-        accountId,
-        filter: { inMailbox: draftsMailboxId },
-        sort: [{ property: "receivedAt", isAscending: false }],
-        limit: 50,
-      },
+        {
+          accountId,
+          filter: { inMailbox: draftsMailboxId },
+          sort: [{ property: "receivedAt", isAscending: false }],
+          calculateTotal: true,
+          limit: 50,
+        },
       "0",
     ],
     [
@@ -446,13 +478,14 @@ export async function listSentEmails(
   const data = await jmapCall(apiUrl, [
     [
       "Email/query",
-      {
-        accountId,
-        filter: { inMailbox: sentMailboxId },
-        sort: [{ property: "receivedAt", isAscending: false }],
-        limit,
-        position: 0,
-      },
+        {
+          accountId,
+          filter: { inMailbox: sentMailboxId },
+          sort: [{ property: "receivedAt", isAscending: false }],
+          calculateTotal: true,
+          limit,
+          position: 0,
+        },
       "q",
     ],
     [

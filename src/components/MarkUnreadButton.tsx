@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { markEmailAsUnread } from "@/app/(inbox)/email/[id]/actions";
+import { dispatchUnreadCountEvent } from "@/lib/unreadCount";
 
 interface Props {
   emailId: string;
@@ -17,6 +18,7 @@ export default function MarkUnreadButton({ emailId }: Props) {
       await markEmailAsUnread(emailId);
       // Signal EmailListPanel to remove this email from its optimistic-read set
       window.dispatchEvent(new CustomEvent("email-mark-unread", { detail: emailId }));
+      dispatchUnreadCountEvent("unread", [emailId]);
       router.push("/");
     });
   }
