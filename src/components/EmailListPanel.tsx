@@ -304,6 +304,7 @@ export default function EmailListPanel({
   const hasMore = !isInSearchMode && (hasMoreUnreads || hasMoreReads);
 
   const unreadCount = useUnreadCount();
+  const draftCount = draftsList.length;
   const pinnedThreadCount = isInSearchMode
     ? 0
     : visibleThreads.filter((t) => t.isPinned).length;
@@ -478,6 +479,9 @@ export default function EmailListPanel({
           </span>
           {view === "inbox" && (
             <UnreadCountBadge count={unreadCount} showZero className="shrink-0" />
+          )}
+          {view === "drafts" && (
+            <UnreadCountBadge count={draftCount} showZero className="shrink-0" />
           )}
         </div>
         <div className="flex items-center gap-1">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { auth, signOut } from "@/auth";
 import LiveUnreadCountBadge from "@/components/LiveUnreadCountBadge";
 import MobileNav from "@/components/MobileNav";
+import UnreadCountBadge from "@/components/UnreadCountBadge";
 import UnreadCountProvider from "@/components/UnreadCountProvider";
 import { getAccountId, getMailboxes, getSession as getJmapSession } from "@/lib/jmap";
 import "./globals.css";
@@ -27,13 +28,16 @@ export default async function RootLayout({
 }) {
   const session = await auth();
   let unreadTotal = 0;
+  let draftTotal = 0;
 
   if (session) {
     const jmapSession = await getJmapSession();
     const accountId = getAccountId(jmapSession);
     const mailboxes = await getMailboxes(jmapSession.apiUrl, accountId);
     const inboxMailbox = mailboxes.find((mailbox) => mailbox.role === "inbox");
+    const draftsMailbox = mailboxes.find((mailbox) => mailbox.role === "drafts");
     unreadTotal = inboxMailbox?.unreadEmails ?? 0;
+    draftTotal = draftsMailbox?.totalEmails ?? 0;
   }
 
   return (
@@ -61,9 +65,10 @@ export default async function RootLayout({
                 </Link>
                 <Link
                   href="/drafts"
-                  className="text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="flex items-center justify-between gap-2 text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
                 >
-                  [DRAFTS]
+                  <span>[DRAFTS]</span>
+                  <UnreadCountBadge count={draftTotal} className="shrink-0" />
                 </Link>
                 <Link
                   href="/sent"
@@ -103,7 +108,7 @@ export default async function RootLayout({
           </div>
 
           {/* Mobile bottom nav — hidden on desktop */}
-          <div className="print:hidden"><MobileNav /></div>
+          <div className="print:hidden"><MobileNav draftTotal={draftTotal} /></div>
         </UnreadCountProvider>
       </body>
     </html>

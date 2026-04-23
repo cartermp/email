@@ -51,7 +51,11 @@ function SettingsIcon() {
   );
 }
 
-export default function MobileNav() {
+interface Props {
+  draftTotal?: number;
+}
+
+export default function MobileNav({ draftTotal = 0 }: Props) {
   const pathname = usePathname();
   const unreadTotal = useUnreadCount();
 
@@ -72,7 +76,7 @@ export default function MobileNav() {
       label: "Drafts",
       icon: <DraftsIcon />,
       active: pathname.startsWith("/drafts"),
-      badge: 0,
+      badge: draftTotal,
     },
     {
       href: "/sent",
