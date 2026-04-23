@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
+import { wrapComposePreviewHtml, wrapEmailHtml } from "@/lib/composeHtml";
+import { normalizeComposeMarkdown } from "@/lib/compose";
 
 // ---------------------------------------------------------------------------
 // RecipientInput — text input with contact autocomplete dropdown
@@ -262,19 +264,19 @@ export default function Composer({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const html = await marked.parse(markdown);
+      const html = await marked.parse(normalizeComposeMarkdown(markdown));
       const withImages = replacePlaceholders(html, (id) => {
         return inlineImages.find((img) => img.id === id)?.dataUrl ?? "";
       });
       const body = forwardedHtml
         ? withImages + appendForwardedHtml(forwardedHtml)
         : withImages;
-      if (!cancelled) setPreview(wrapEmailHtml(body));
+      if (!cancelled) setPreview(wrapComposePreviewHtml(body));
     })();
     return () => {
       cancelled = true;
     };
-  }, [markdown, inlineImages]);
+  }, [markdown, inlineImages, forwardedHtml]);
 
   // Auto-save: debounce 2s after any content change
   useEffect(() => {
@@ -435,11 +437,7 @@ export default function Composer({
     setError(null);
     setSending(true);
     try {
-      // Ensure the email signature separator (-- ) is always preceded by a
-      // blank line. Without this, a single newline before "-- " causes marked
-      // to treat the preceding text as a setext h2 heading.
-      const safeMarkdown = markdown.replace(/([^\n])\n(-- )/g, "$1\n\n$2");
-      const rawHtml = await marked.parse(safeMarkdown);
+      const rawHtml = await marked.parse(normalizeComposeMarkdown(markdown));
       const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
       const composedBody = forwardedHtml
         ? htmlWithCids + appendForwardedHtml(forwardedHtml)
@@ -507,11 +505,20 @@ export default function Composer({
     showBcc,
     subject,
     markdown,
+    forwardedHtml,
     uploading,
     inReplyToId,
     replyThreadId,
     router,
   ]);
+
+  const handleComposerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key !== "Enter") return;
+    if (!e.metaKey && !e.ctrlKey) return;
+    e.preventDefault();
+    handleSend();
+  }, [handleSend]);
 
   if (sent) {
     return (
@@ -547,7 +554,7 @@ export default function Composer({
   const rowClass = "flex items-center px-6 py-2 gap-3";
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-stone-900">
+    <div className="flex flex-col h-full bg-white dark:bg-stone-900" onKeyDown={handleComposerKeyDown}>
       {/* Header fields */}
       <div className="border-b border-stone-200 dark:border-stone-800 divide-y divide-stone-100 dark:divide-stone-800">
         {identities.length > 1 && (
@@ -681,12 +688,6 @@ export default function Composer({
             ref={textareaRef}
             value={markdown}
             onChange={(e) => setMarkdown(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.metaKey && e.key === "Enter") {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
             onPaste={handlePaste}
             placeholder={
               "Write your email in Markdown…\n\n**Bold**, *italic*, `code`, lists, links — all supported.\nPaste an image anywhere to embed it."
@@ -773,32 +774,6 @@ export default function Composer({
   );
 }
 
-function wrapEmailHtml(body: string): string {
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; color: #1a1a1a; max-width: 640px; margin: 0 auto; padding: 24px; }
-  h1 { font-size: 1.3em; font-weight: 600; margin: 1.5em 0 0.5em; }
-  h2 { font-size: 1.15em; font-weight: 600; margin: 1.5em 0 0.5em; }
-  h3 { font-size: 1em; font-weight: 600; margin: 1.5em 0 0.5em; }
-  p { margin: 0 0 1em; }
-  img { max-width: 100%; height: auto; display: block; margin: 1em 0; }
-  code { font-family: monospace; background: #f4f4f5; padding: 2px 5px; border-radius: 3px; font-size: 0.9em; }
-  pre { background: #f4f4f5; padding: 12px 16px; border-radius: 6px; overflow-x: auto; }
-  pre code { background: none; padding: 0; }
-  blockquote { border-left: 3px solid #d4d4d8; margin: 0 0 1em; padding: 4px 16px; color: #71717a; }
-  a { color: #2563eb; }
-  ul, ol { padding-left: 1.5em; margin: 0 0 1em; }
-  li { margin-bottom: 0.25em; }
-  hr { border: none; border-top: 1px solid #e4e4e7; margin: 1.5em 0; }
-</style>
-</head>
-<body>${body}</body>
-</html>`;
-}
-
 // Extract the <body> content from a full HTML document, or return the input
 // as-is if no <body> tag is found (e.g. HTML fragments).
 function extractBodyContent(html: string): string {
@@ -816,5 +791,5 @@ function extractBodyContent(html: string): string {
 // The original email is rendered in a visually separated block.
 function appendForwardedHtml(originalHtml: string): string {
   const content = extractBodyContent(originalHtml);
-  return `<div style="margin-top:24px;padding-top:16px;border-top:1px solid #e4e4e7;font-size:14px;">${content}</div>`;
+  return `<div data-forwarded-email="true" style="margin-top:24px;padding-top:16px;border-top:1px solid #e4e4e7;font-size:14px;">${content}</div>`;
 }

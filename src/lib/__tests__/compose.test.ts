@@ -7,6 +7,7 @@ import {
   buildReplyQuote,
   buildForwardQuote,
   htmlToPlainText,
+  normalizeComposeMarkdown,
   stripSignatureSeparator,
 } from "../compose";
 
@@ -193,5 +194,28 @@ describe("stripSignatureSeparator", () => {
 
   it("trims leading whitespace after stripping the separator", () => {
     assert.equal(stripSignatureSeparator("-- \n  Phillip"), "Phillip");
+  });
+});
+
+describe("normalizeComposeMarkdown", () => {
+  it("escapes standalone signature separator lines", () => {
+    assert.equal(
+      normalizeComposeMarkdown("Hello\n-- \nPhillip"),
+      "Hello\n&#45;&#45;\nPhillip"
+    );
+  });
+
+  it("escapes signature separators without trailing spaces", () => {
+    assert.equal(
+      normalizeComposeMarkdown("Hello\n--\nPhillip"),
+      "Hello\n&#45;&#45;\nPhillip"
+    );
+  });
+
+  it("does not alter other markdown content", () => {
+    assert.equal(
+      normalizeComposeMarkdown("## Heading\n\n---\n\nvalue -- detail"),
+      "## Heading\n\n---\n\nvalue -- detail"
+    );
   });
 });

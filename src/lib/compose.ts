@@ -63,6 +63,14 @@ export function stripSignatureSeparator(sig: string): string {
   return sig.replace(/^(--[ \t]*\r?\n)+/, "").trimStart();
 }
 
+/**
+ * Escape RFC-3676 signature separator lines so markdown renderers do not
+ * interpret them as Setext heading underlines.
+ */
+export function normalizeComposeMarkdown(markdown: string): string {
+  return markdown.replace(/^--[ \t]*$/gm, "&#45;&#45;");
+}
+
 export function buildForwardQuote({
   from,
   to,
