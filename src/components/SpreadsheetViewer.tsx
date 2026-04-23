@@ -8,6 +8,7 @@ import {
   columnNumberToName,
   parseSpreadsheetWorkbook,
 } from "@/lib/spreadsheet";
+import useBodyClass from "@/components/useBodyClass";
 
 interface Props {
   attachmentName?: string;
@@ -36,6 +37,8 @@ export default function SpreadsheetViewer({
   const [error, setError] = useState<string | null>(null);
   const [activeSheetIndex, setActiveSheetIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  useBodyClass("rich-content-open");
 
   useEffect(() => {
     if (!onClose) return;

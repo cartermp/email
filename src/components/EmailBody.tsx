@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import useBodyClass from "@/components/useBodyClass";
 import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 
 interface Props {
@@ -13,6 +14,8 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastDimsRef = useRef({ h: 0, w: 0 });
+
+  useBodyClass("rich-content-open");
 
   useEffect(() => {
     lastDimsRef.current = { h: 0, w: 0 };

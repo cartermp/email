@@ -79,6 +79,10 @@ body::after {
   );
 }
 
+body.rich-content-open::after {
+  display: none;
+}
+
 /* Dark mode: subtle phosphor glow on body text */
 @media (prefers-color-scheme: dark) {
   body {

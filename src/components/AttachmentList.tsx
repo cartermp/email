@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import SpreadsheetViewer from "@/components/SpreadsheetViewer";
+import useBodyClass from "@/components/useBodyClass";
 import { isSpreadsheetAttachment } from "@/lib/spreadsheet";
 import { EmailBodyPart } from "@/lib/types";
 
@@ -38,6 +39,8 @@ interface PdfModalProps {
 
 function PdfModal({ attachment, onClose }: PdfModalProps) {
   const name = attachment.name ?? "document.pdf";
+
+  useBodyClass("rich-content-open");
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
