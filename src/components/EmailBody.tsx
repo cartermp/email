@@ -27,6 +27,7 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
       const wrapper = wrapperRef.current;
       if (!iframe || !wrapper) return;
       if (e.source !== iframe.contentWindow) return;
+      if (e.origin !== "null") return;
       if (e.data?.type !== "iframe-resize") return;
 
       const naturalH: number = e.data.height;
@@ -74,7 +75,7 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
         ref={iframeRef}
         srcDoc={srcDoc}
         className="w-full border-0 block"
-        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+        sandbox="allow-scripts allow-popups"
         title="Email content"
       />
     </div>

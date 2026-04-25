@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { getAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, setKeywordsOnMany, moveEmailsToMailbox, sendEmail, deleteDraft } from "../jmap";
+import { deleteDraft, getAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -61,6 +61,19 @@ describe("getAccountId", () => {
   it("throws when primaryAccounts is empty", () => {
     const session = { primaryAccounts: { "urn:ietf:params:jmap:core": "x" } } as any;
     assert.throws(() => getAccountId(session));
+  });
+});
+
+describe("parseAddresses", () => {
+  it("parses display names and bare addresses", () => {
+    assert.deepEqual(parseAddresses(["Alice Example <alice@example.com>", "bob@example.com"]), [
+      { name: "Alice Example", email: "alice@example.com" },
+      { name: null, email: "bob@example.com" },
+    ]);
+  });
+
+  it("throws on invalid email addresses", () => {
+    assert.throws(() => parseAddresses(["definitely not an email"]), /Invalid email address/);
   });
 });
 

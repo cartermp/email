@@ -1,15 +1,117 @@
+import { JSDOM } from "jsdom";
 import { Email } from "@/lib/types";
 
+const BLOCKED_TAGS = [
+  "applet",
+  "base",
+  "button",
+  "embed",
+  "form",
+  "frame",
+  "frameset",
+  "iframe",
+  "input",
+  "link",
+  "meta",
+  "noscript",
+  "object",
+  "script",
+  "select",
+  "source",
+  "style",
+  "textarea",
+];
+
+const URL_ATTRIBUTES = new Set([
+  "action",
+  "formaction",
+  "href",
+  "poster",
+  "src",
+  "xlink:href",
+]);
+
+const SAFE_DATA_URL_RE = /^data:image\/(?:bmp|gif|jpeg|jpg|png|webp);base64,[a-z0-9+/=\s]+$/i;
+
+function sanitizeCss(css: string): string {
+  return css
+    .replace(/@import[\s\S]*?;/gi, "")
+    .replace(/url\s*\((?:[^)(]|\([^)(]*\))*\)/gi, "")
+    .replace(/expression\s*\([^)]*\)/gi, "")
+    .replace(/behavior\s*:[^;"}]+;?/gi, "")
+    .replace(/-moz-binding\s*:[^;"}]+;?/gi, "")
+    .trim();
+}
+
+function sanitizeUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../")
+  ) {
+    return trimmed;
+  }
+  if (trimmed.startsWith("cid:")) return trimmed;
+  if (trimmed.startsWith("mailto:") || trimmed.startsWith("tel:")) return trimmed;
+  if (/^data:/i.test(trimmed)) {
+    return SAFE_DATA_URL_RE.test(trimmed) ? trimmed : null;
+  }
+
+  try {
+    const hasExplicitScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed);
+    const parsed = new URL(trimmed, "https://email.invalid");
+    if (!hasExplicitScheme && !trimmed.startsWith("//")) return trimmed;
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Server-side HTML sanitizer — no DOM required.
- * Strips scripts and event handlers; keeps styles and layout intact.
+ * Server-side HTML sanitizer for print views.
+ * Parses untrusted email HTML, removes active content, and strips dangerous URL/CSS vectors.
  */
 export function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/\s+on[a-zA-Z]+\s*=\s*"[^"]*"/gi, "")
-    .replace(/\s+on[a-zA-Z]+\s*=\s*'[^']*'/gi, "")
-    .replace(/(href|src|action)\s*=\s*["']?\s*javascript:[^"'\s>]*/gi, "$1=\"#\"");
+  const dom = new JSDOM(html);
+  const { document } = dom.window;
+
+  for (const tag of BLOCKED_TAGS) {
+    document.querySelectorAll(tag).forEach((element) => element.remove());
+  }
+
+  document.querySelectorAll("*").forEach((element) => {
+    for (const attr of Array.from(element.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith("on") || name === "srcdoc" || name === "srcset") {
+        element.removeAttribute(attr.name);
+        continue;
+      }
+
+      if (name === "style") {
+        const sanitizedStyle = sanitizeCss(attr.value);
+        if (sanitizedStyle) {
+          element.setAttribute("style", sanitizedStyle);
+        } else {
+          element.removeAttribute(attr.name);
+        }
+        continue;
+      }
+
+      if (URL_ATTRIBUTES.has(name)) {
+        const sanitizedUrl = sanitizeUrl(attr.value);
+        if (sanitizedUrl === null) {
+          element.removeAttribute(attr.name);
+        } else {
+          element.setAttribute(attr.name, sanitizedUrl);
+        }
+      }
+    }
+  });
+
+  return document.documentElement.outerHTML;
 }
 
 export function extractStyles(html: string): string {
@@ -17,7 +119,7 @@ export function extractStyles(html: string): string {
   const re = /<style[^>]*>([\s\S]*?)<\/style>/gi;
   let m;
   while ((m = re.exec(html)) !== null) out.push(m[1]);
-  return out.join("\n");
+  return sanitizeCss(out.join("\n"));
 }
 
 export function extractBodyContent(html: string): string {
@@ -58,7 +160,7 @@ export function resolvePrintBody(email: Email): {
     const sanitized = sanitizeHtml(rawBody);
     return {
       bodyHtml: extractBodyContent(sanitized),
-      emailStyles: extractStyles(sanitized),
+      emailStyles: extractStyles(rawBody),
       bodyType,
     };
   }

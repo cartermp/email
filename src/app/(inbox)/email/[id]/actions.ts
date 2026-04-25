@@ -1,21 +1,27 @@
 "use server";
 
+import { auth } from "@/auth";
 import { getSession, getAccountId, getIdentities, getMailboxes, markAsRead, markAsUnread, sendCalendarReply, setKeywordsOnMany } from "@/lib/jmap";
 import { parseIcs, buildCalendarReply } from "@/lib/ics";
 import { log } from "@/lib/logger";
 
+async function requireAuthedJmap() {
+  const sessionData = await auth();
+  if (!sessionData?.user) throw new Error("Unauthorized");
+  const session = await getSession();
+  return { session, accountId: getAccountId(session) };
+}
+
 export async function markEmailAsRead(emailId: string): Promise<void> {
   const t = Date.now();
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await requireAuthedJmap();
   await markAsRead(session.apiUrl, accountId, emailId);
   log.info({ email_id: emailId, duration_ms: Date.now() - t }, "action.mark_read");
 }
 
 export async function markEmailAsUnread(emailId: string): Promise<void> {
   const t = Date.now();
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await requireAuthedJmap();
   await markAsUnread(session.apiUrl, accountId, emailId);
   log.info({ email_id: emailId, duration_ms: Date.now() - t }, "action.mark_unread");
 }
@@ -27,8 +33,7 @@ export async function sendCalendarReplyAction(
   inReplyToMessageId?: string
 ): Promise<void> {
   const t = Date.now();
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await requireAuthedJmap();
   const [identities, mailboxes] = await Promise.all([
     getIdentities(session.apiUrl, accountId),
     getMailboxes(session.apiUrl, accountId),
@@ -80,11 +85,8 @@ export async function sendCalendarReplyAction(
 
   log.info({
     response,
-    event_summary: event.summary,
-    event_start: event.dtStart,
-    organizer: to.email,
-    from: identity.email,
-    in_reply_to_message_id: inReplyToMessageId,
+    has_organizer: !!event.organizer?.email,
+    has_in_reply_to_message_id: !!inReplyToMessageId,
     duration_ms: Date.now() - t,
   }, "action.calendar_reply");
 }

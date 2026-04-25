@@ -650,9 +650,15 @@ export interface InlineImage {
 
 export function parseAddresses(addrs: string[]): { name: string | null; email: string }[] {
   return addrs.map((addr) => {
+    const validateEmail = (value: string) => {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        throw new Error(`Invalid email address: ${value}`);
+      }
+      return value;
+    };
     const m = addr.match(/^(.+?)\s*<(.+?)>$/);
-    if (m) return { name: m[1].trim(), email: m[2].trim() };
-    return { name: null, email: addr.trim() };
+    if (m) return { name: m[1].trim(), email: validateEmail(m[2].trim()) };
+    return { name: null, email: validateEmail(addr.trim()) };
   });
 }
 
@@ -925,7 +931,7 @@ export async function searchContacts(
   const duration_ms = Date.now() - t;
 
   if (!res.ok) {
-    log.warn({ query, http_status: res.status, duration_ms }, "jmap.contacts.error");
+    log.warn({ query_len: query.length, http_status: res.status, duration_ms }, "jmap.contacts.error");
     return [];
   }
 
@@ -941,6 +947,6 @@ export async function searchContacts(
     }
   }
 
-  log.info({ query, results: results.length, duration_ms }, "jmap.contacts");
+  log.info({ query_len: query.length, results: results.length, duration_ms }, "jmap.contacts");
   return results;
 }

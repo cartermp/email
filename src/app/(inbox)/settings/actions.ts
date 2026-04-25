@@ -1,11 +1,14 @@
 "use server";
 
+import { auth } from "@/auth";
 import { getSession, getAccountId, getIdentities, updateIdentitySignature } from "@/lib/jmap";
 import { revalidatePath } from "next/cache";
 import { log } from "@/lib/logger";
 
 export async function saveSignatureAction(signature: string): Promise<void> {
   const t = Date.now();
+  const sessionData = await auth();
+  if (!sessionData?.user) throw new Error("Unauthorized");
   const session = await getSession();
   const accountId = getAccountId(session);
   const identities = await getIdentities(session.apiUrl, accountId);

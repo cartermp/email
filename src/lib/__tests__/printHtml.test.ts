@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { sanitizeHtml, extractStyles, extractBodyContent, resolvePrintBody } from "../printHtml";
+import type { Email } from "../types";
 
 // ---------------------------------------------------------------------------
 // sanitizeHtml
@@ -49,27 +50,35 @@ describe("sanitizeHtml", () => {
   it("rewrites javascript: href to #", () => {
     const result = sanitizeHtml('<a href="javascript:void(0)">click</a>');
     assert.ok(!result.includes("javascript:"), "javascript: URI should be removed");
-    assert.ok(result.includes('href="#"'), "href should be replaced with #");
+    assert.ok(!result.includes('href="javascript:void(0)"'), "unsafe href should be removed");
   });
 
-  it("rewrites javascript: in src attributes", () => {
+  it("removes blocked iframe tags entirely", () => {
     const result = sanitizeHtml('<iframe src="javascript:alert(1)"></iframe>');
-    assert.ok(!result.includes("javascript:"));
+    assert.ok(!result.includes("<iframe"));
+  });
+
+  it("removes unquoted event handlers", () => {
+    const result = sanitizeHtml("<img src=x onerror=alert(1)>");
+    assert.ok(!result.includes("onerror"));
+    assert.ok(!result.includes("alert(1)"));
   });
 
   it("leaves normal https links untouched", () => {
     const input = '<a href="https://example.com">link</a>';
-    assert.equal(sanitizeHtml(input), input);
+    assert.ok(sanitizeHtml(input).includes(input));
   });
 
-  it("preserves style tags", () => {
+  it("removes style tags from the sanitized body HTML", () => {
     const input = "<style>body { color: red; }</style><p>text</p>";
-    assert.ok(sanitizeHtml(input).includes("body { color: red; }"));
+    const result = sanitizeHtml(input);
+    assert.ok(!result.includes("<style>"));
+    assert.ok(result.includes("<p>text</p>"));
   });
 
   it("preserves HTML with no dangerous content unchanged", () => {
     const input = '<p class="intro">Hello <strong>world</strong></p>';
-    assert.equal(sanitizeHtml(input), input);
+    assert.ok(sanitizeHtml(input).includes(input));
   });
 
   it("preserves image src with normal URL", () => {
@@ -119,6 +128,13 @@ describe("extractStyles", () => {
     const html = "<html><head><style>.x { display: none }</style></head><body></body></html>";
     const result = extractStyles(html);
     assert.ok(result.includes(".x { display: none }"));
+  });
+
+  it("removes dangerous remote and executable CSS", () => {
+    const result = extractStyles("<style>@import url(https://evil.test/x.css); .x{background:url(https://evil.test/i.png); width:expression(alert(1));}</style>");
+    assert.ok(!result.includes("@import"));
+    assert.ok(!result.includes("url("));
+    assert.ok(!result.includes("expression("));
   });
 });
 
@@ -190,7 +206,7 @@ describe("resolvePrintBody", () => {
       size: 0,
       messageId: null,
       ...overrides,
-    } as any;
+    } as unknown as Email;
   }
 
   it("resolves html bodyType from htmlBody part", () => {
@@ -238,6 +254,34 @@ describe("resolvePrintBody", () => {
     });
     const { bodyHtml } = resolvePrintBody(email);
     assert.ok(!bodyHtml.includes("onclick"));
+  });
+
+  it("sanitizes unquoted event handlers out of htmlBody", () => {
+    const email = makeEmail({
+      htmlBody: [{ partId: "p1", type: "text/html" }],
+      bodyValues: { p1: { value: "<html><body><img src=x onerror=alert(1)></body></html>", charset: "utf-8", isEncodingProblem: false, isTruncated: false } },
+    });
+    const { bodyHtml } = resolvePrintBody(email);
+    assert.ok(!bodyHtml.includes("onerror"));
+    assert.ok(!bodyHtml.includes("alert(1)"));
+  });
+
+  it("drops dangerous CSS while preserving printable HTML", () => {
+    const email = makeEmail({
+      htmlBody: [{ partId: "p1", type: "text/html" }],
+      bodyValues: {
+        p1: {
+          value: '<html><head><style>@import url(https://evil.test/x.css); .hero{background:url(https://evil.test/i.png)}</style></head><body><p class="hero">safe</p></body></html>',
+          charset: "utf-8",
+          isEncodingProblem: false,
+          isTruncated: false,
+        },
+      },
+    });
+    const { bodyHtml, emailStyles } = resolvePrintBody(email);
+    assert.ok(bodyHtml.includes("<p"));
+    assert.ok(!emailStyles.includes("@import"));
+    assert.ok(!emailStyles.includes("url("));
   });
 
   it("falls back to textBody when htmlBody is empty", () => {

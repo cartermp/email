@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { getSession, getAccountId, uploadBlob } from "@/lib/jmap";
 import { log } from "@/lib/logger";
 
 export async function POST(req: NextRequest) {
   const t = Date.now();
   try {
+    const sessionData = await auth();
+    if (!sessionData?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await req.formData();
     const file = formData.get("file");
 
@@ -19,7 +25,6 @@ export async function POST(req: NextRequest) {
     const result = await uploadBlob(session.uploadUrl, accountId, buffer, file.type);
 
     log.info({
-      file_name: file.name,
       file_type: file.type,
       file_size_bytes: buffer.byteLength,
       blob_id: result.blobId,
@@ -30,6 +35,6 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     log.error({ err: message, duration_ms: Date.now() - t }, "route.upload.error");
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
 }

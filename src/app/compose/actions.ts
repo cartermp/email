@@ -1,8 +1,10 @@
 "use server";
 
+import { auth } from "@/auth";
 import {
   getSession,
   getAccountId,
+  getIdentities,
   getMailboxes,
   saveDraft,
   deleteDraft,
@@ -32,11 +34,18 @@ export async function saveDraftAction(
   input: DraftSaveInput
 ): Promise<{ draftId: string }> {
   const t = Date.now();
+  const sessionData = await auth();
+  if (!sessionData?.user) throw new Error("Unauthorized");
   const session = await getSession();
   const accountId = getAccountId(session);
-  const mailboxes = await getMailboxes(session.apiUrl, accountId);
+  const [mailboxes, identities] = await Promise.all([
+    getMailboxes(session.apiUrl, accountId),
+    getIdentities(session.apiUrl, accountId),
+  ]);
   const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
   if (!draftsMailbox) throw new Error("No drafts mailbox found");
+  const identity = identities.find((candidate) => candidate.email === input.fromEmail);
+  if (!identity) throw new Error("Invalid from address");
 
   const toAddrs = parseAddresses(splitRaw(input.to));
   const ccAddrs = parseAddresses(splitRaw(input.cc));
@@ -47,7 +56,7 @@ export async function saveDraftAction(
     accountId,
     draftsMailbox.id,
     {
-      from: { name: input.fromName, email: input.fromEmail },
+      from: { name: identity.name, email: identity.email },
       to: toAddrs,
       cc: ccAddrs,
       bcc: bccAddrs,
@@ -61,12 +70,10 @@ export async function saveDraftAction(
     is_update: !!input.draftId,
     prev_draft_id: input.draftId ?? undefined,
     new_draft_id: draftId,
-    from: input.fromEmail,
-    to: toAddrs.map((a) => a.email),
     to_count: toAddrs.length,
     cc_count: ccAddrs.length,
     bcc_count: bccAddrs.length,
-    subject: input.subject,
+    subject_len: input.subject.length,
     body_len: input.body.length,
     duration_ms: Date.now() - t,
   }, "action.save_draft");
@@ -76,6 +83,8 @@ export async function saveDraftAction(
 
 export async function deleteDraftAction(draftId: string): Promise<void> {
   const t = Date.now();
+  const sessionData = await auth();
+  if (!sessionData?.user) throw new Error("Unauthorized");
   const session = await getSession();
   const accountId = getAccountId(session);
   await deleteDraft(session.apiUrl, accountId, draftId);
