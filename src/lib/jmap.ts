@@ -909,6 +909,21 @@ interface ParseAddressOptions {
   strict?: boolean;
 }
 
+interface SuggestionCacheEntry {
+  expiresAt: number;
+  suggestions?: ContactSuggestion[];
+  promise?: Promise<ContactSuggestion[]>;
+}
+
+const CONTACT_SUGGESTIONS_CACHE_TTL_MS = 5 * 60 * 1000;
+const CORRESPONDENT_SUGGESTIONS_CACHE_TTL_MS = 2 * 60 * 1000;
+const CONTACT_CARD_PAGE_SIZE = 200;
+const RECENT_CORRESPONDENTS_LIMIT = 200;
+const recipientSuggestionCaches = {
+  contacts: new Map<string, SuggestionCacheEntry>(),
+  correspondents: new Map<string, SuggestionCacheEntry>(),
+};
+
 function normalizeSuggestionName(name: string | null | undefined, email: string): string {
   return name?.trim() || email;
 }
@@ -925,6 +940,151 @@ function dedupeSuggestions(suggestions: ContactSuggestion[], limit = 10): Contac
     if (deduped.length >= limit) break;
   }
 
+  return deduped;
+}
+
+function filterSuggestions(
+  suggestions: ContactSuggestion[],
+  query: string,
+  limit = 10
+): ContactSuggestion[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+  return dedupeSuggestions(
+    suggestions.filter((suggestion) =>
+      `${suggestion.name} ${suggestion.email}`.toLowerCase().includes(normalizedQuery)
+    ),
+    limit
+  );
+}
+
+async function getCachedSuggestions(
+  cache: Map<string, SuggestionCacheEntry>,
+  key: string,
+  ttlMs: number,
+  loader: () => Promise<ContactSuggestion[]>
+): Promise<ContactSuggestion[]> {
+  const now = Date.now();
+  const cached = cache.get(key);
+
+  if (cached?.suggestions && cached.expiresAt > now) {
+    return cached.suggestions;
+  }
+  if (cached?.promise) {
+    return cached.promise;
+  }
+
+  const promise = loader()
+    .then((suggestions) => {
+      cache.set(key, {
+        suggestions,
+        expiresAt: Date.now() + ttlMs,
+      });
+      return suggestions;
+    })
+    .catch((error) => {
+      if (cached?.suggestions) {
+        cache.set(key, cached);
+        return cached.suggestions;
+      }
+      cache.delete(key);
+      throw error;
+    });
+
+  cache.set(key, {
+    suggestions: cached?.suggestions,
+    expiresAt: cached?.expiresAt ?? 0,
+    promise,
+  });
+
+  return promise;
+}
+
+function contactCardsToSuggestions(
+  contacts: Array<{
+    name?: { full?: string | null } | null;
+    emails?: Record<string, { address?: string | null }> | null;
+  }>
+): ContactSuggestion[] {
+  const results: ContactSuggestion[] = [];
+  for (const contact of contacts) {
+    const name = contact.name?.full?.trim();
+    for (const entry of Object.values(contact.emails ?? {})) {
+      const email = entry.address?.trim();
+      if (email) {
+        results.push({ name: normalizeSuggestionName(name, email), email });
+      }
+    }
+  }
+  return results;
+}
+
+async function loadAllContactSuggestions(
+  apiUrl: string,
+  accountId: string
+): Promise<ContactSuggestion[]> {
+  const t = Date.now();
+  const suggestions: ContactSuggestion[] = [];
+  let position = 0;
+
+  while (true) {
+    const res = await fetch(apiUrl, {
+      method: "POST",
+      headers: { ...authHeader(), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        using: [
+          "urn:ietf:params:jmap:core",
+          CONTACTS_CAPABILITY,
+        ],
+        methodCalls: [
+          ["ContactCard/query", { accountId, limit: CONTACT_CARD_PAGE_SIZE, position }, "q"],
+          [
+            "ContactCard/get",
+            {
+              accountId,
+              "#ids": { resultOf: "q", name: "ContactCard/query", path: "/ids" },
+              properties: ["name", "emails"],
+            },
+            "g",
+          ],
+        ],
+      }),
+      cache: "no-store",
+    });
+
+    if (!res.ok) {
+      log.warn({
+        http_status: res.status,
+        position,
+        duration_ms: Date.now() - t,
+      }, "jmap.contacts_cache.error");
+      return [];
+    }
+
+    const data = await res.json();
+    const queryResult = (data.methodResponses?.[0]?.[1] as {
+      ids?: string[];
+      total?: number;
+    } | undefined) ?? {};
+    const contacts = ((data.methodResponses?.[1]?.[1] as {
+      list?: Array<{
+        name?: { full?: string | null } | null;
+        emails?: Record<string, { address?: string | null }> | null;
+      }>;
+    } | undefined)?.list) ?? [];
+
+    suggestions.push(...contactCardsToSuggestions(contacts));
+
+    const ids = queryResult.ids ?? [];
+    const total = queryResult.total ?? position + ids.length;
+    if (ids.length === 0 || position + ids.length >= total || ids.length < CONTACT_CARD_PAGE_SIZE) {
+      break;
+    }
+    position += ids.length;
+  }
+
+  const deduped = dedupeSuggestions(suggestions, Number.MAX_SAFE_INTEGER);
+  log.info({ results: deduped.length, duration_ms: Date.now() - t }, "jmap.contacts_cache.fill");
   return deduped;
 }
 
@@ -975,47 +1135,24 @@ export async function searchContacts(
     }>;
   } | undefined)?.list) ?? [];
 
-  const results: ContactSuggestion[] = [];
-  for (const c of contacts) {
-    const name = c.name?.full?.trim();
-    for (const entry of Object.values(c.emails ?? {})) {
-      const email = entry.address?.trim();
-      if (email) {
-        results.push({ name: normalizeSuggestionName(name, email), email });
-      }
-    }
-  }
+  const results = contactCardsToSuggestions(contacts);
 
   log.info({ query_len: query.length, results: results.length, duration_ms }, "jmap.contacts");
   return dedupeSuggestions(results);
 }
 
-async function searchRecentCorrespondents(
+async function loadRecentCorrespondentSuggestions(
   apiUrl: string,
   accountId: string,
-  query: string,
-  limit = 10
 ): Promise<ContactSuggestion[]> {
   const t = Date.now();
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) return [];
-
   const data = await jmapCall(apiUrl, [
     [
       "Email/query",
       {
         accountId,
-        filter: {
-          operator: "OR",
-          conditions: [
-            { from: query },
-            { to: query },
-            { cc: query },
-            { text: query },
-          ],
-        },
         sort: [{ property: "receivedAt", isAscending: false }],
-        limit: 20,
+        limit: RECENT_CORRESPONDENTS_LIMIT,
       },
       "q",
     ],
@@ -1045,8 +1182,6 @@ async function searchRecentCorrespondents(
       for (const address of addresses ?? []) {
         const emailAddress = address.email?.trim();
         if (!emailAddress) continue;
-        const haystack = `${address.name ?? ""} ${emailAddress}`.toLowerCase();
-        if (!haystack.includes(normalizedQuery)) continue;
         suggestions.push({
           name: normalizeSuggestionName(address.name, emailAddress),
           email: emailAddress,
@@ -1055,9 +1190,38 @@ async function searchRecentCorrespondents(
     }
   }
 
-  const deduped = dedupeSuggestions(suggestions, limit);
-  log.info({ query_len: query.length, results: deduped.length, duration_ms: Date.now() - t }, "jmap.correspondents");
+  const deduped = dedupeSuggestions(suggestions, Number.MAX_SAFE_INTEGER);
+  log.info({ results: deduped.length, duration_ms: Date.now() - t }, "jmap.correspondents_cache.fill");
   return deduped;
+}
+
+async function getCachedContactSuggestions(
+  apiUrl: string,
+  accountId: string
+): Promise<ContactSuggestion[]> {
+  return getCachedSuggestions(
+    recipientSuggestionCaches.contacts,
+    accountId,
+    CONTACT_SUGGESTIONS_CACHE_TTL_MS,
+    () => loadAllContactSuggestions(apiUrl, accountId)
+  );
+}
+
+async function getCachedRecentCorrespondentSuggestions(
+  apiUrl: string,
+  accountId: string
+): Promise<ContactSuggestion[]> {
+  return getCachedSuggestions(
+    recipientSuggestionCaches.correspondents,
+    accountId,
+    CORRESPONDENT_SUGGESTIONS_CACHE_TTL_MS,
+    () => loadRecentCorrespondentSuggestions(apiUrl, accountId)
+  );
+}
+
+export function clearRecipientSuggestionCaches(): void {
+  recipientSuggestionCaches.contacts.clear();
+  recipientSuggestionCaches.correspondents.clear();
 }
 
 export async function searchRecipientSuggestions(
@@ -1067,9 +1231,12 @@ export async function searchRecipientSuggestions(
   query: string,
   limit = 10
 ): Promise<ContactSuggestion[]> {
-  const contacts = await searchContacts(apiUrl, contactsAccountId, query);
-  if (contacts.length >= limit) return contacts.slice(0, limit);
-
-  const correspondents = await searchRecentCorrespondents(apiUrl, mailAccountId, query, limit);
-  return dedupeSuggestions([...contacts, ...correspondents], limit);
+  const [contacts, correspondents] = await Promise.all([
+    getCachedContactSuggestions(apiUrl, contactsAccountId),
+    getCachedRecentCorrespondentSuggestions(apiUrl, mailAccountId),
+  ]);
+  return dedupeSuggestions([
+    ...filterSuggestions(contacts, query, limit),
+    ...filterSuggestions(correspondents, query, limit),
+  ], limit);
 }

@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -138,21 +138,37 @@ describe("searchContacts", () => {
 });
 
 describe("searchRecipientSuggestions", () => {
-  it("falls back to recent correspondents when contacts are empty", async () => {
+  it("filters cached sources locally and reuses the cache across queries", async () => {
+    clearRecipientSuggestionCaches();
     capturedBodies = [];
     mockResponses = [
       {
         methodResponses: [
-          ["ContactCard/query", { ids: [] }, "q"],
-          ["ContactCard/get", { list: [] }, "g"],
+          ["ContactCard/query", { ids: ["c1"] }, "q"],
+          ["ContactCard/get", {
+            list: [
+              {
+                name: { full: "Alice Lyon" },
+                emails: {
+                  e1: { address: "alice@example.com" },
+                },
+              },
+            ],
+          }, "g"],
         ],
       },
       makeJmapResponse([
-        ["Email/query", { ids: ["e1"] }, "q"],
+        ["Email/query", { ids: ["e1", "e2"] }, "q"],
         ["Email/get", {
           list: [
             {
               from: [{ name: "Alyona", email: "alyona@example.com" }],
+              to: null,
+              cc: null,
+              replyTo: null,
+            },
+            {
+              from: [{ name: "Someone Else", email: "other@example.com" }],
               to: null,
               cc: null,
               replyTo: null,
@@ -162,16 +178,26 @@ describe("searchRecipientSuggestions", () => {
       ]),
     ];
 
-    const results = await searchRecipientSuggestions(
+    const firstResults = await searchRecipientSuggestions(
       "https://api.example.com/jmap",
       "contacts1",
       "mail1",
       "alyo"
     );
+    const secondResults = await searchRecipientSuggestions(
+      "https://api.example.com/jmap",
+      "contacts1",
+      "mail1",
+      "ali"
+    );
 
-    assert.deepEqual(results, [
+    assert.deepEqual(firstResults, [
       { name: "Alyona", email: "alyona@example.com" },
     ]);
+    assert.deepEqual(secondResults, [
+      { name: "Alice Lyon", email: "alice@example.com" },
+    ]);
+    assert.equal(capturedBodies.length, 2);
   });
 });
 
