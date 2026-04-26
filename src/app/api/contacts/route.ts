@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { getSession, getAccountId, searchContacts } from "@/lib/jmap";
+import { getAccountId, getContactsAccountId, getSession, searchRecipientSuggestions } from "@/lib/jmap";
 
 export async function GET(req: NextRequest) {
   const sessionData = await auth();
@@ -13,8 +13,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const session = await getSession();
-    const accountId = getAccountId(session);
-    const results = await searchContacts(session.apiUrl, accountId, q.trim());
+    const results = await searchRecipientSuggestions(
+      session.apiUrl,
+      getContactsAccountId(session),
+      getAccountId(session),
+      q.trim()
+    );
     return NextResponse.json(results);
   } catch {
     return NextResponse.json([]);

@@ -47,9 +47,9 @@ export async function saveDraftAction(
   const identity = identities.find((candidate) => candidate.email === input.fromEmail);
   if (!identity) throw new Error("Invalid from address");
 
-  const toAddrs = parseAddresses(splitRaw(input.to));
-  const ccAddrs = parseAddresses(splitRaw(input.cc));
-  const bccAddrs = parseAddresses(splitRaw(input.bcc));
+  const toAddrs = parseAddresses(splitRaw(input.to), { strict: false });
+  const ccAddrs = parseAddresses(splitRaw(input.cc), { strict: false });
+  const bccAddrs = parseAddresses(splitRaw(input.bcc), { strict: false });
 
   const draftId = await saveDraft(
     session.apiUrl,

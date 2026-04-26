@@ -1,7 +1,8 @@
-import { Email, Identity, JMAPSession, Mailbox } from "./types";
+import { Email, EmailAddress, Identity, JMAPSession, Mailbox } from "./types";
 import { log } from "./logger";
 
 const SESSION_URL = "https://api.fastmail.com/jmap/session";
+const CONTACTS_CAPABILITY = "urn:ietf:params:jmap:contacts";
 
 const JMAP_USING = [
   "urn:ietf:params:jmap:core",
@@ -63,6 +64,10 @@ export function getAccountId(session: JMAPSession): string {
   const id = session.primaryAccounts["urn:ietf:params:jmap:mail"];
   if (!id) throw new Error("No primary mail account found");
   return id;
+}
+
+export function getContactsAccountId(session: JMAPSession): string {
+  return session.primaryAccounts[CONTACTS_CAPABILITY] ?? getAccountId(session);
 }
 
 export async function getMailboxes(
@@ -648,10 +653,14 @@ export interface InlineImage {
   type: string;
 }
 
-export function parseAddresses(addrs: string[]): { name: string | null; email: string }[] {
+export function parseAddresses(
+  addrs: string[],
+  options?: ParseAddressOptions
+): { name: string | null; email: string }[] {
+  const strict = options?.strict ?? true;
   return addrs.map((addr) => {
     const validateEmail = (value: string) => {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+      if (strict && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
         throw new Error(`Invalid email address: ${value}`);
       }
       return value;
@@ -896,6 +905,29 @@ export interface ContactSuggestion {
   email: string;
 }
 
+interface ParseAddressOptions {
+  strict?: boolean;
+}
+
+function normalizeSuggestionName(name: string | null | undefined, email: string): string {
+  return name?.trim() || email;
+}
+
+function dedupeSuggestions(suggestions: ContactSuggestion[], limit = 10): ContactSuggestion[] {
+  const deduped: ContactSuggestion[] = [];
+  const seen = new Set<string>();
+
+  for (const suggestion of suggestions) {
+    const key = suggestion.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(suggestion);
+    if (deduped.length >= limit) break;
+  }
+
+  return deduped;
+}
+
 export async function searchContacts(
   apiUrl: string,
   accountId: string,
@@ -910,16 +942,16 @@ export async function searchContacts(
     body: JSON.stringify({
       using: [
         "urn:ietf:params:jmap:core",
-        "https://cyrusimap.org/ns/jmap/contacts",
+        CONTACTS_CAPABILITY,
       ],
       methodCalls: [
-        ["Contact/query", { accountId, filter: { text: query }, limit: 10 }, "q"],
+        ["ContactCard/query", { accountId, filter: { text: query }, limit: 10 }, "q"],
         [
-          "Contact/get",
+          "ContactCard/get",
           {
             accountId,
-            "#ids": { resultOf: "q", name: "Contact/query", path: "/ids" },
-            properties: ["firstName", "lastName", "emails"],
+            "#ids": { resultOf: "q", name: "ContactCard/query", path: "/ids" },
+            properties: ["name", "emails"],
           },
           "g",
         ],
@@ -936,17 +968,108 @@ export async function searchContacts(
   }
 
   const data = await res.json();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contacts: any[] = data.methodResponses?.[1]?.[1]?.list ?? [];
+  const contacts = ((data.methodResponses?.[1]?.[1] as {
+    list?: Array<{
+      name?: { full?: string | null } | null;
+      emails?: Record<string, { address?: string | null }> | null;
+    }>;
+  } | undefined)?.list) ?? [];
 
   const results: ContactSuggestion[] = [];
   for (const c of contacts) {
-    const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
-    for (const entry of c.emails ?? []) {
-      if (entry.value) results.push({ name: name || entry.value, email: entry.value });
+    const name = c.name?.full?.trim();
+    for (const entry of Object.values(c.emails ?? {})) {
+      const email = entry.address?.trim();
+      if (email) {
+        results.push({ name: normalizeSuggestionName(name, email), email });
+      }
     }
   }
 
   log.info({ query_len: query.length, results: results.length, duration_ms }, "jmap.contacts");
-  return results;
+  return dedupeSuggestions(results);
+}
+
+async function searchRecentCorrespondents(
+  apiUrl: string,
+  accountId: string,
+  query: string,
+  limit = 10
+): Promise<ContactSuggestion[]> {
+  const t = Date.now();
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) return [];
+
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/query",
+      {
+        accountId,
+        filter: {
+          operator: "OR",
+          conditions: [
+            { from: query },
+            { to: query },
+            { cc: query },
+            { text: query },
+          ],
+        },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        limit: 20,
+      },
+      "q",
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
+        properties: ["from", "to", "cc", "replyTo", "receivedAt"],
+      },
+      "g",
+    ],
+  ]);
+
+  const emails = (((data.methodResponses[1]?.[1]) as {
+    list?: Array<{
+      from?: EmailAddress[] | null;
+      to?: EmailAddress[] | null;
+      cc?: EmailAddress[] | null;
+      replyTo?: EmailAddress[] | null;
+    }>;
+  }).list) ?? [];
+
+  const suggestions: ContactSuggestion[] = [];
+  for (const email of emails) {
+    for (const addresses of [email.from, email.to, email.cc, email.replyTo]) {
+      for (const address of addresses ?? []) {
+        const emailAddress = address.email?.trim();
+        if (!emailAddress) continue;
+        const haystack = `${address.name ?? ""} ${emailAddress}`.toLowerCase();
+        if (!haystack.includes(normalizedQuery)) continue;
+        suggestions.push({
+          name: normalizeSuggestionName(address.name, emailAddress),
+          email: emailAddress,
+        });
+      }
+    }
+  }
+
+  const deduped = dedupeSuggestions(suggestions, limit);
+  log.info({ query_len: query.length, results: deduped.length, duration_ms: Date.now() - t }, "jmap.correspondents");
+  return deduped;
+}
+
+export async function searchRecipientSuggestions(
+  apiUrl: string,
+  contactsAccountId: string,
+  mailAccountId: string,
+  query: string,
+  limit = 10
+): Promise<ContactSuggestion[]> {
+  const contacts = await searchContacts(apiUrl, contactsAccountId, query);
+  if (contacts.length >= limit) return contacts.slice(0, limit);
+
+  const correspondents = await searchRecentCorrespondents(apiUrl, mailAccountId, query, limit);
+  return dedupeSuggestions([...contacts, ...correspondents], limit);
 }

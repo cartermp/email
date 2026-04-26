@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { deleteDraft, getAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, sendEmail, setKeywordsOnMany } from "../jmap";
+import { deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -64,6 +64,25 @@ describe("getAccountId", () => {
   });
 });
 
+describe("getContactsAccountId", () => {
+  it("returns the contacts primary account when available", () => {
+    const session = {
+      primaryAccounts: {
+        [MAIL_CAP]: "mail-123",
+        "urn:ietf:params:jmap:contacts": "contacts-456",
+      },
+    } as any;
+    assert.equal(getContactsAccountId(session), "contacts-456");
+  });
+
+  it("falls back to the mail account when contacts is unavailable", () => {
+    const session = {
+      primaryAccounts: { [MAIL_CAP]: "mail-123" },
+    } as any;
+    assert.equal(getContactsAccountId(session), "mail-123");
+  });
+});
+
 describe("parseAddresses", () => {
   it("parses display names and bare addresses", () => {
     assert.deepEqual(parseAddresses(["Alice Example <alice@example.com>", "bob@example.com"]), [
@@ -74,6 +93,85 @@ describe("parseAddresses", () => {
 
   it("throws on invalid email addresses", () => {
     assert.throws(() => parseAddresses(["definitely not an email"]), /Invalid email address/);
+  });
+
+  it("allows incomplete addresses in non-strict mode", () => {
+    assert.deepEqual(parseAddresses(["alyo"], { strict: false }), [
+      { name: null, email: "alyo" },
+    ]);
+  });
+});
+
+describe("searchContacts", () => {
+  it("uses ContactCard and returns flattened suggestions", async () => {
+    capturedBodies = [];
+    mockResponses = [{
+      methodResponses: [
+        ["ContactCard/query", { ids: ["c1"] }, "q"],
+        ["ContactCard/get", {
+          list: [
+            {
+              name: { full: "Alice Example" },
+              emails: {
+                e1: { address: "alice@example.com" },
+                e2: { address: "a@example.com" },
+              },
+            },
+          ],
+        }, "g"],
+      ],
+    }];
+
+    const results = await searchContacts("https://api.example.com/jmap", "acct1", "ali");
+
+    assert.deepEqual((capturedBodies[0] as any).using, [
+      "urn:ietf:params:jmap:core",
+      "urn:ietf:params:jmap:contacts",
+    ]);
+    assert.equal((capturedBodies[0] as any).methodCalls[0][0], "ContactCard/query");
+    assert.equal((capturedBodies[0] as any).methodCalls[1][0], "ContactCard/get");
+    assert.deepEqual(results, [
+      { name: "Alice Example", email: "alice@example.com" },
+      { name: "Alice Example", email: "a@example.com" },
+    ]);
+  });
+});
+
+describe("searchRecipientSuggestions", () => {
+  it("falls back to recent correspondents when contacts are empty", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      {
+        methodResponses: [
+          ["ContactCard/query", { ids: [] }, "q"],
+          ["ContactCard/get", { list: [] }, "g"],
+        ],
+      },
+      makeJmapResponse([
+        ["Email/query", { ids: ["e1"] }, "q"],
+        ["Email/get", {
+          list: [
+            {
+              from: [{ name: "Alyona", email: "alyona@example.com" }],
+              to: null,
+              cc: null,
+              replyTo: null,
+            },
+          ],
+        }, "g"],
+      ]),
+    ];
+
+    const results = await searchRecipientSuggestions(
+      "https://api.example.com/jmap",
+      "contacts1",
+      "mail1",
+      "alyo"
+    );
+
+    assert.deepEqual(results, [
+      { name: "Alyona", email: "alyona@example.com" },
+    ]);
   });
 });
 
