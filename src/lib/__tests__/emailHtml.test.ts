@@ -33,6 +33,22 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("width:w"), "should include width in the postMessage payload");
   });
 
+  it("injects parent-width-driven readable mobile reflow rules", () => {
+    const result = prepareHtml("<html><head></head><body><table width='600'><tr><td>hello</td></tr></table></body></html>");
+    assert.ok(result.includes('data-mobile-friendly'), "should gate readable mode behind a root data attribute");
+    assert.ok(result.includes("--iframe-parent-width"), "should clamp the iframe document to the parent width");
+    assert.ok(result.includes("table[width]{width:100%!important"), "fixed-width tables should be allowed to shrink");
+    assert.ok(result.includes("overflow-wrap:anywhere"), "long text should wrap in readable mode");
+    assert.ok(result.includes("img[width]{display:block!important"), "inline images should stack instead of forcing a giant row");
+  });
+
+  it("listens for parent width messages from EmailBody", () => {
+    const result = prepareHtml("<html><head></head><body>hi</body></html>");
+    assert.ok(result.includes("iframe-parent-width"), "should accept parent width postMessages");
+    assert.ok(result.includes("setProperty('--iframe-parent-width'"), "should store the parent width as a CSS variable");
+    assert.ok(result.includes("requestAnimationFrame(send)"), "width changes should trigger a fresh resize measurement");
+  });
+
   it("strips a fixed-width viewport meta from the original email", () => {
     const email = '<html><head><meta name="viewport" content="width=600"></head><body></body></html>';
     const result = prepareHtml(email);

@@ -17,6 +17,11 @@
  * and applies a CSS transform to scale it down when the content is wider
  * than the available space. This handles the iOS Safari limitation where
  * <meta viewport> is ignored inside iframes and content lays out at ~980px.
+ *
+ * Readable mobile mode: the parent posts the rendered container width into
+ * the iframe. On narrow screens we clamp html/body to that width and apply
+ * aggressive wrapping rules so text emails hidden inside fixed-width HTML can
+ * reflow instead of being scaled down to unreadably small text.
  */
 import { defaultEmailRenderTheme, type EmailRenderTheme } from "./emailRenderTheme";
 
@@ -73,6 +78,8 @@ const STRIP_QUOTES_JS = `(function(){
   trimTrailingAttribution(document.body);
 })();`;
 
+const MOBILE_READABLE_MAX_WIDTH = 640;
+
 export function prepareHtml(
   html: string,
   opts?: { stripQuotes?: boolean; theme?: EmailRenderTheme },
@@ -86,24 +93,54 @@ export function prepareHtml(
   // Auto-link bare URLs in text content (server-side, no DOM manipulation needed).
   html = linkifyHtmlText(html);
 
-  const baseStyle = hasNativeDark
-    ? "html,body{overflow:hidden;height:auto!important}"
-    : `html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important;font-family:${theme.fontFamily}}` +
-      "a{cursor:pointer}" +
-      "img{max-width:100%!important;height:auto!important}" +
-      "@media(prefers-color-scheme:dark){" +
-      // html gets the actual dark colour directly — no filter on html avoids
-      // browser quirks where the html/body background escapes the filter scope.
-      `html{background-color:${theme.htmlDarkBg}}` +
-      `body{filter:invert(1) hue-rotate(180deg);background-color:${theme.bodyDarkPreFilterBg};color:${theme.bodyDarkPreFilterColor}}` +
-      "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}";
+  const mobileReadableStyle = [
+    'html[data-mobile-friendly="true"],html[data-mobile-friendly="true"] body{',
+    "width:var(--iframe-parent-width)!important;",
+    "max-width:var(--iframe-parent-width)!important;",
+    "min-width:0!important}",
+    'html[data-mobile-friendly="true"] body>*{max-width:100%!important}',
+    'html[data-mobile-friendly="true"] p,html[data-mobile-friendly="true"] div,html[data-mobile-friendly="true"] li,html[data-mobile-friendly="true"] td,html[data-mobile-friendly="true"] th,html[data-mobile-friendly="true"] blockquote,html[data-mobile-friendly="true"] span,html[data-mobile-friendly="true"] a{overflow-wrap:anywhere;word-break:break-word}',
+    'html[data-mobile-friendly="true"] table,html[data-mobile-friendly="true"] table[width]{width:100%!important;max-width:100%!important;table-layout:auto!important}',
+    'html[data-mobile-friendly="true"] td,html[data-mobile-friendly="true"] th,html[data-mobile-friendly="true"] td[width],html[data-mobile-friendly="true"] th[width]{width:auto!important;max-width:100%!important;min-width:0!important}',
+    'html[data-mobile-friendly="true"] img,html[data-mobile-friendly="true"] img[width]{display:block!important;max-width:100%!important;width:auto!important;height:auto!important}',
+    'html[data-mobile-friendly="true"] pre,html[data-mobile-friendly="true"] code,html[data-mobile-friendly="true"] blockquote{overflow-wrap:anywhere;word-break:break-word}',
+  ].join("");
+
+  const baseStyle = [
+    hasNativeDark
+      ? "html,body{overflow:hidden;height:auto!important}"
+      : `html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important;font-family:${theme.fontFamily}}`,
+    "a{cursor:pointer}",
+    "img{max-width:100%!important;height:auto!important}",
+    mobileReadableStyle,
+    hasNativeDark
+      ? ""
+      : "@media(prefers-color-scheme:dark){" +
+          // html gets the actual dark colour directly — no filter on html avoids
+          // browser quirks where the html/body background escapes the filter scope.
+          `html{background-color:${theme.htmlDarkBg}}` +
+          `body{filter:invert(1) hue-rotate(180deg);background-color:${theme.bodyDarkPreFilterBg};color:${theme.bodyDarkPreFilterColor}}` +
+          "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}",
+  ].join("");
 
   const stripQuotesJs = opts?.stripQuotes ? STRIP_QUOTES_JS : "";
 
   const inject = [
     `<style>${baseStyle}</style>`,
     `<script>(function(){
-  var lastH=0,lastW=0;
+  var lastH=0,lastW=0,lastParentWidth=0;
+  function setParentWidth(width){
+    if(width===lastParentWidth)return false;
+    lastParentWidth=width;
+    if(width>0&&width<=${MOBILE_READABLE_MAX_WIDTH}){
+      document.documentElement.setAttribute('data-mobile-friendly','true');
+      document.documentElement.style.setProperty('--iframe-parent-width',width+'px');
+    }else{
+      document.documentElement.removeAttribute('data-mobile-friendly');
+      document.documentElement.style.removeProperty('--iframe-parent-width');
+    }
+    return true;
+  }
   function send(){
     var h=Math.max(
       document.body?document.body.scrollHeight:0,
@@ -115,7 +152,7 @@ export function prepareHtml(
     // scale loop. The direct-child offsetWidth gives the outer wrapper's true
     // layout width (which expands correctly for min-width constraints) without
     // leaking sub-element overflow.
-    var w=document.documentElement.clientWidth||0;
+    var w=(document.documentElement.hasAttribute('data-mobile-friendly')?lastParentWidth:0)||document.documentElement.clientWidth||0;
     if(document.body){
       var ch=document.body.children;
       for(var i=0;i<ch.length;i++){
@@ -128,7 +165,13 @@ export function prepareHtml(
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
   send();
-  window.addEventListener('message',function(e){if(e.data==='iframe-ping')send();});
+  window.addEventListener('message',function(e){
+    if(e.data==='iframe-ping'){send();return;}
+    if(e.data&&e.data.type==='iframe-parent-width'){
+      var parentWidth=Number(e.data.width)||0;
+      if(setParentWidth(parentWidth)){window.requestAnimationFrame(send);}
+    }
+  });
   function openLinksInNewTab(){
     var links=document.getElementsByTagName('a');
     for(var i=0;i<links.length;i++){

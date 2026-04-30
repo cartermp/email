@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import useBodyClass from "@/components/useBodyClass";
 import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 
@@ -17,9 +17,20 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
 
   useBodyClass("rich-content-open");
 
+  const syncIframeLayout = useCallback(() => {
+    const iframe = iframeRef.current;
+    const wrapper = wrapperRef.current;
+    if (!iframe || !wrapper) return;
+
+    const parentWidth = wrapper.clientWidth;
+    iframe.contentWindow?.postMessage({ type: "iframe-parent-width", width: parentWidth }, "*");
+    iframe.contentWindow?.postMessage("iframe-ping", "*");
+  }, []);
+
   useEffect(() => {
     lastDimsRef.current = { h: 0, w: 0 };
-  }, [body, type]);
+    window.requestAnimationFrame(syncIframeLayout);
+  }, [body, type, syncIframeLayout]);
 
   useEffect(() => {
     const handleMessage = (e: MessageEvent) => {
@@ -55,14 +66,23 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
 
     window.addEventListener("message", handleMessage);
 
-    // On hard refresh the iframe loads from the SSR HTML before this
-    // listener exists and the initial postMessages are lost. Ping the
-    // iframe now that the listener is attached; the iframe script responds
-    // by calling send() again.
-    iframeRef.current?.contentWindow?.postMessage("iframe-ping", "*");
+    const wrapper = wrapperRef.current;
+    const resizeObserver =
+      wrapper && typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => syncIframeLayout())
+        : null;
+    if (wrapper && resizeObserver) {
+      resizeObserver.observe(wrapper);
+    }
+    window.addEventListener("resize", syncIframeLayout);
+    syncIframeLayout();
 
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
+    return () => {
+      window.removeEventListener("message", handleMessage);
+      window.removeEventListener("resize", syncIframeLayout);
+      resizeObserver?.disconnect();
+    };
+  }, [syncIframeLayout]);
 
   const srcDoc =
     type === "html"
@@ -77,6 +97,7 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
         className="w-full border-0 block"
         sandbox="allow-scripts allow-popups"
         title="Email content"
+        onLoad={syncIframeLayout}
       />
     </div>
   );
