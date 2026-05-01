@@ -772,11 +772,14 @@ export default function EmailListPanel({
                         ].join(" ")}>
                           {senderLabel}
                         </span>
-                        <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
-                          {formatDate(latestEmail.receivedAt)}
-                        </span>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <ThreadCountBadge count={thread.count} />
+                          <span className="text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
+                            {formatDate(latestEmail.receivedAt)}
+                          </span>
+                        </div>
                       </div>
-                      {/* Subject + thread count */}
+                      {/* Subject */}
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className={[
                           "text-xs truncate flex-1",
@@ -786,7 +789,6 @@ export default function EmailListPanel({
                         ].join(" ")}>
                           {latestEmail.subject || "(no subject)"}
                         </span>
-                        <ThreadCountBadge count={thread.count} />
                       </div>
                       {/* Preview */}
                       {latestEmail.preview && (
