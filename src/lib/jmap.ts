@@ -525,6 +525,7 @@ export async function saveDraft(
     bcc: { name: string | null; email: string }[];
     subject: string;
     body: string;
+    inReplyToId?: string;
   },
   existingDraftId?: string | null
 ): Promise<string> {
@@ -539,6 +540,10 @@ export async function saveDraft(
   if (fields.to.length) draftEmail.to = fields.to;
   if (fields.cc.length) draftEmail.cc = fields.cc;
   if (fields.bcc.length) draftEmail.bcc = fields.bcc;
+  if (fields.inReplyToId) {
+    draftEmail.inReplyTo = [fields.inReplyToId];
+    draftEmail.references = [fields.inReplyToId];
+  }
 
   const data = await jmapCall(apiUrl, [
     [

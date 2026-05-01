@@ -2,7 +2,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -774,6 +774,51 @@ describe("sendEmail", () => {
     const submissionCreate = (capturedBodies[0] as any).methodCalls[1][1].create.submission;
     assert.equal(submissionCreate.emailId, "#draft");
     assert.equal(submissionCreate.identityId, "ident-1");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// saveDraft
+// ---------------------------------------------------------------------------
+
+describe("saveDraft", () => {
+  const BASE = {
+    from: { name: "Alice", email: "alice@example.com" },
+    to: [{ name: null, email: "bob@example.com" }],
+    cc: [],
+    bcc: [],
+    subject: "Draft subject",
+    body: "Draft body",
+  };
+
+  function setupMock() {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/setResponse", { created: { draft: { id: "draft-123" } } }, "0"],
+      ]),
+    ];
+  }
+
+  function draft() {
+    return (capturedBodies[0] as any).methodCalls[0][1].create.draft;
+  }
+
+  it("sets inReplyTo and references when inReplyToId is provided", async () => {
+    setupMock();
+    await saveDraft("https://api.example.com/jmap", "acct1", "drafts-mbox", {
+      ...BASE,
+      inReplyToId: "original-msg-id",
+    });
+    assert.deepEqual(draft().inReplyTo, ["original-msg-id"]);
+    assert.deepEqual(draft().references, ["original-msg-id"]);
+  });
+
+  it("omits inReplyTo and references when inReplyToId is absent", async () => {
+    setupMock();
+    await saveDraft("https://api.example.com/jmap", "acct1", "drafts-mbox", BASE);
+    assert.equal(draft().inReplyTo, undefined);
+    assert.equal(draft().references, undefined);
   });
 });
 

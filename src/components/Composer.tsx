@@ -243,6 +243,10 @@ export default function Composer({
   const draftIdRef = useRef<string | null>(initialDraftId ?? null);
   const savingRef = useRef(false);
   const isInitialRender = useRef(true);
+  const isMountedRef = useRef(true);
+  const suppressDraftSideEffectsRef = useRef(false);
+  const pendingSuppressedDraftIdsRef = useRef<string[]>([]);
+  const cleanupPendingDraftsRef = useRef(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -259,6 +263,21 @@ export default function Composer({
   useEffect(() => {
     draftIdRef.current = draftId;
   }, [draftId]);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      suppressDraftSideEffectsRef.current = true;
+    };
+  }, []);
+
+  const cleanupSuppressedDrafts = useCallback(() => {
+    const pendingDraftIds = [...new Set(pendingSuppressedDraftIdsRef.current)];
+    pendingSuppressedDraftIdsRef.current = [];
+    for (const pendingDraftId of pendingDraftIds) {
+      deleteDraftAction(pendingDraftId).catch(() => {});
+    }
+  }, []);
 
   // Preview rendering
   useEffect(() => {
@@ -284,18 +303,21 @@ export default function Composer({
       isInitialRender.current = false;
       return;
     }
+    if (sending || suppressDraftSideEffectsRef.current) return;
     // Nothing worth saving yet
     if (!to && !subject && !markdown) return;
 
     const timer = setTimeout(async () => {
-      if (savingRef.current) return;
+      if (savingRef.current || suppressDraftSideEffectsRef.current) return;
       savingRef.current = true;
       setSaveStatus("saving");
 
       const identity = identities.find((i) => i.id === identityId) ?? identities[0];
+      const existingDraftId = draftIdRef.current;
+      const isFirstSave = !existingDraftId;
       try {
         const result = await saveDraftAction({
-          draftId: draftIdRef.current,
+          draftId: existingDraftId,
           fromName: identity?.name ?? "",
           fromEmail: identity?.email ?? "",
           to,
@@ -303,9 +325,19 @@ export default function Composer({
           bcc: showBcc ? bcc : "",
           subject,
           body: markdown,
+          inReplyToId,
         });
 
-        const isFirstSave = !draftIdRef.current;
+        if (!isMountedRef.current || suppressDraftSideEffectsRef.current) {
+          if (suppressDraftSideEffectsRef.current) {
+            if (cleanupPendingDraftsRef.current) {
+              deleteDraftAction(result.draftId).catch(() => {});
+            } else {
+              pendingSuppressedDraftIdsRef.current.push(result.draftId);
+            }
+          }
+          return;
+        }
         draftIdRef.current = result.draftId;
         setDraftId(result.draftId);
 
@@ -320,6 +352,7 @@ export default function Composer({
         setSaveStatus("saved");
         setLastSaved(new Date());
       } catch {
+        if (!isMountedRef.current || suppressDraftSideEffectsRef.current) return;
         setSaveStatus("error");
       } finally {
         savingRef.current = false;
@@ -327,7 +360,7 @@ export default function Composer({
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [to, cc, bcc, showCc, showBcc, subject, markdown, identityId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [to, cc, bcc, showCc, showBcc, subject, markdown, identityId, inReplyToId, sending]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -412,7 +445,10 @@ export default function Composer({
   }, []);
 
   const handleDiscard = useCallback(async () => {
+    suppressDraftSideEffectsRef.current = true;
+    cleanupPendingDraftsRef.current = true;
     if (!draftIdRef.current) {
+      cleanupSuppressedDrafts();
       window.history.back();
       return;
     }
@@ -421,9 +457,10 @@ export default function Composer({
     } catch {
       // best-effort
     }
+    cleanupSuppressedDrafts();
     window.history.replaceState({}, "", "/compose");
     window.history.back();
-  }, []);
+  }, [cleanupSuppressedDrafts]);
 
   const handleSend = useCallback(async () => {
     if (!to.trim() || !subject.trim() || !markdown.trim()) {
@@ -436,6 +473,8 @@ export default function Composer({
     }
     setError(null);
     setSending(true);
+    suppressDraftSideEffectsRef.current = true;
+    cleanupPendingDraftsRef.current = false;
     try {
       const rawHtml = await marked.parse(normalizeComposeMarkdown(markdown));
       const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
@@ -479,19 +518,37 @@ export default function Composer({
         throw new Error(data.error ?? `Send failed (${res.status})`);
       }
 
+      const sendResult = await res.json().catch(() => ({}));
+      cleanupPendingDraftsRef.current = true;
+
       // Clean up the draft now that it's sent
       if (draftIdRef.current) {
         deleteDraftAction(draftIdRef.current).catch(() => {});
         draftIdRef.current = null;
         setDraftId(null);
       }
+      cleanupSuppressedDrafts();
 
-      if (replyThreadId) {
-        router.replace(`/thread/${replyThreadId}`);
+      const destinationThreadId =
+        replyThreadId ||
+        (typeof sendResult.threadId === "string" ? sendResult.threadId : undefined);
+
+      if (destinationThreadId) {
+        router.replace(`/thread/${destinationThreadId}`);
       } else {
         setSent(true);
       }
     } catch (e) {
+      const pendingDraftIds = pendingSuppressedDraftIdsRef.current;
+      const restoredDraftId = pendingDraftIds[pendingDraftIds.length - 1] ?? null;
+      pendingSuppressedDraftIdsRef.current = [];
+      cleanupPendingDraftsRef.current = false;
+      suppressDraftSideEffectsRef.current = false;
+      if (restoredDraftId) {
+        draftIdRef.current = restoredDraftId;
+        setDraftId(restoredDraftId);
+        window.history.replaceState({}, "", `/compose?draftId=${restoredDraftId}`);
+      }
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setSending(false);
@@ -510,6 +567,7 @@ export default function Composer({
     inReplyToId,
     replyThreadId,
     router,
+    cleanupSuppressedDrafts,
   ]);
 
   const handleComposerKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {

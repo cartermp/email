@@ -28,6 +28,7 @@ export interface DraftSaveInput {
   bcc: string;
   subject: string;
   body: string;
+  inReplyToId?: string;
 }
 
 export async function saveDraftAction(
@@ -62,6 +63,7 @@ export async function saveDraftAction(
       bcc: bccAddrs,
       subject: input.subject,
       body: input.body,
+      inReplyToId: input.inReplyToId,
     },
     input.draftId
   );
