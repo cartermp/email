@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import MobileBackButton from "@/components/MobileBackButton";
 import EmailDetailView from "@/components/EmailDetailView";
+import ThreadCountBadge from "@/components/ThreadCountBadge";
 import ThreadView from "@/components/ThreadView";
 import { resolveCalendarEvent } from "@/lib/calendarDetect";
 
@@ -49,9 +50,12 @@ export default async function ThreadPage({ params }: Props) {
       <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
         <MobileBackButton label="Inbox" />
         <div className="flex items-start justify-between gap-4 mb-6">
-          <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 leading-snug">
-            {subject}
-          </h1>
+          <div className="min-w-0 flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 leading-snug">
+              {subject}
+            </h1>
+            <ThreadCountBadge count={emails.length} className="text-xs px-2 py-1" />
+          </div>
           <Link
             href={`/print/thread/${threadId}`}
             target="_blank"

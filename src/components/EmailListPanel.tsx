@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
+import ThreadCountBadge from "@/components/ThreadCountBadge";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Email } from "@/lib/types";
 import { isPinned, mergeEmailUpdates, groupIntoThreads } from "@/lib/emailList";
@@ -785,11 +786,7 @@ export default function EmailListPanel({
                         ].join(" ")}>
                           {latestEmail.subject || "(no subject)"}
                         </span>
-                        {thread.count > 1 && (
-                          <span className="shrink-0 text-[10px] tabular-nums px-1.5 py-0.5 rounded-full bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400">
-                            {thread.count}
-                          </span>
-                        )}
+                        <ThreadCountBadge count={thread.count} />
                       </div>
                       {/* Preview */}
                       {latestEmail.preview && (
