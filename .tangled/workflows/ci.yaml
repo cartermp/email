@@ -30,4 +30,4 @@ steps:
 
   - name: "Test"
     command: |
-      pnpm test
+      pnpm test 
