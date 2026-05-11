@@ -2,7 +2,7 @@
 
 A personal email client built with Next.js and the Fastmail JMAP API.
 
-Don't use this for yourself unless you want a bad email client.
+Don't use this unless you want a bad email client.
 
 ## Setup
 
