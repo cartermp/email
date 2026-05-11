@@ -2,6 +2,8 @@
 
 A personal email client built with Next.js and the Fastmail JMAP API.
 
+Don't use this for yourself unless you want a bad email client.
+
 ## Setup
 
 Copy `.env.local.example` to `.env.local` and fill in your Fastmail API token and Auth.js secret.
