@@ -19,8 +19,6 @@ dependencies:
 environment:
   CI: "true"
 
-
-
 steps:
   - name: "Versions"
     command: |
