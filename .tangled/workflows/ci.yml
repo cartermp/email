@@ -57,4 +57,4 @@ steps:
         branch: ["main"]
     command: |
       export PATH="$HOME/.railway/bin:$PATH"
-      railway up --ci
+      railway up --ci --service email
