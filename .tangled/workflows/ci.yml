@@ -14,7 +14,10 @@ dependencies:
     - coreutils
     - curl
     - git
+    - gnugrep
     - gnused
+    - gzip
+    - gnutar
     - nodejs
     - pnpm
 
