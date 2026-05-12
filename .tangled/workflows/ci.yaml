@@ -11,12 +11,16 @@ clone:
 dependencies:
   nixpkgs:
     - bash
+    - curl
     - git
     - nodejs
     - pnpm
 
 environment:
   CI: "true"
+
+secrets:
+  - RAILWAY_TOKEN
 
 steps:
   - name: "Versions"
@@ -30,4 +34,21 @@ steps:
 
   - name: "Test"
     command: |
-      pnpm test 
+      pnpm test
+
+  - name: "Install Railway CLI"
+    when:
+      - event: ["push"]
+        branch: ["main"]
+    command: |
+      curl -fsSL https://railway.com/install.sh | sh
+      export PATH="$HOME/.railway/bin:$PATH"
+      railway --version
+
+  - name: "Deploy to Railway"
+    when:
+      - event: ["push"]
+        branch: ["main"]
+    command: |
+      export PATH="$HOME/.railway/bin:$PATH"
+      RAILWAY_TOKEN=$RAILWAY_TOKEN railway up --ci
