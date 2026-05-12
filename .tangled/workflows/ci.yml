@@ -19,8 +19,7 @@ dependencies:
 environment:
   CI: "true"
 
-# secrets:
-#   - RAILWAY_TOKEN
+
 
 steps:
   - name: "Versions"
