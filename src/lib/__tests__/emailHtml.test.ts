@@ -42,6 +42,13 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("img[width]{display:block!important"), "inline images should stack instead of forcing a giant row");
   });
 
+  it("emulates common responsive email helper classes in readable mobile mode", () => {
+    const result = prepareHtml("<html><head></head><body><table class='flexible'></table><td class='hide'></td><span class='db'>x</span></body></html>");
+    assert.ok(result.includes('table[class~="flexible"]{width:100%!important'), "flexible tables should expand to the available width");
+    assert.ok(result.includes('[class~="hide"]{display:none!important'), "gmail spacer rows should be hidden in mobile readable mode");
+    assert.ok(result.includes('[class~="db"]{display:block!important'), "db helper classes should become block elements");
+  });
+
   it("listens for parent width messages from EmailBody", () => {
     const result = prepareHtml("<html><head></head><body>hi</body></html>");
     assert.ok(result.includes("iframe-parent-width"), "should accept parent width postMessages");

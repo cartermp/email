@@ -103,6 +103,9 @@ export function prepareHtml(
     'html[data-mobile-friendly="true"] table,html[data-mobile-friendly="true"] table[width]{width:100%!important;max-width:100%!important;table-layout:auto!important}',
     'html[data-mobile-friendly="true"] td,html[data-mobile-friendly="true"] th,html[data-mobile-friendly="true"] td[width],html[data-mobile-friendly="true"] th[width]{width:auto!important;max-width:100%!important;min-width:0!important}',
     'html[data-mobile-friendly="true"] img,html[data-mobile-friendly="true"] img[width]{display:block!important;max-width:100%!important;width:auto!important;height:auto!important}',
+    'html[data-mobile-friendly="true"] table[class~="flexible"]{width:100%!important;max-width:100%!important}',
+    'html[data-mobile-friendly="true"] [class~="hide"]{display:none!important;width:0!important;height:0!important;max-width:0!important;max-height:0!important;min-width:0!important;overflow:hidden!important;padding:0!important;font-size:0!important;line-height:0!important}',
+    'html[data-mobile-friendly="true"] [class~="db"]{display:block!important}',
     'html[data-mobile-friendly="true"] pre,html[data-mobile-friendly="true"] code,html[data-mobile-friendly="true"] blockquote{overflow-wrap:anywhere;word-break:break-word}',
   ].join("");
 
