@@ -1,7 +1,16 @@
-import { Email } from "./types";
+import { Email, EmailBodyPart } from "./types";
 import { downloadBlobAsText } from "./jmap";
 import { parseIcs } from "./ics";
 import { CalendarEventData } from "@/components/CalendarEventCard";
+
+type CalendarSourceEmail = Pick<
+  Email,
+  "id" | "messageId" | "threadId" | "subject" | "preview" | "to" | "cc" | "receivedAt" | "keywords"
+> & {
+  textBody?: EmailBodyPart[];
+  attachments?: EmailBodyPart[];
+  bodyValues?: Email["bodyValues"];
+};
 
 /**
  * Given an email object (with bodyValues already fetched), detect and parse
@@ -11,7 +20,7 @@ import { CalendarEventData } from "@/components/CalendarEventCard";
  * calendar events forwarded or CC'd still resolve the user's PARTSTAT.
  */
 export async function resolveCalendarEvent(
-  email: Email,
+  email: CalendarSourceEmail,
   downloadUrl: string,
   accountId: string
 ): Promise<CalendarEventData | null> {
@@ -60,7 +69,12 @@ export async function resolveCalendarEvent(
       null;
 
     return {
+      uid: event.uid || email.id,
       emailId: email.id,
+      threadId: email.threadId,
+      receivedAt: email.receivedAt,
+      emailSubject: email.subject,
+      preview: email.preview,
       icsText,
       method: event.method,
       summary: event.summary,

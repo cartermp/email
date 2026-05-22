@@ -4,7 +4,12 @@ import { useState } from "react";
 import { sendCalendarReplyAction } from "@/app/(inbox)/email/[id]/actions";
 
 export interface CalendarEventData {
+  uid: string;
   emailId: string;
+  threadId: string;
+  receivedAt: string;
+  emailSubject: string | null;
+  preview: string;
   icsText: string;
   method: string;
   summary: string;

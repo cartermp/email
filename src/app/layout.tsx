@@ -76,6 +76,12 @@ export default async function RootLayout({
                 >
                   [SENT]
                 </Link>
+                <Link
+                  href="/calendar"
+                  className="text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                >
+                  [CALENDAR]
+                </Link>
               </div>
 
               <div className="mt-auto flex flex-col gap-1">

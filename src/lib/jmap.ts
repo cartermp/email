@@ -95,6 +95,22 @@ const EMAIL_LIST_PROPERTIES = [
   "size",
 ];
 
+const CALENDAR_CANDIDATE_PROPERTIES = [
+  "id",
+  "messageId",
+  "threadId",
+  "mailboxIds",
+  "subject",
+  "from",
+  "to",
+  "cc",
+  "receivedAt",
+  "preview",
+  "keywords",
+  "textBody",
+  "attachments",
+];
+
 export async function listEmails(
   apiUrl: string,
   accountId: string,
@@ -512,6 +528,42 @@ export async function listSentEmails(
     "jmap.list_sent"
   );
   return { emails, total };
+}
+
+export async function listRecentCalendarCandidateEmails(
+  apiUrl: string,
+  accountId: string,
+  limit = 500
+): Promise<Email[]> {
+  const t = Date.now();
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/query",
+      {
+        accountId,
+        sort: [{ property: "receivedAt", isAscending: false }],
+        limit,
+        position: 0,
+      },
+      "q",
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
+        properties: CALENDAR_CANDIDATE_PROPERTIES,
+      },
+      "g",
+    ],
+  ]);
+  const [, gResult] = data.methodResponses[1];
+  const emails = (gResult.list as Email[]) ?? [];
+  log.info(
+    { count: emails.length, limit, duration_ms: Date.now() - t },
+    "jmap.list_calendar_candidates"
+  );
+  return emails;
 }
 
 export async function saveDraft(

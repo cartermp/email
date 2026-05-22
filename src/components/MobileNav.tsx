@@ -42,6 +42,15 @@ function SentIcon() {
   );
 }
 
+function CalendarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="w-5 h-5" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="17" rx="2" />
+      <path d="M8 2v4M16 2v4M3 10h18" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="w-5 h-5" aria-hidden="true">
@@ -83,6 +92,13 @@ export default function MobileNav({ draftTotal = 0 }: Props) {
       label: "Sent",
       icon: <SentIcon />,
       active: pathname.startsWith("/sent"),
+      badge: 0,
+    },
+    {
+      href: "/calendar",
+      label: "Calendar",
+      icon: <CalendarIcon />,
+      active: pathname.startsWith("/calendar"),
       badge: 0,
     },
     {
