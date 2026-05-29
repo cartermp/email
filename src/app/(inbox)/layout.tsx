@@ -12,27 +12,57 @@ export default async function InboxLayout({
   children: React.ReactNode;
 }) {
   const t = Date.now();
-  const session = await getSession();
-  const accountId = getAccountId(session);
-  const mailboxes = await getMailboxes(session.apiUrl, accountId);
+
+  let session, accountId, mailboxes;
+  try {
+    session = await getSession();
+    accountId = getAccountId(session);
+    mailboxes = await getMailboxes(session.apiUrl, accountId);
+  } catch (err) {
+    log.error({ err, duration_ms: Date.now() - t }, "layout.inbox.session_error");
+    return (
+      <div className="flex items-center justify-center h-screen bg-stone-50 dark:bg-stone-900">
+        <div className="text-center space-y-2">
+          <p className="text-sm font-medium text-stone-700 dark:text-stone-300">
+            Unable to connect to mail server
+          </p>
+          <p className="text-xs text-stone-400 dark:text-stone-500">
+            Check your connection and refresh to try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const inbox = mailboxes.find((m) => m.role === "inbox");
   const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
   const sentMailbox = mailboxes.find((m) => m.role === "sent");
   const archiveMailbox = mailboxes.find((m) => m.role === "archive");
   const trashMailbox = mailboxes.find((m) => m.role === "trash");
 
-  const [inbox_emails, drafts, pinned, sentResult] = await Promise.all([
-    inbox
-      ? listInboxEmails(session.apiUrl, accountId, inbox.id)
-      : Promise.resolve({ unreads: [], unreadTotal: 0, reads: [], readTotal: 0 }),
-    draftsMailbox
-      ? listDrafts(session.apiUrl, accountId, draftsMailbox.id)
-      : Promise.resolve([]),
-    listPinnedEmails(session.apiUrl, accountId),
-    sentMailbox
-      ? listSentEmails(session.apiUrl, accountId, sentMailbox.id)
-      : Promise.resolve({ emails: [], total: 0 }),
-  ]);
+  let inbox_emails = { unreads: [] as Awaited<ReturnType<typeof listInboxEmails>>["unreads"], unreadTotal: 0, reads: [] as Awaited<ReturnType<typeof listInboxEmails>>["reads"], readTotal: 0 };
+  let drafts: Awaited<ReturnType<typeof listDrafts>> = [];
+  let pinned: Awaited<ReturnType<typeof listPinnedEmails>> = [];
+  let sentResult: Awaited<ReturnType<typeof listSentEmails>> = { emails: [], total: 0 };
+
+  try {
+    [inbox_emails, drafts, pinned, sentResult] = await Promise.all([
+      inbox
+        ? listInboxEmails(session.apiUrl, accountId, inbox.id)
+        : Promise.resolve({ unreads: [], unreadTotal: 0, reads: [], readTotal: 0 }),
+      draftsMailbox
+        ? listDrafts(session.apiUrl, accountId, draftsMailbox.id)
+        : Promise.resolve([]),
+      listPinnedEmails(session.apiUrl, accountId),
+      sentMailbox
+        ? listSentEmails(session.apiUrl, accountId, sentMailbox.id)
+        : Promise.resolve({ emails: [], total: 0 }),
+    ]);
+  } catch (err) {
+    log.error({ err, duration_ms: Date.now() - t }, "layout.inbox.fetch_error");
+    // Fall through with empty data — the panel will render with a refresh prompt
+  }
+
   const { unreads, unreadTotal, reads, readTotal } = inbox_emails;
 
   log.info({
