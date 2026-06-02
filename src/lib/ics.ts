@@ -73,8 +73,86 @@ function parseIcsDatetime(
   const m = value.match(/^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/);
   if (!m) return { date: null, allDay: false };
   const [, y, mo, d, h, min, s, z] = m;
-  const iso = `${y}-${mo}-${d}T${h}:${min}:${s}${z === "Z" ? "Z" : ""}`;
-  return { date: new Date(iso), allDay: false };
+  if (z === "Z") {
+    return { date: new Date(`${y}-${mo}-${d}T${h}:${min}:${s}Z`), allDay: false };
+  }
+
+  const tzid = params.TZID;
+  if (!tzid) {
+    return {
+      date: new Date(
+        Number(y),
+        Number(mo) - 1,
+        Number(d),
+        Number(h),
+        Number(min),
+        Number(s)
+      ),
+      allDay: false,
+    };
+  }
+
+  const date = convertWallClockToUtc(
+    Number(y),
+    Number(mo),
+    Number(d),
+    Number(h),
+    Number(min),
+    Number(s),
+    tzid
+  );
+  if (!date) return { date: null, allDay: false };
+  return { date, allDay: false };
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string): number {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(
+    Number(byType.year),
+    Number(byType.month) - 1,
+    Number(byType.day),
+    Number(byType.hour),
+    Number(byType.minute),
+    Number(byType.second)
+  );
+  return asUtc - date.getTime();
+}
+
+function convertWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  timeZone: string
+): Date | null {
+  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  let timestamp = wallClockUtc;
+
+  try {
+    for (let i = 0; i < 3; i++) {
+      const offset = getTimeZoneOffsetMs(new Date(timestamp), timeZone);
+      const next = wallClockUtc - offset;
+      if (next === timestamp) break;
+      timestamp = next;
+    }
+  } catch {
+    return null;
+  }
+
+  return new Date(timestamp);
 }
 
 function unescape(v: string): string {
