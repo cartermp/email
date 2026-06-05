@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           level: 40,
           time: new Date().toISOString(),
           service: "email",
-          msg: "proxy.redirect",
+          msg: "middleware.redirect",
           method: request.method,
           pathname,
           is_rsc: searchParams.has("_rsc"),
