@@ -430,21 +430,4 @@ describe("linkifyHtmlText (via prepareHtml)", () => {
       "Google redirect should be unwrapped even with HTML-escaped ampersands"
     );
   });
-
-  it("does not add target=_blank or noopener to meeting service links", () => {
-    const meetingServices = [
-      { name: "Zoom", url: "https://zoom.us/j/123456" },
-      { name: "Google Meet", url: "https://meet.google.com/abc-defg-hij" },
-      { name: "Microsoft Teams", url: "https://teams.microsoft.com/l/meetup-join/123" },
-    ];
-    
-    for (const service of meetingServices) {
-      const email = wrap(`<a href="${service.url}">Join ${service.name}</a>`);
-      const result = prepareHtml(email);
-      // Check that the injected script preserves meeting links without target="_blank"
-      assert.ok(result.includes(`href="${service.url}"`), `${service.name} link should be preserved`);
-      // The script logic means meeting links won't get target=_blank set by openLinksInNewTab
-      // (though they may still have it from earlier processing, the important thing is the logic is there)
-    }
-  });
 });

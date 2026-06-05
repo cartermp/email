@@ -215,14 +215,8 @@ export function prepareHtml(
   function openLinksInNewTab(){
     var links=document.getElementsByTagName('a');
     for(var i=0;i<links.length;i++){
-      var href=(links[i].getAttribute('href')||'').toLowerCase();
-      // Zoom, Meet, Teams, and other meeting links need to open in the current tab
-      // without noopener so they can trigger the client or proper join flow
-      var isMeetingLink=/(?:zoom\.us|meet\.google\.com|teams\.microsoft\.com|whereby\.com|whereby\.to|calendly\.com|jitsi\.org|whereby\.app)/.test(href);
-      if(!isMeetingLink){
-        links[i].setAttribute('target','_blank');
-        links[i].setAttribute('rel','noopener noreferrer');
-      }
+      links[i].setAttribute('target','_blank');
+      links[i].setAttribute('rel','noopener noreferrer');
     }
   }
   window.addEventListener('load',function(){

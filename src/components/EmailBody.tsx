@@ -95,7 +95,7 @@ export default function EmailBody({ body, type, stripQuotes }: Props) {
         ref={iframeRef}
         srcDoc={srcDoc}
         className="w-full border-0 block"
-        sandbox="allow-scripts allow-popups"
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
         title="Email content"
         onLoad={syncIframeLayout}
       />
