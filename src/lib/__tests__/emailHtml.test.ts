@@ -392,4 +392,42 @@ describe("linkifyHtmlText (via prepareHtml)", () => {
     const result = prepareHtml(wrap("<p>hello</p>"));
     assert.ok(result.includes("a{cursor:pointer}"), "cursor:pointer must be in the injected style");
   });
+
+  it("unwraps Google Calendar redirect URLs in href attributes", () => {
+    const zoomUrl = "https://coreweave.zoom.us/j/86296412870";
+    const googleRedirectUrl = `https://www.google.com/url?q=${encodeURIComponent(zoomUrl)}&sa=D&source=calendar&ust=1780956240000000&usg=AOvVaw2hpQdEyAOVox_UyoWKRPB1`;
+    const email = wrap(`<a href="${googleRedirectUrl}">Join Zoom Meeting</a>`);
+    const result = prepareHtml(email);
+    assert.ok(
+      result.includes(`href="${zoomUrl}"`),
+      "Google Calendar redirect should be unwrapped to the direct Zoom URL"
+    );
+    assert.ok(
+      !result.includes("google.com/url"),
+      "Google redirect wrapper should be removed"
+    );
+  });
+
+  it("preserves non-Google URLs unchanged", () => {
+    const regularUrl = "https://example.com/meeting";
+    const email = wrap(`<a href="${regularUrl}">Click here</a>`);
+    const result = prepareHtml(email);
+    assert.ok(
+      result.includes(`href="${regularUrl}"`),
+      "regular URLs should not be modified"
+    );
+  });
+
+  it("handles HTML-escaped characters in Google redirect URLs", () => {
+    const zoomUrl = "https://zoom.us/j/123456?pwd=xyz";
+    const googleRedirectUrl = `https://www.google.com/url?q=${encodeURIComponent(zoomUrl)}&sa=D`;
+    // HTML-escaped version
+    const escapedUrl = googleRedirectUrl.replace(/&/g, "&amp;");
+    const email = wrap(`<a href="${escapedUrl}">Join</a>`);
+    const result = prepareHtml(email);
+    assert.ok(
+      result.includes("zoom.us/j/123456"),
+      "Google redirect should be unwrapped even with HTML-escaped ampersands"
+    );
+  });
 });

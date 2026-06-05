@@ -25,6 +25,40 @@
  */
 import { defaultEmailRenderTheme, type EmailRenderTheme } from "./emailRenderTheme";
 
+// Unwrap Google Calendar redirect URLs to their actual destination.
+// Google Calendar wraps meeting links (especially Zoom) like:
+// https://www.google.com/url?q=<actual_url>&sa=D&source=calendar&...
+// This function extracts the real URL so users can click directly to join meetings.
+function unwrapGoogleCalendarUrl(href: string): string {
+  try {
+    // Match Google's URL wrapper pattern - the q parameter contains the actual URL
+    const googleUrlMatch = href.match(/[?&]q=([^&]+)/);
+    if (googleUrlMatch && googleUrlMatch[1]) {
+      const decoded = decodeURIComponent(googleUrlMatch[1]);
+      // Only unwrap if it's a valid http(s) URL (avoid security issues)
+      // and it came from a Google domain
+      if (/^https?:\/\//.test(decoded) && /(?:www\.)?google\.com\/url/.test(href)) {
+        return decoded;
+      }
+    }
+  } catch {
+    // If URL parsing fails, return original
+  }
+  return href;
+}
+
+// Unwrap Google redirect URLs in href attributes
+function unwrapGoogleUrlsInHtml(html: string): string {
+  // Match href="..." and href='...' attributes and unwrap their URLs
+  return html.replace(/\bhref=(['"])(.*?)\1/gi, (_match, quote, href) => {
+    const unescaped = href.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+    const unwrapped = unwrapGoogleCalendarUrl(unescaped);
+    // Re-escape for HTML attribute
+    const reescaped = unwrapped.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    return `href=${quote}${reescaped}${quote}`;
+  });
+}
+
 // Linkify bare URLs in HTML text content at the string level (server-side),
 // so no browser DOM manipulation is needed. Skips content inside <a>, <script>,
 // and <style> tags. Tracks <a> nesting so already-linked URLs are not re-wrapped.
@@ -89,6 +123,9 @@ export function prepareHtml(
 
   // Strip any existing viewport meta — we control sizing from outside.
   html = html.replace(/<meta[^>]*name=["']viewport["'][^>]*>/gi, "");
+
+  // Unwrap Google Calendar redirect URLs so Zoom links and other meeting links work directly.
+  html = unwrapGoogleUrlsInHtml(html);
 
   // Auto-link bare URLs in text content (server-side, no DOM manipulation needed).
   html = linkifyHtmlText(html);
