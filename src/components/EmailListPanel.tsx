@@ -25,9 +25,14 @@ interface Props {
   pinnedEmails?: Email[];
   archiveMailboxId?: string;
   trashMailboxId?: string;
+  spamUnreads?: Email[];
+  spamUnreadTotal?: number;
+  spamReads?: Email[];
+  spamReadTotal?: number;
+  spamMailboxId?: string;
 }
 
-type View = "inbox" | "drafts" | "sent";
+type View = "inbox" | "drafts" | "sent" | "spam";
 
 // ---------------------------------------------------------------------------
 // Inline SVG icons
@@ -121,6 +126,11 @@ export default function EmailListPanel({
   pinnedEmails = [],
   archiveMailboxId,
   trashMailboxId,
+  spamUnreads = [],
+  spamUnreadTotal = 0,
+  spamReads = [],
+  spamReadTotal = 0,
+  spamMailboxId,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -138,6 +148,8 @@ export default function EmailListPanel({
     ? "drafts"
     : pathname.startsWith("/sent") || searchParams.get("from") === "sent"
     ? "sent"
+    : pathname.startsWith("/spam")
+    ? "spam"
     : "inbox";
 
   // -------------------------------------------------------------------------
@@ -180,13 +192,24 @@ export default function EmailListPanel({
   const [extraReads, setExtraReads] = useState<Email[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  const currentUnreads = view === "spam" ? spamUnreads : unreads;
+  const currentUnreadTotal = view === "spam" ? spamUnreadTotal : unreadTotal;
+  const currentReads = view === "spam" ? spamReads : reads;
+  const currentReadTotal = view === "spam" ? spamReadTotal : readTotal;
+  const currentMailboxId = view === "spam" ? spamMailboxId ?? "" : inboxId;
+
   useEffect(() => {
-    const fresh = [...unreads, ...reads, ...pinnedEmails];
+    setExtraUnreads([]);
+    setExtraReads([]);
+  }, [view]);
+
+  useEffect(() => {
+    const fresh = [...currentUnreads, ...currentReads, ...pinnedEmails];
     setExtraUnreads((prev) => mergeEmailUpdates(prev, fresh));
     setExtraReads((prev) => mergeEmailUpdates(prev, fresh));
     // Server state is authoritative after a refresh; clear optimistic removals
     setArchivedIds(new Set());
-  }, [unreads, reads, pinnedEmails]);
+  }, [currentUnreads, currentReads, pinnedEmails]);
 
   // -------------------------------------------------------------------------
   // Drafts — local copy for optimistic deletion
@@ -261,14 +284,14 @@ export default function EmailListPanel({
   // Merged email lists
   // -------------------------------------------------------------------------
   const allUnreads = useMemo(() => {
-    const propIds = new Set(unreads.map((e) => e.id));
-    return [...unreads, ...extraUnreads.filter((e) => !propIds.has(e.id))];
-  }, [unreads, extraUnreads]);
+    const propIds = new Set(currentUnreads.map((e) => e.id));
+    return [...currentUnreads, ...extraUnreads.filter((e) => !propIds.has(e.id))];
+  }, [currentUnreads, extraUnreads]);
 
   const allReads = useMemo(() => {
-    const propIds = new Set(reads.map((e) => e.id));
-    return [...reads, ...extraReads.filter((e) => !propIds.has(e.id))];
-  }, [reads, extraReads]);
+    const propIds = new Set(currentReads.map((e) => e.id));
+    return [...currentReads, ...extraReads.filter((e) => !propIds.has(e.id))];
+  }, [currentReads, extraReads]);
 
   // Display order: pinned → unread (not pinned) → read (not pinned), deduped
   const allInboxEmails = useMemo(() => {
@@ -276,11 +299,13 @@ export default function EmailListPanel({
     const seenIds = new Set<string>();
     const result: Email[] = [];
     const add = (e: Email) => { if (!seenIds.has(e.id)) { seenIds.add(e.id); result.push(e); } };
-    pinnedEmails.forEach(add);
+    if (view === "inbox") {
+      pinnedEmails.forEach(add);
+    }
     allUnreads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
     allReads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
     return result;
-  }, [pinnedEmails, allUnreads, allReads]);
+  }, [pinnedEmails, allUnreads, allReads, view]);
 
   const visibleEmails = useMemo(() => {
     const base = isInSearchMode ? searchResults : allInboxEmails;
@@ -298,10 +323,10 @@ export default function EmailListPanel({
   // -------------------------------------------------------------------------
   // Pagination
   // -------------------------------------------------------------------------
-  const loadedUnreads = unreads.length + extraUnreads.length;
-  const loadedReads = reads.length + extraReads.length;
-  const hasMoreUnreads = loadedUnreads < unreadTotal;
-  const hasMoreReads = loadedReads < readTotal;
+  const loadedUnreads = currentUnreads.length + extraUnreads.length;
+  const loadedReads = currentReads.length + extraReads.length;
+  const hasMoreUnreads = loadedUnreads < currentUnreadTotal;
+  const hasMoreReads = loadedReads < currentReadTotal;
   const hasMore = !isInSearchMode && (hasMoreUnreads || hasMoreReads);
 
   const unreadCount = useUnreadCount();
@@ -362,10 +387,10 @@ export default function EmailListPanel({
     setLoadingMore(true);
     try {
       if (hasMoreUnreads) {
-        const { emails: more } = await loadMoreUnreads(inboxId, loadedUnreads);
+        const { emails: more } = await loadMoreUnreads(currentMailboxId, loadedUnreads);
         setExtraUnreads((prev) => [...prev, ...more]);
       } else {
-        const { emails: more } = await loadMoreReads(inboxId, loadedReads);
+        const { emails: more } = await loadMoreReads(currentMailboxId, loadedReads);
         setExtraReads((prev) => [...prev, ...more]);
       }
     } finally {
@@ -463,6 +488,18 @@ export default function EmailListPanel({
     router.refresh();
   }
 
+  async function handleBulkNotSpam() {
+    const emails = visibleEmails.filter((e) => selectedIds.has(e.id));
+    const ids = emails.map((e) => e.id);
+    setArchivedIds((prev) => new Set([...prev, ...ids]));
+    clearSelection();
+    await bulkMoveToMailbox(
+      emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
+      inboxId
+    );
+    router.refresh();
+  }
+
   const actionBtnCls =
     "p-1.5 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 transition-colors shrink-0";
 
@@ -476,7 +513,7 @@ export default function EmailListPanel({
       <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-700 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-semibold text-stone-700 dark:text-stone-300 capitalize">
-            {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : "Sent"}
+            {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : view === "sent" ? "Sent" : "Spam"}
           </span>
           {view === "inbox" && (
             <UnreadCountBadge count={unreadCount} showZero className="shrink-0" />
@@ -484,9 +521,12 @@ export default function EmailListPanel({
           {view === "drafts" && (
             <UnreadCountBadge count={draftCount} showZero className="shrink-0" />
           )}
+          {view === "spam" && (
+            <UnreadCountBadge count={currentUnreads.length} showZero className="shrink-0" />
+          )}
         </div>
         <div className="flex items-center gap-1">
-          {view === "inbox" && (
+          {(view === "inbox" || view === "spam") && (
             <button
               type="button"
               onClick={handleRefresh}
@@ -575,7 +615,7 @@ export default function EmailListPanel({
       )}
 
       {/* Bulk action bar */}
-      {view === "inbox" && selectionMode && (
+      {(view === "inbox" || view === "spam") && selectionMode && (
         <div className="flex items-center gap-0.5 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 shrink-0">
           <button onClick={clearSelection} className={actionBtnCls} title="Cancel selection">
             <IconX />
@@ -589,20 +629,31 @@ export default function EmailListPanel({
           >
             {selectedIds.size} selected
           </button>
+          {view === "spam" && (
+            <button
+              onClick={handleBulkNotSpam}
+              className="text-xs font-semibold px-2.5 py-1.5 rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors shrink-0 mr-1"
+              title="Not Spam"
+            >
+              Not Spam
+            </button>
+          )}
           <button onClick={handleBulkMarkRead} className={actionBtnCls} title="Mark as read">
             <IconCheck />
           </button>
           <button onClick={handleBulkMarkUnread} className={actionBtnCls} title="Mark as unread">
             <IconDot />
           </button>
-          <button
-            onClick={handleBulkPin}
-            className={actionBtnCls}
-            title={allSelectedPinned ? "Unpin" : "Pin"}
-          >
-            {allSelectedPinned ? <IconUnpin /> : <IconPin />}
-          </button>
-          {archiveMailboxId && (
+          {view === "inbox" && (
+            <button
+              onClick={handleBulkPin}
+              className={actionBtnCls}
+              title={allSelectedPinned ? "Unpin" : "Pin"}
+            >
+              {allSelectedPinned ? <IconUnpin /> : <IconPin />}
+            </button>
+          )}
+          {view === "inbox" && archiveMailboxId && (
             <button onClick={() => handleBulkMove(archiveMailboxId)} className={actionBtnCls} title="Archive">
               <IconArchive />
             </button>
@@ -616,7 +667,7 @@ export default function EmailListPanel({
       )}
 
       {/* Inbox list */}
-      {view === "inbox" && (
+      {(view === "inbox" || view === "spam") && (
         <div className="relative flex-1 overflow-hidden bg-stone-50 dark:bg-stone-900">
 
           {/* "Up to date" success pill — floats over the list after refresh */}
@@ -657,9 +708,9 @@ export default function EmailListPanel({
                 ) && !isRouteSelected;
 
               const showPinnedDivider =
-                !isInSearchMode && pinnedThreadCount > 0 && idx === 0;
+                !isInSearchMode && view === "inbox" && pinnedThreadCount > 0 && idx === 0;
               const showRestDivider =
-                !isInSearchMode && pinnedThreadCount > 0 && idx === pinnedThreadCount;
+                !isInSearchMode && view === "inbox" && pinnedThreadCount > 0 && idx === pinnedThreadCount;
 
               // Sender display: comma-separated unique names, truncated to 3
               const senderLabel =

@@ -9,6 +9,7 @@ import CalendarEventCard, { CalendarEventData, CalendarResponse } from "@/compon
 import AttachmentList from "@/components/AttachmentList";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
+import NotSpamButton from "@/components/NotSpamButton";
 
 // ---------------------------------------------------------------------------
 // Body resolution (mirrors email/[id]/page.tsx logic)
@@ -46,11 +47,23 @@ interface ItemProps {
   onResponseSent: (r: CalendarResponse) => void;
   expanded: boolean;
   onToggle: () => void;
+  spamMailboxId?: string;
+  inboxMailboxId?: string;
 }
 
-function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSent, expanded, onToggle }: ItemProps) {
+function EmailStackItem({
+  email,
+  calendarEvent,
+  persistedResponse,
+  onResponseSent,
+  expanded,
+  onToggle,
+  spamMailboxId,
+  inboxMailboxId,
+}: ItemProps) {
   const isUnread = !email.keywords?.["$seen"];
   const resolved = resolveBody(email);
+  const isSpam = !!(spamMailboxId && email.mailboxIds[spamMailboxId]);
 
   return (
     <div
@@ -128,7 +141,14 @@ function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSen
           </div>
 
           {/* Action buttons */}
-          <div className="px-4 py-2.5 flex items-center gap-2 border-b border-stone-100 dark:border-stone-700/50">
+          <div className="px-4 py-2.5 flex flex-wrap items-center gap-2 border-b border-stone-100 dark:border-stone-700/50">
+            {isSpam && inboxMailboxId && (
+              <NotSpamButton
+                emailId={email.id}
+                mailboxIds={email.mailboxIds}
+                inboxMailboxId={inboxMailboxId}
+              />
+            )}
             <PinButton emailId={email.id} initiallyPinned={!!email.keywords?.["$flagged"]} />
             <Link
               href={`/compose?mode=reply&id=${email.id}`}
@@ -196,9 +216,11 @@ function EmailStackItem({ email, calendarEvent, persistedResponse, onResponseSen
 interface Props {
   emails: Email[]; // sorted oldest → newest
   calendarEvents: (CalendarEventData | null)[];
+  spamMailboxId?: string;
+  inboxMailboxId?: string;
 }
 
-export default function ThreadView({ emails, calendarEvents }: Props) {
+export default function ThreadView({ emails, calendarEvents, spamMailboxId, inboxMailboxId }: Props) {
   // Start with the most recent email expanded
   const lastId = emails[emails.length - 1]?.id;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
@@ -232,6 +254,8 @@ export default function ThreadView({ emails, calendarEvents }: Props) {
           onResponseSent={(r) => setRsvpResponses((prev) => ({ ...prev, [email.id]: r }))}
           expanded={expandedIds.has(email.id)}
           onToggle={() => toggle(email.id)}
+          spamMailboxId={spamMailboxId}
+          inboxMailboxId={inboxMailboxId}
         />
       ))}
     </div>

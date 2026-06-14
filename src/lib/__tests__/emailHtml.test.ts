@@ -83,7 +83,7 @@ describe("prepareHtml", () => {
       const result = prepareHtml('<html><head></head><body>see https://example.com for info</body></html>');
       assert.ok(result.includes('<a href="https://example.com"'), "bare URL should become an anchor");
       assert.ok(result.includes('target="_blank"'), "link should open in new tab");
-      assert.ok(result.includes('rel="noopener noreferrer"'), "link should have noopener rel");
+      assert.ok(result.includes('rel="noopener"'), "link should have noopener rel");
     });
 
     it("does not double-link URLs already inside an <a> tag", () => {
@@ -385,7 +385,7 @@ describe("linkifyHtmlText (via prepareHtml)", () => {
   it("linkified anchor opens in a new tab", () => {
     const result = prepareHtml(wrap("Go to https://example.com now."));
     assert.ok(result.includes('target="_blank"'), "linkified URL should have target=_blank");
-    assert.ok(result.includes('rel="noopener noreferrer"'), "linkified URL should have noopener rel");
+    assert.ok(result.includes('rel="noopener"'), "linkified URL should have noopener rel");
   });
 
   it("injects cursor:pointer on anchors so hover cursor works inside the sandboxed iframe", () => {

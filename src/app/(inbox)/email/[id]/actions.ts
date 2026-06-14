@@ -1,7 +1,7 @@
 "use server";
 
 import { auth } from "@/auth";
-import { getSession, getAccountId, getIdentities, getMailboxes, markAsRead, markAsUnread, sendCalendarReply, setKeywordsOnMany } from "@/lib/jmap";
+import { getSession, getAccountId, getIdentities, getMailboxes, markAsRead, markAsUnread, sendCalendarReply, setKeywordsOnMany, moveEmailsToMailbox } from "@/lib/jmap";
 import { parseIcs, buildCalendarReply } from "@/lib/ics";
 import { log } from "@/lib/logger";
 
@@ -90,3 +90,16 @@ export async function sendCalendarReplyAction(
     duration_ms: Date.now() - t,
   }, "action.calendar_reply");
 }
+
+export async function promoteNotSpamAction(
+  emailId: string,
+  currentMailboxIds: Record<string, boolean>,
+  inboxMailboxId: string
+): Promise<void> {
+  const t = Date.now();
+  const { session, accountId } = await requireAuthedJmap();
+  const emails = [{ id: emailId, mailboxIds: currentMailboxIds }];
+  await moveEmailsToMailbox(session.apiUrl, accountId, emails, inboxMailboxId);
+  log.info({ email_id: emailId, target_mailbox_id: inboxMailboxId, duration_ms: Date.now() - t }, "action.promote_not_spam");
+}
+

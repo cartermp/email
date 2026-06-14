@@ -60,11 +60,20 @@ function SettingsIcon() {
   );
 }
 
-interface Props {
-  draftTotal?: number;
+function SpamIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="w-5 h-5" aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+    </svg>
+  );
 }
 
-export default function MobileNav({ draftTotal = 0 }: Props) {
+interface Props {
+  draftTotal?: number;
+  spamTotal?: number;
+}
+
+export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
   const pathname = usePathname();
   const unreadTotal = useUnreadCount();
 
@@ -93,6 +102,13 @@ export default function MobileNav({ draftTotal = 0 }: Props) {
       icon: <SentIcon />,
       active: pathname.startsWith("/sent"),
       badge: 0,
+    },
+    {
+      href: "/spam",
+      label: "Spam",
+      icon: <SpamIcon />,
+      active: pathname.startsWith("/spam"),
+      badge: spamTotal,
     },
     {
       href: "/calendar",

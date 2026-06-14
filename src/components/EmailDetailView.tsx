@@ -7,6 +7,8 @@ import CalendarEventCard from "@/components/CalendarEventCard";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
 import AttachmentList from "@/components/AttachmentList";
 import { resolveCalendarEvent } from "@/lib/calendarDetect";
+import { getSession, getMailboxes } from "@/lib/jmap";
+import NotSpamButton from "@/components/NotSpamButton";
 
 interface Props {
   email: Email;
@@ -36,6 +38,18 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
 
   // ── Detect calendar invite ────────────────────────────────────
   const calendarEvent = await resolveCalendarEvent(email, downloadUrl, accountId);
+
+  // ── Detect spam/junk mailbox ────────────────────────────────────
+  const jmapSession = await getSession();
+  const mailboxes = await getMailboxes(jmapSession.apiUrl, accountId);
+  const spamMailbox = mailboxes.find(
+    (m) =>
+      m.role === "junk" ||
+      m.name.toLowerCase() === "spam" ||
+      m.name.toLowerCase() === "junk"
+  );
+  const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
+  const isSpam = !!(spamMailbox && email.mailboxIds[spamMailbox.id]);
 
   const hasMultipleRecipients =
     (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;
@@ -81,6 +95,13 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
 
       {/* Action buttons */}
       <div className="flex flex-wrap items-center gap-2 mb-6 pb-6 border-b border-stone-200 dark:border-stone-700">
+        {isSpam && inboxMailbox && (
+          <NotSpamButton
+            emailId={email.id}
+            mailboxIds={email.mailboxIds}
+            inboxMailboxId={inboxMailbox.id}
+          />
+        )}
         <PinButton
           emailId={email.id}
           initiallyPinned={!!email.keywords?.["$flagged"]}

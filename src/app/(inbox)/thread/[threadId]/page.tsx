@@ -1,4 +1,4 @@
-import { getSession, getAccountId, getThreadEmails } from "@/lib/jmap";
+import { getSession, getAccountId, getThreadEmails, getMailboxes } from "@/lib/jmap";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import MobileBackButton from "@/components/MobileBackButton";
@@ -41,6 +41,10 @@ export default async function ThreadPage({ params }: Props) {
 
   const subject = emails[emails.length - 1].subject ?? "(no subject)";
 
+  const mailboxes = await getMailboxes(session.apiUrl, accountId);
+  const spamMailbox = mailboxes.find((m) => m.role === "junk" || m.name.toLowerCase() === "spam" || m.name.toLowerCase() === "junk");
+  const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
+
   const calendarEvents = await Promise.all(
     emails.map((e) => resolveCalendarEvent(e, session.downloadUrl, accountId))
   );
@@ -64,7 +68,12 @@ export default async function ThreadPage({ params }: Props) {
             Print
           </Link>
         </div>
-        <ThreadView emails={emails} calendarEvents={calendarEvents} />
+        <ThreadView
+          emails={emails}
+          calendarEvents={calendarEvents}
+          spamMailboxId={spamMailbox?.id}
+          inboxMailboxId={inboxMailbox?.id}
+        />
       </div>
     </div>
   );

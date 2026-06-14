@@ -77,7 +77,7 @@ function linkifyHtmlText(html: string): string {
       const trimmed = url.replace(/[.,;:!?)]+$/, "");
       const rest = url.slice(trimmed.length);
       const safeHref = trimmed.replace(/&/g, "&amp;");
-      return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${trimmed}</a>${rest}`;
+      return `<a href="${safeHref}" target="_blank" rel="noopener">${trimmed}</a>${rest}`;
     });
   });
 }
@@ -216,7 +216,7 @@ export function prepareHtml(
     var links=document.getElementsByTagName('a');
     for(var i=0;i<links.length;i++){
       links[i].setAttribute('target','_blank');
-      links[i].setAttribute('rel','noopener noreferrer');
+      links[i].setAttribute('rel','noopener');
     }
   }
   window.addEventListener('load',function(){

@@ -29,6 +29,7 @@ export default async function RootLayout({
   const session = await auth();
   let unreadTotal = 0;
   let draftTotal = 0;
+  let spamUnreadTotal = 0;
 
   if (session) {
     const jmapSession = await getJmapSession();
@@ -36,8 +37,10 @@ export default async function RootLayout({
     const mailboxes = await getMailboxes(jmapSession.apiUrl, accountId);
     const inboxMailbox = mailboxes.find((mailbox) => mailbox.role === "inbox");
     const draftsMailbox = mailboxes.find((mailbox) => mailbox.role === "drafts");
+    const spamMailbox = mailboxes.find((mailbox) => mailbox.role === "junk" || mailbox.name.toLowerCase() === "spam" || mailbox.name.toLowerCase() === "junk");
     unreadTotal = inboxMailbox?.unreadEmails ?? 0;
     draftTotal = draftsMailbox?.totalEmails ?? 0;
+    spamUnreadTotal = spamMailbox?.unreadEmails ?? 0;
   }
 
   return (
@@ -70,11 +73,18 @@ export default async function RootLayout({
                   <span>[DRAFTS]</span>
                   <UnreadCountBadge count={draftTotal} className="shrink-0" />
                 </Link>
-                <Link
+                 <Link
                   href="/sent"
                   className="text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
                 >
                   [SENT]
+                </Link>
+                <Link
+                  href="/spam"
+                  className="flex items-center justify-between gap-2 text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                >
+                  <span>[SPAM]</span>
+                  <UnreadCountBadge count={spamUnreadTotal} className="shrink-0" />
                 </Link>
                 <Link
                   href="/calendar"
@@ -114,7 +124,7 @@ export default async function RootLayout({
           </div>
 
           {/* Mobile bottom nav — hidden on desktop */}
-          <div className="print:hidden"><MobileNav draftTotal={draftTotal} /></div>
+          <div className="print:hidden"><MobileNav draftTotal={draftTotal} spamTotal={spamUnreadTotal} /></div>
         </UnreadCountProvider>
       </body>
     </html>
