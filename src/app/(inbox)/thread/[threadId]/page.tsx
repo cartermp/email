@@ -11,10 +11,15 @@ export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ threadId: string }>;
+  searchParams?: Promise<{ from?: string }>;
 }
 
-export default async function ThreadPage({ params }: Props) {
+export default async function ThreadPage({ params, searchParams }: Props) {
   const { threadId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const from = resolvedSearchParams.from;
+  const backLabel = from === "spam" ? "Spam" : from === "sent" ? "Sent" : "Inbox";
+
   const session = await getSession();
   const accountId = getAccountId(session);
   const emails = await getThreadEmails(session.apiUrl, accountId, threadId);
@@ -28,7 +33,7 @@ export default async function ThreadPage({ params }: Props) {
     return (
       <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
         <div className="max-w-3xl mx-auto px-8 py-8">
-          <MobileBackButton label="Inbox" />
+          <MobileBackButton label={backLabel} />
           <EmailDetailView
             email={emails[0]}
             downloadUrl={session.downloadUrl}
@@ -52,7 +57,7 @@ export default async function ThreadPage({ params }: Props) {
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
       <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
-        <MobileBackButton label="Inbox" />
+        <MobileBackButton label={backLabel} />
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="min-w-0 flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-stone-900 dark:text-stone-100 leading-snug">

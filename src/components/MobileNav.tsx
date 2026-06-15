@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
 
@@ -75,6 +75,8 @@ interface Props {
 
 export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
   const unreadTotal = useUnreadCount();
 
   const tabs = [
@@ -83,10 +85,12 @@ export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
       label: "Inbox",
       icon: <InboxIcon />,
       active:
-        pathname === "/" ||
+        (pathname === "/" ||
         pathname.startsWith("/email/") ||
         pathname.startsWith("/thread/") ||
-        pathname.startsWith("/attachment/"),
+        pathname.startsWith("/attachment/")) &&
+        from !== "spam" &&
+        from !== "sent",
       badge: unreadTotal,
     },
     {
@@ -100,14 +104,14 @@ export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
       href: "/sent",
       label: "Sent",
       icon: <SentIcon />,
-      active: pathname.startsWith("/sent"),
+      active: pathname.startsWith("/sent") || from === "sent",
       badge: 0,
     },
     {
       href: "/spam",
       label: "Spam",
       icon: <SpamIcon />,
-      active: pathname.startsWith("/spam"),
+      active: pathname.startsWith("/spam") || from === "spam",
       badge: spamTotal,
     },
     {

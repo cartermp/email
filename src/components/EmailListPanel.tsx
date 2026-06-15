@@ -148,7 +148,7 @@ export default function EmailListPanel({
     ? "drafts"
     : pathname.startsWith("/sent") || searchParams.get("from") === "sent"
     ? "sent"
-    : pathname.startsWith("/spam")
+    : pathname.startsWith("/spam") || searchParams.get("from") === "spam"
     ? "spam"
     : "inbox";
 
@@ -697,7 +697,7 @@ export default function EmailListPanel({
           {!isSearching &&
             visibleThreads.map((thread, idx) => {
               const { latestEmail, senders } = thread;
-              const threadHref = `/thread/${thread.threadId}`;
+              const threadHref = view === "spam" ? `/thread/${thread.threadId}?from=spam` : `/thread/${thread.threadId}`;
               const isRouteSelected =
                 thread.threadId === selectedThreadId ||
                 thread.latestEmail.id === selectedEmailId;
