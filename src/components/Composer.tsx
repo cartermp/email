@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 import { wrapComposePreviewHtml, wrapEmailHtml } from "@/lib/composeHtml";
-import { normalizeComposeMarkdown } from "@/lib/compose";
+import { normalizeComposeMarkdown, htmlToPlainText } from "@/lib/compose";
 
 // ---------------------------------------------------------------------------
 // RecipientInput — text input with contact autocomplete dropdown
@@ -497,7 +497,9 @@ export default function Composer({
           cc: showCc && cc.trim() ? splitAddrs(cc) : undefined,
           bcc: showBcc && bcc.trim() ? splitAddrs(bcc) : undefined,
           subject,
-          textBody: markdown,
+          textBody: forwardedHtml
+            ? markdown + "\n\n" + htmlToPlainText(forwardedHtml)
+            : markdown,
           htmlBody: wrapEmailHtml(composedBody),
           inlineImages: inlineImagesRef.current.map(({ id, blobId, type }) => ({
             id,
