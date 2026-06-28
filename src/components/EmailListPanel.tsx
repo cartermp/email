@@ -275,7 +275,7 @@ export default function EmailListPanel({
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (view === "drafts" || view === "sent") setSearchQuery("");
+    if (view !== "inbox") setSearchQuery("");
   }, [view]);
 
   const isInSearchMode = searchQuery.trim().length > 0;
