@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { JSDOM, VirtualConsole } from "jsdom";
 import {
   prepareHtml,
   prepareTextBody,
@@ -118,6 +119,7 @@ describe("prepareHtml", () => {
       ),
     );
     assert.ok(result.includes("getComputedStyle(element,'::marker')"));
+    assert.ok(result.includes("catch(_markerStyleError){}"));
     assert.ok(result.includes("contrastRatio(foreground,background)<4.5"));
     assert.ok(result.includes("spread>56||luminance(foreground)>0.18"));
     assert.ok(
@@ -128,6 +130,81 @@ describe("prepareHtml", () => {
     assert.ok(result.includes('style="color:#000"'));
     assert.ok(result.includes('style="color:#c026d3"'));
     assert.ok(!result.includes("filter:invert"));
+  });
+
+  it("never lets theme adaptation block iframe sizing", async () => {
+    const resizeMessages: unknown[] = [];
+    const scriptErrors: Error[] = [];
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on("jsdomError", (error) => scriptErrors.push(error));
+
+    const dom = new JSDOM(
+      prepareHtml(
+        documentWith(
+          '<p>Before the list</p><ul><li><span>Nested item</span></li></ul><p>After the list</p>',
+        ),
+      ),
+      {
+        runScripts: "dangerously",
+        pretendToBeVisual: true,
+        virtualConsole,
+        beforeParse(window) {
+          Object.defineProperty(window, "matchMedia", {
+            configurable: true,
+            value: () => ({
+              matches: true,
+              media: "(prefers-color-scheme:dark)",
+              onchange: null,
+              addListener() {},
+              removeListener() {},
+              addEventListener() {},
+              removeEventListener() {},
+              dispatchEvent() {
+                return true;
+              },
+            }),
+          });
+          window.getComputedStyle = (() => {
+            throw new TypeError("Unsupported computed style");
+          }) as typeof window.getComputedStyle;
+          window.postMessage = ((message: unknown) => {
+            resizeMessages.push(message);
+          }) as typeof window.postMessage;
+          window.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+            callback(0);
+            return 1;
+          }) as typeof window.requestAnimationFrame;
+          Object.defineProperty(window, "MutationObserver", {
+            configurable: true,
+            value: undefined,
+          });
+          for (const property of [
+            "scrollHeight",
+            "offsetHeight",
+            "scrollWidth",
+            "offsetWidth",
+          ]) {
+            Object.defineProperty(window.HTMLElement.prototype, property, {
+              configurable: true,
+              get: () => 640,
+            });
+          }
+        },
+      },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(
+      resizeMessages.some(
+        (message) =>
+          typeof message === "object" &&
+          message !== null &&
+          "type" in message &&
+          message.type === "iframe-resize",
+      ),
+    );
+    assert.deepEqual(scriptErrors, []);
+    dom.window.close();
   });
 
   it("measures full scroll geometry and batches updates in animation frames", () => {

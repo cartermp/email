@@ -215,8 +215,11 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
       if(!background)continue;
 
       if(element.tagName==='LI'&&String(element.textContent||'').trim()){
-        var markerStyle=window.getComputedStyle(element,'::marker');
-        var markerColour=parseRgb(markerStyle.color)||parseRgb(computed.color);
+        var markerColour=parseRgb(computed.color);
+        try{
+          var markerStyle=window.getComputedStyle(element,'::marker');
+          markerColour=parseRgb(markerStyle&&markerStyle.color)||markerColour;
+        }catch(_markerStyleError){}
         if(needsAdaptation(markerColour,background)){
           element.setAttribute('data-email-client-adapted-marker','true');
         }
@@ -227,9 +230,12 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
       }
     }
   }
+  function safelyAdaptDarkText(){
+    try{adaptDarkText();}catch(_adaptationError){}
+  }
   if(darkMode){
-    if(darkMode.addEventListener)darkMode.addEventListener('change',adaptDarkText);
-    else if(darkMode.addListener)darkMode.addListener(adaptDarkText);
+    if(darkMode.addEventListener)darkMode.addEventListener('change',safelyAdaptDarkText);
+    else if(darkMode.addListener)darkMode.addListener(safelyAdaptDarkText);
   }`;
 }
 
@@ -277,16 +283,16 @@ function resizeScript(
       media[j].addEventListener('error',schedule);
       media[j].addEventListener('loadedmetadata',schedule);
     }
-    ${adaptiveTheme ? "adaptDarkText();" : ""}
     schedule();
+    ${adaptiveTheme ? "safelyAdaptDarkText();" : ""}
   }
   window.addEventListener('message',function(e){
     if(e.data==='iframe-ping')schedule();
   });
   window.addEventListener('load',finishSetup);
   document.addEventListener('DOMContentLoaded',function(){
-    ${adaptiveTheme ? "adaptDarkText();" : ""}
     schedule();
+    ${adaptiveTheme ? "safelyAdaptDarkText();" : ""}
   });
   if(window.ResizeObserver){
     new ResizeObserver(schedule).observe(document.documentElement);
