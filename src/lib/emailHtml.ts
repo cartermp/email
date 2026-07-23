@@ -134,9 +134,97 @@ const STRIP_QUOTES_JS = `(function(){
   });
 })();`;
 
-function resizeScript(stripQuotes: boolean): string {
+function darkTextAdaptationScript(theme: EmailRenderTheme): string {
+  const fallbackBackground = JSON.stringify(theme.surfaceDarkColor);
+  return `
+  var darkMode=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)');
+  function parseRgb(value){
+    var text=String(value||'');
+    var hex=text.match(/^#([\\da-f]{6})$/i);
+    if(hex){
+      return {
+        r:parseInt(hex[1].slice(0,2),16),
+        g:parseInt(hex[1].slice(2,4),16),
+        b:parseInt(hex[1].slice(4,6),16),
+        a:1
+      };
+    }
+    var match=text.match(
+      /^rgba?\\(\\s*([\\d.]+)\\s*,\\s*([\\d.]+)\\s*,\\s*([\\d.]+)(?:\\s*,\\s*([\\d.]+))?\\s*\\)$/
+    );
+    return match?{
+      r:Number(match[1]),g:Number(match[2]),b:Number(match[3]),
+      a:match[4]===undefined?1:Number(match[4])
+    }:null;
+  }
+  function luminance(colour){
+    function channel(value){
+      value=value/255;
+      return value<=0.04045?value/12.92:Math.pow((value+0.055)/1.055,2.4);
+    }
+    return 0.2126*channel(colour.r)+
+      0.7152*channel(colour.g)+
+      0.0722*channel(colour.b);
+  }
+  function contrastRatio(foreground,background){
+    var light=Math.max(luminance(foreground),luminance(background));
+    var dark=Math.min(luminance(foreground),luminance(background));
+    return (light+0.05)/(dark+0.05);
+  }
+  function hasDirectText(element){
+    for(var node=element.firstChild;node;node=node.nextSibling){
+      if(node.nodeType===3&&String(node.nodeValue||'').trim())return true;
+    }
+    return false;
+  }
+  function effectiveBackground(element){
+    for(var current=element;current;current=current.parentElement){
+      var style=window.getComputedStyle(current);
+      if(style.backgroundImage&&style.backgroundImage!=='none')return null;
+      var colour=parseRgb(style.backgroundColor);
+      if(colour&&colour.a>0.01)return colour;
+    }
+    return parseRgb(${fallbackBackground});
+  }
+  function adaptDarkText(){
+    var marked=document.querySelectorAll('[data-email-client-adapted-text]');
+    for(var i=0;i<marked.length;i++){
+      marked[i].removeAttribute('data-email-client-adapted-text');
+    }
+    if(!darkMode||!darkMode.matches||!document.body)return;
+
+    var elements=[document.body];
+    var descendants=document.body.getElementsByTagName('*');
+    for(var j=0;j<descendants.length;j++)elements.push(descendants[j]);
+
+    for(var k=0;k<elements.length;k++){
+      var element=elements[k];
+      if(!hasDirectText(element))continue;
+      var computed=window.getComputedStyle(element);
+      if(computed.display==='none'||computed.visibility==='hidden')continue;
+      var foreground=parseRgb(computed.color);
+      var background=effectiveBackground(element);
+      if(!foreground||!background)continue;
+      var spread=Math.max(foreground.r,foreground.g,foreground.b)-
+        Math.min(foreground.r,foreground.g,foreground.b);
+      if(spread>56||luminance(foreground)>0.18)continue;
+      if(contrastRatio(foreground,background)>=4.5)continue;
+      element.setAttribute('data-email-client-adapted-text','true');
+    }
+  }
+  if(darkMode){
+    if(darkMode.addEventListener)darkMode.addEventListener('change',adaptDarkText);
+    else if(darkMode.addListener)darkMode.addListener(adaptDarkText);
+  }`;
+}
+
+function resizeScript(
+  stripQuotes: boolean,
+  adaptiveTheme?: EmailRenderTheme,
+): string {
   return `<script>(function(){
   var lastH=0,lastW=0,raf=0;
+  ${adaptiveTheme ? darkTextAdaptationScript(adaptiveTheme) : ""}
   function measure(){
     raf=0;
     var root=document.documentElement;
@@ -174,13 +262,17 @@ function resizeScript(stripQuotes: boolean): string {
       media[j].addEventListener('error',schedule);
       media[j].addEventListener('loadedmetadata',schedule);
     }
+    ${adaptiveTheme ? "adaptDarkText();" : ""}
     schedule();
   }
   window.addEventListener('message',function(e){
     if(e.data==='iframe-ping')schedule();
   });
   window.addEventListener('load',finishSetup);
-  document.addEventListener('DOMContentLoaded',schedule);
+  document.addEventListener('DOMContentLoaded',function(){
+    ${adaptiveTheme ? "adaptDarkText();" : ""}
+    schedule();
+  });
   if(window.ResizeObserver){
     new ResizeObserver(schedule).observe(document.documentElement);
   }
@@ -228,9 +320,10 @@ export function prepareHtml(
       html:not([bgcolor]):not([background]){background:${theme.surfaceDarkColor}}
       body:not([text]){color:${theme.textDarkColor}}
       body:not([link]) a{color:${theme.linkDarkColor}}
+      [data-email-client-adapted-text]{color:${theme.textDarkColor}!important}
     }
   </style>`;
-  const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes)}`;
+  const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes, theme)}`;
 
   if (/<head[\s>]/i.test(html)) {
     return html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);

@@ -104,6 +104,25 @@ describe("prepareHtml", () => {
     assert.ok(!result.includes("filter:invert"));
   });
 
+  it("adapts only low-contrast neutral text in dark mode", () => {
+    const result = prepareHtml(
+      documentWith(
+        '<p style="color:#000">Black text</p><p style="color:#c026d3">Brand text</p><div style="background-image:url(card.png)">Image-backed text</div>',
+      ),
+    );
+    assert.ok(result.includes("data-email-client-adapted-text"));
+    assert.ok(result.includes("contrastRatio(foreground,background)>=4.5"));
+    assert.ok(result.includes("spread>56||luminance(foreground)>0.18"));
+    assert.ok(
+      result.includes(
+        "style.backgroundImage&&style.backgroundImage!=='none'",
+      ),
+    );
+    assert.ok(result.includes('style="color:#000"'));
+    assert.ok(result.includes('style="color:#c026d3"'));
+    assert.ok(!result.includes("filter:invert"));
+  });
+
   it("measures full scroll geometry and batches updates in animation frames", () => {
     const result = prepareHtml(documentWith("<p>Hello</p>"));
     assert.ok(result.includes("root?root.scrollWidth:0"));
