@@ -1,6 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { colorFor, initialsFor, PALETTE, WEBMAIL_DOMAINS } from "../senderAvatar";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import SenderAvatar from "../../components/SenderAvatar";
+import { colorFor, initialsFor, PALETTE } from "../senderAvatar";
 import { EmailAddress } from "../types";
 
 function addr(email: string, name?: string): EmailAddress {
@@ -89,25 +92,20 @@ describe("initialsFor", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// WEBMAIL_DOMAINS
-// ---------------------------------------------------------------------------
+describe("SenderAvatar", () => {
+  it("renders deterministic initials without external image requests", () => {
+    const from = [addr("octocat@github.com", "GitHub Octocat")];
+    const first = renderToStaticMarkup(
+      createElement(SenderAvatar, { from, size: 36 }),
+    );
+    const second = renderToStaticMarkup(
+      createElement(SenderAvatar, { from, size: 36 }),
+    );
 
-describe("WEBMAIL_DOMAINS", () => {
-  it("includes common webmail providers", () => {
-    for (const domain of ["gmail.com", "outlook.com", "icloud.com", "proton.me", "fastmail.com"]) {
-      assert.ok(WEBMAIL_DOMAINS.has(domain), `expected ${domain} to be in WEBMAIL_DOMAINS`);
-    }
-  });
-
-  it("does not include company domains", () => {
-    for (const domain of ["example.com", "acme.io", "stripe.com", "github.com"]) {
-      assert.ok(!WEBMAIL_DOMAINS.has(domain), `${domain} should not be in WEBMAIL_DOMAINS`);
-    }
-  });
-
-  it("is case-sensitive (domains are stored lowercase)", () => {
-    assert.ok(!WEBMAIL_DOMAINS.has("Gmail.com"));
-    assert.ok(WEBMAIL_DOMAINS.has("gmail.com"));
+    assert.equal(first, second);
+    assert.match(first, />GO</);
+    assert.ok(!first.includes("<img"));
+    assert.ok(!first.includes("http://"));
+    assert.ok(!first.includes("https://"));
   });
 });

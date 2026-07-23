@@ -1,21 +1,5 @@
 import { EmailAddress } from "./types";
 
-// Personal/webmail domains where the favicon is the provider's brand, not the
-// sender's — fall through to initials for these.
-export const WEBMAIL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com",
-  "yahoo.com", "yahoo.co.uk", "yahoo.fr", "yahoo.ca", "yahoo.com.au",
-  "hotmail.com", "hotmail.co.uk", "hotmail.fr",
-  "outlook.com", "outlook.co.uk", "outlook.fr",
-  "live.com", "live.co.uk", "msn.com",
-  "icloud.com", "me.com", "mac.com",
-  "aol.com",
-  "protonmail.com", "proton.me",
-  "fastmail.com", "fastmail.fm",
-  "zoho.com",
-  "yandex.com", "yandex.ru",
-]);
-
 // Calm, distinct avatar colours that work against both neutral app surfaces.
 export const PALETTE = [
   "#475569",
