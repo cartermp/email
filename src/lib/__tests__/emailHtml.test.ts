@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import {
   prepareHtml,
@@ -165,30 +164,50 @@ describe("resolveEmbeddedImages", () => {
   });
 });
 
-describe("real-message rendering fixtures", () => {
+describe("representative real-message layouts", () => {
   const fixtures = [
-    "new-dental-appointment-for-phillip_Stp0bVMUG5Sc.json",
-    "start-small-and-scale-when-it-matters_Stp09-UTL1Lw.json",
-    "plan-your-weekend-10-open-houses-for-sale-near-bellevue-wa-9_Stp09-_Y2kmN.json",
+    {
+      name: "appointment reminder",
+      html: documentWith(
+        '<table role="presentation" width="600" style="width:600px"><tr><td width="480"><img src="logo.png" width="480" height="170" alt="Practice logo"></td></tr><tr><td><table role="presentation" width="320"><tr><td style="background:#f59e0b">Add to calendar</td></tr></table></td></tr></table>',
+        '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+      ),
+      preserved: ['width="600"', "width:600px", 'width="480"'],
+    },
+    {
+      name: "responsive marketing message",
+      html: documentWith(
+        '<table class="email-shell" width="640"><tr><td class="stack-column" width="320">Start small</td><td class="stack-column" width="320"><img src="chart.png" width="960" height="540"></td></tr></table>',
+        '<style>@media(max-width:640px){.stack-column{display:block!important;width:100%!important}.email-shell{width:100%!important}}</style>',
+      ),
+      preserved: ['class="email-shell"', 'class="stack-column"', 'width="640"'],
+    },
+    {
+      name: "real-estate digest",
+      html: documentWith(
+        '<table role="presentation" width="700" background="hero.jpg"><tr><td width="660"><table class="mobile-full" width="660"><tr><td><img src="listing.jpg" width="660" height="440"></td></tr></table></td></tr><tr><td class="hide-on-mobile">View all listings</td></tr></table>',
+        '<style>@media only screen and (max-width:700px){.mobile-full{width:100%!important}.hide-on-mobile{display:none!important}}</style>',
+      ),
+      preserved: [
+        'width="700"',
+        'background="hero.jpg"',
+        'class="hide-on-mobile"',
+      ],
+    },
   ];
 
   for (const fixture of fixtures) {
-    it(`preserves the sender layout for ${fixture}`, () => {
-      const email = JSON.parse(
-        readFileSync(new URL(`./fixtures/${fixture}`, import.meta.url), "utf8"),
-      ) as {
-        htmlBody: Array<{ partId?: string }>;
-        bodyValues: Record<string, { value: string }>;
-      };
-      const partId = email.htmlBody[0]?.partId;
-      assert.ok(partId);
-      const original = email.bodyValues[partId].value;
+    it(`preserves the sender layout for ${fixture.name}`, () => {
+      const original = fixture.html;
       const result = prepareHtml(original);
 
       assert.ok(result.length >= original.length);
       assert.ok(!result.includes("data-mobile-friendly"));
       assert.ok(!result.includes("filter:invert"));
       assert.ok(result.includes("iframe-resize"));
+      for (const expected of fixture.preserved) {
+        assert.ok(result.includes(expected));
+      }
       if (/name=["']viewport["']/i.test(original)) {
         assert.equal(
           (result.match(/name=["']viewport["']/gi) ?? []).length,
