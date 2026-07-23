@@ -102,7 +102,7 @@ export default function EmailBody({
   return (
     <div
       ref={wrapperRef}
-      className="bg-white"
+      className="bg-transparent"
       style={{ minHeight: "160px", overflow: "hidden", position: "relative" }}
     >
       <iframe

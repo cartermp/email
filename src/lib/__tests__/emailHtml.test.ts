@@ -72,6 +72,38 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("color:#c026d3"));
   });
 
+  it("uses the client theme behind HTML that has no authored background", () => {
+    const result = prepareHtml(documentWith("<p>Unstyled message</p>"));
+    assert.ok(
+      result.includes(
+        "html:not([bgcolor]):not([background]){background:#f8fafc}",
+      ),
+    );
+    assert.ok(
+      result.includes(
+        "html:not([bgcolor]):not([background]){background:#0f172a}",
+      ),
+    );
+    assert.ok(
+      result.includes(
+        "body:not([bgcolor]):not([background]){background:transparent}",
+      ),
+    );
+    assert.ok(result.includes("body:not([text]){color:#0f172a}"));
+    assert.ok(result.includes("body:not([text]){color:#e2e8f0}"));
+    assert.ok(!result.includes("html{background:#fff}"));
+  });
+
+  it("allows sender-authored body backgrounds and text colours to win", () => {
+    const original =
+      '<html><head><style>body{background:#fff;color:#111}</style></head><body bgcolor="#ffffff" text="#111111"><p>Designed message</p></body></html>';
+    const result = prepareHtml(original);
+    assert.ok(result.includes("body{background:#fff;color:#111}"));
+    assert.ok(result.includes('bgcolor="#ffffff"'));
+    assert.ok(result.includes('text="#111111"'));
+    assert.ok(!result.includes("filter:invert"));
+  });
+
   it("measures full scroll geometry and batches updates in animation frames", () => {
     const result = prepareHtml(documentWith("<p>Hello</p>"));
     assert.ok(result.includes("root?root.scrollWidth:0"));
@@ -228,8 +260,12 @@ describe("prepareTextBody", () => {
   it("uses neutral system typography and dark-mode colours", () => {
     const result = prepareTextBody("Hello");
     assert.ok(result.includes("BlinkMacSystemFont"));
+    assert.ok(result.includes("html{background:#f8fafc}"));
+    assert.ok(result.includes("html{background:#0f172a}"));
     assert.ok(result.includes("#0f172a"));
     assert.ok(result.includes("#e2e8f0"));
+    assert.ok(result.includes("background:transparent"));
+    assert.ok(!result.includes("background:#ffffff"));
   });
 
   it("strips quoted lines only when requested", () => {

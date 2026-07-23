@@ -215,12 +215,20 @@ export function prepareHtml(
     : '<meta name="viewport" content="width=device-width, initial-scale=1">';
   const baseStyle = `<style>
     html,body{overflow:hidden;min-height:0}
-    html{background:#fff}
+    html:not([bgcolor]):not([background]){background:${theme.surfaceLightColor}}
+    body:not([bgcolor]):not([background]){background:transparent}
+    body:not([text]){color:${theme.textLightColor}}
     body{font-family:${theme.fontFamily}}
+    body:not([link]) a{color:${theme.linkLightColor}}
     a{cursor:pointer}
     img{max-width:100%!important;height:auto!important;object-fit:contain!important}
     video,canvas,svg{max-width:100%!important;height:auto!important}
     pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+    @media(prefers-color-scheme:dark){
+      html:not([bgcolor]):not([background]){background:${theme.surfaceDarkColor}}
+      body:not([text]){color:${theme.textDarkColor}}
+      body:not([link]) a{color:${theme.linkDarkColor}}
+    }
   </style>`;
   const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes)}`;
 
@@ -259,15 +267,17 @@ export function prepareTextBody(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 html,body{margin:0;padding:0;overflow:hidden}
+html{background:${theme.surfaceLightColor}}
 body{
   box-sizing:border-box;
   font-family:${theme.fontFamily};
   font-size:15px;line-height:1.65;
-  color:${theme.textLightColor};background:${theme.textLightBg};
+  color:${theme.textLightColor};background:transparent;
   word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap;
 }
 @media(prefers-color-scheme:dark){
-  html,body{color:${theme.textDarkColor};background:${theme.textDarkBg}}
+  html{background:${theme.surfaceDarkColor}}
+  body{color:${theme.textDarkColor};background:transparent}
 }
 </style>
 ${resizeScript(false)}
