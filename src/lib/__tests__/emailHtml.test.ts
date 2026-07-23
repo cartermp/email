@@ -104,14 +104,21 @@ describe("prepareHtml", () => {
     assert.ok(!result.includes("filter:invert"));
   });
 
-  it("adapts only low-contrast neutral text in dark mode", () => {
+  it("adapts only low-contrast neutral text and list markers in dark mode", () => {
     const result = prepareHtml(
       documentWith(
-        '<p style="color:#000">Black text</p><p style="color:#c026d3">Brand text</p><div style="background-image:url(card.png)">Image-backed text</div>',
+        '<p style="color:#000">Black text</p><ul style="color:#000"><li><span style="color:#000">Nested item</span></li></ul><p style="color:#c026d3">Brand text</p><div style="background-image:url(card.png)">Image-backed text</div>',
       ),
     );
     assert.ok(result.includes("data-email-client-adapted-text"));
-    assert.ok(result.includes("contrastRatio(foreground,background)>=4.5"));
+    assert.ok(result.includes("data-email-client-adapted-marker"));
+    assert.ok(
+      result.includes(
+        "li[data-email-client-adapted-marker]::marker{color:#e2e8f0!important}",
+      ),
+    );
+    assert.ok(result.includes("getComputedStyle(element,'::marker')"));
+    assert.ok(result.includes("contrastRatio(foreground,background)<4.5"));
     assert.ok(result.includes("spread>56||luminance(foreground)>0.18"));
     assert.ok(
       result.includes(

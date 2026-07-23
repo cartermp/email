@@ -186,10 +186,20 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
     }
     return parseRgb(${fallbackBackground});
   }
+  function needsAdaptation(foreground,background){
+    if(!foreground||!background)return false;
+    var spread=Math.max(foreground.r,foreground.g,foreground.b)-
+      Math.min(foreground.r,foreground.g,foreground.b);
+    if(spread>56||luminance(foreground)>0.18)return false;
+    return contrastRatio(foreground,background)<4.5;
+  }
   function adaptDarkText(){
-    var marked=document.querySelectorAll('[data-email-client-adapted-text]');
+    var marked=document.querySelectorAll(
+      '[data-email-client-adapted-text],[data-email-client-adapted-marker]'
+    );
     for(var i=0;i<marked.length;i++){
       marked[i].removeAttribute('data-email-client-adapted-text');
+      marked[i].removeAttribute('data-email-client-adapted-marker');
     }
     if(!darkMode||!darkMode.matches||!document.body)return;
 
@@ -199,17 +209,22 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
 
     for(var k=0;k<elements.length;k++){
       var element=elements[k];
-      if(!hasDirectText(element))continue;
       var computed=window.getComputedStyle(element);
       if(computed.display==='none'||computed.visibility==='hidden')continue;
-      var foreground=parseRgb(computed.color);
       var background=effectiveBackground(element);
-      if(!foreground||!background)continue;
-      var spread=Math.max(foreground.r,foreground.g,foreground.b)-
-        Math.min(foreground.r,foreground.g,foreground.b);
-      if(spread>56||luminance(foreground)>0.18)continue;
-      if(contrastRatio(foreground,background)>=4.5)continue;
-      element.setAttribute('data-email-client-adapted-text','true');
+      if(!background)continue;
+
+      if(element.tagName==='LI'&&String(element.textContent||'').trim()){
+        var markerStyle=window.getComputedStyle(element,'::marker');
+        var markerColour=parseRgb(markerStyle.color)||parseRgb(computed.color);
+        if(needsAdaptation(markerColour,background)){
+          element.setAttribute('data-email-client-adapted-marker','true');
+        }
+      }
+
+      if(hasDirectText(element)&&needsAdaptation(parseRgb(computed.color),background)){
+        element.setAttribute('data-email-client-adapted-text','true');
+      }
     }
   }
   if(darkMode){
@@ -321,6 +336,7 @@ export function prepareHtml(
       body:not([text]){color:${theme.textDarkColor}}
       body:not([link]) a{color:${theme.linkDarkColor}}
       [data-email-client-adapted-text]{color:${theme.textDarkColor}!important}
+      li[data-email-client-adapted-marker]::marker{color:${theme.textDarkColor}!important}
     }
   </style>`;
   const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes, theme)}`;
