@@ -109,7 +109,13 @@ export default function AttachmentList({ attachments }: Props) {
   const [previewPdf, setPreviewPdf] = useState<EmailBodyPart | null>(null);
   const [previewSpreadsheet, setPreviewSpreadsheet] = useState<EmailBodyPart | null>(null);
 
-  const visible = attachments.filter((a) => a.type !== "text/calendar" && a.blobId);
+  const visible = attachments.filter(
+    (a) =>
+      a.type !== "text/calendar" &&
+      a.blobId &&
+      !a.cid &&
+      a.disposition?.toLowerCase() !== "inline",
+  );
   if (visible.length === 0) return null;
 
   return (

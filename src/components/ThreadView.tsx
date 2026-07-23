@@ -190,7 +190,12 @@ function EmailStackItem({
 
           {/* Body */}
           {resolved ? (
-            <EmailBody body={resolved.body} type={resolved.type} stripQuotes />
+            <EmailBody
+              body={resolved.body}
+              type={resolved.type}
+              stripQuotes
+              embeddedParts={email.attachments}
+            />
           ) : (
             <p className="px-4 py-6 text-sm text-stone-400 dark:text-stone-500">
               No content.

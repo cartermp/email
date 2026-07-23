@@ -138,17 +138,21 @@ export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
   ];
 
   return (
-    <nav className="md:hidden shrink-0 flex border-t border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-950">
+    <nav
+      className="md:hidden shrink-0 flex overflow-x-auto overscroll-x-contain border-t border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-950"
+      aria-label="Primary navigation"
+    >
       {tabs.map(({ href, label, icon, active, badge }) => (
         <Link
           key={href}
           href={href}
           className={[
-            "flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[11px] transition-colors",
+            "flex-none w-[68px] flex flex-col items-center gap-0.5 py-2.5 text-[11px] touch-manipulation transition-colors",
             active
-              ? "text-stone-900 dark:text-stone-100"
-              : "text-stone-400 dark:text-stone-600",
+              ? "text-blue-600 dark:text-blue-400"
+              : "text-stone-500 dark:text-stone-400",
           ].join(" ")}
+          aria-current={active ? "page" : undefined}
         >
           <span className="relative inline-flex">
             {icon}

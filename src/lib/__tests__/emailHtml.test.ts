@@ -1,433 +1,226 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { prepareHtml, prepareTextBody } from "../emailHtml";
+import { readFileSync } from "node:fs";
+import { describe, it } from "node:test";
+import {
+  prepareHtml,
+  prepareTextBody,
+  resolveEmbeddedImages,
+} from "../emailHtml";
+
+function documentWith(body: string, head = "") {
+  return `<html><head>${head}</head><body>${body}</body></html>`;
+}
 
 describe("prepareHtml", () => {
-  it("injects into existing <head>", () => {
-    const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    assert.ok(result.includes("<style>"), "should inject style");
-    assert.ok(result.includes("<script>"), "should inject script");
-  });
-
-  it("preserves existing head attributes", () => {
-    const result = prepareHtml('<html><head lang="x"></head><body></body></html>');
-    assert.ok(result.includes('<head lang="x">'), "should preserve head attributes");
-    assert.ok(result.includes("<style>"), "should still inject style");
-  });
-
-  it("wraps bare HTML with no <head>", () => {
-    const result = prepareHtml("<p>hello</p>");
-    assert.ok(result.startsWith("<html><head>"));
-    assert.ok(result.includes("<body><p>hello</p></body>"));
-  });
-
-  it("reports content width via direct body children so the parent can scale externally", () => {
-    const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    // The parent (EmailBody) scales the iframe element itself when content is
-    // wider than the container. We measure only direct body children using
-    // offsetLeft+offsetWidth (not scrollWidth or getBCR on all descendants)
-    // because descending into nested tables picks up inner-element margin
-    // overflow, which creates an infinite resize loop.
-    assert.ok(result.includes("document.body.children"), "should iterate direct body children");
-    assert.ok(result.includes("offsetWidth"), "should use offsetWidth to measure content width");
-    assert.ok(result.includes("width:w"), "should include width in the postMessage payload");
-  });
-
-  it("injects parent-width-driven readable mobile reflow rules", () => {
-    const result = prepareHtml("<html><head></head><body><table width='600'><tr><td>hello</td></tr></table></body></html>");
-    assert.ok(result.includes('data-mobile-friendly'), "should gate readable mode behind a root data attribute");
-    assert.ok(result.includes("--iframe-parent-width"), "should clamp the iframe document to the parent width");
-    assert.ok(result.includes("table[width]{width:100%!important"), "fixed-width tables should be allowed to shrink");
-    assert.ok(result.includes("overflow-wrap:anywhere"), "long text should wrap in readable mode");
-    assert.ok(result.includes("img[width]{display:block!important"), "inline images should stack instead of forcing a giant row");
-  });
-
-  it("emulates common responsive email helper classes in readable mobile mode", () => {
-    const result = prepareHtml("<html><head></head><body><table class='flexible'></table><td class='hide'></td><span class='db'>x</span></body></html>");
-    assert.ok(result.includes('table[class~="flexible"]{width:100%!important'), "flexible tables should expand to the available width");
-    assert.ok(result.includes('[class~="hide"]{display:none!important'), "gmail spacer rows should be hidden in mobile readable mode");
-    assert.ok(result.includes('[class~="db"]{display:block!important'), "db helper classes should become block elements");
-  });
-
-  it("listens for parent width messages from EmailBody", () => {
-    const result = prepareHtml("<html><head></head><body>hi</body></html>");
-    assert.ok(result.includes("iframe-parent-width"), "should accept parent width postMessages");
-    assert.ok(result.includes("setProperty('--iframe-parent-width'"), "should store the parent width as a CSS variable");
-    assert.ok(result.includes("requestAnimationFrame(send)"), "width changes should trigger a fresh resize measurement");
-  });
-
-  it("strips a fixed-width viewport meta from the original email", () => {
-    const email = '<html><head><meta name="viewport" content="width=600"></head><body></body></html>';
-    const result = prepareHtml(email);
-    assert.ok(!result.includes('content="width=600"'), "original fixed-width viewport should be removed");
-  });
-
-  it("sets overflow:hidden to prevent iframe internal scrollbar", () => {
-    const result = prepareHtml("<html><head></head><body>content</body></html>");
-    assert.ok(result.includes("overflow:hidden"));
-  });
-
-  it("handles uppercase HEAD tag", () => {
-    const result = prepareHtml("<HTML><HEAD></HEAD><BODY>hi</BODY></HTML>");
-    assert.ok(result.includes("<style>"), "should inject style into uppercase HEAD");
-  });
-
-  it("includes postMessage resize script", () => {
-    const result = prepareHtml("<html><head></head><body></body></html>");
+  it("injects into an existing head without losing its attributes", () => {
+    const result = prepareHtml(
+      '<html><head lang="en"><title>Message</title></head><body>Hi</body></html>',
+    );
+    assert.ok(result.includes('<head lang="en">'));
+    assert.ok(result.includes("<title>Message</title>"));
     assert.ok(result.includes("iframe-resize"));
-    assert.ok(result.includes("postMessage"));
   });
 
-  describe("bare URL linkification", () => {
-    it("converts a bare URL in text to a clickable link", () => {
-      const result = prepareHtml('<html><head></head><body>see https://example.com for info</body></html>');
-      assert.ok(result.includes('<a href="https://example.com"'), "bare URL should become an anchor");
-      assert.ok(result.includes('target="_blank"'), "link should open in new tab");
-      assert.ok(result.includes('rel="noopener"'), "link should have noopener rel");
+  it("wraps an HTML fragment in a complete document", () => {
+    const result = prepareHtml("<p>Hello</p>");
+    assert.ok(result.startsWith("<html><head>"));
+    assert.ok(result.includes("<body><p>Hello</p></body>"));
+  });
+
+  it("preserves a sender-provided responsive viewport", () => {
+    const viewport =
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
+    const result = prepareHtml(documentWith("<p>Hello</p>", viewport));
+    assert.equal((result.match(/name="viewport"/g) ?? []).length, 1);
+    assert.ok(result.includes(viewport));
+  });
+
+  it("adds a responsive viewport only when one is absent", () => {
+    const result = prepareHtml(documentWith("<p>Hello</p>"));
+    assert.ok(
+      result.includes(
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+      ),
+    );
+  });
+
+  it("does not rewrite table, cell, or responsive helper-class geometry", () => {
+    const result = prepareHtml(
+      documentWith(
+        '<table class="flexible" width="600"><tr><td width="480">Text</td></tr></table>',
+      ),
+    );
+    assert.ok(!result.includes("data-mobile-friendly"));
+    assert.ok(!result.includes("table[width]{width:100%"));
+    assert.ok(!result.includes("td[width]"));
+    assert.ok(!result.includes('[class~="hide"]'));
+  });
+
+  it("contains images without cropping while preserving their aspect ratio", () => {
+    const result = prepareHtml(documentWith('<img src="hero.jpg" width="1200">'));
+    assert.ok(result.includes("max-width:100%!important"));
+    assert.ok(result.includes("height:auto!important"));
+    assert.ok(result.includes("object-fit:contain!important"));
+    assert.ok(!result.includes("img[width]{display:block"));
+  });
+
+  it("keeps sender colours intact instead of applying a dark-mode inversion filter", () => {
+    const result = prepareHtml(
+      documentWith('<div style="color:#c026d3">Brand colour</div>'),
+    );
+    assert.ok(!result.includes("filter:invert"));
+    assert.ok(!result.includes("hue-rotate"));
+    assert.ok(result.includes("color:#c026d3"));
+  });
+
+  it("measures full scroll geometry and batches updates in animation frames", () => {
+    const result = prepareHtml(documentWith("<p>Hello</p>"));
+    assert.ok(result.includes("root?root.scrollWidth:0"));
+    assert.ok(result.includes("body?body.scrollWidth:0"));
+    assert.ok(result.includes("requestAnimationFrame(measure)"));
+    assert.ok(result.includes("ResizeObserver"));
+    assert.ok(result.includes("document.fonts.ready"));
+  });
+
+  describe("links", () => {
+    it("linkifies a bare URL without nesting an existing link", () => {
+      const result = prepareHtml(
+        documentWith(
+          'See https://example.com. <a href="https://openai.com">https://openai.com</a>',
+        ),
+      );
+      assert.ok(result.includes('<a href="https://example.com"'));
+      assert.ok(result.includes("</a>."));
+      assert.equal((result.match(/<a /g) ?? []).length, 2);
     });
 
-    it("does not double-link URLs already inside an <a> tag", () => {
-      const input = '<html><head></head><body><a href="https://example.com">https://example.com</a></body></html>';
-      const result = prepareHtml(input);
-      const count = (result.match(/<a /g) ?? []).length;
-      assert.equal(count, 1, "should not create a nested anchor");
+    it("does not linkify URLs in style or script blocks", () => {
+      const result = prepareHtml(
+        '<html><head><style>.x{background:url(https://example.com/a.png)}</style><script>const x="https://example.com"</script></head><body>Hi</body></html>',
+      );
+      assert.ok(!result.includes('<a href="https://example.com'));
     });
 
-    it("trims trailing punctuation from linkified URLs", () => {
-      const result = prepareHtml('<html><head></head><body>visit https://example.com.</body></html>');
-      assert.ok(result.includes('<a href="https://example.com"'), "trailing period should not be part of href");
-      assert.ok(result.includes('</a>.'), "period should appear after the closing anchor tag");
-    });
-
-    it("does not linkify URLs inside <script> blocks", () => {
-      const result = prepareHtml('<html><head><script>var u="https://example.com"</script></head><body></body></html>');
-      // The URL inside the script should not be wrapped in an <a> tag
-      assert.ok(!result.includes('<a href="https://example.com"'), "URL in script should not be linkified");
+    it("unwraps Google Calendar redirect links", () => {
+      const target = "https://example.zoom.us/j/123";
+      const wrapped = `https://www.google.com/url?q=${encodeURIComponent(target)}&sa=D`;
+      const result = prepareHtml(
+        documentWith(`<a href="${wrapped}">Join meeting</a>`),
+      );
+      assert.ok(result.includes(`href="${target}"`));
+      assert.ok(!result.includes("google.com/url"));
     });
   });
 
-  describe("light-mode emails (no native dark mode)", () => {
-    const lightEmail = "<html><head></head><body>plain</body></html>";
+  describe("quoted thread history", () => {
+    it("includes common client selectors only when quote stripping is requested", () => {
+      const stripped = prepareHtml(documentWith("<p>Reply</p>"), {
+        stripQuotes: true,
+      });
+      assert.ok(stripped.includes('[data-quoted-reply="true"]'));
+      assert.ok(stripped.includes('blockquote[type="cite"]'));
+      assert.ok(stripped.includes(".gmail_quote"));
+      assert.ok(stripped.includes("#divRplyFwdMsg"));
 
-    it("sets a white background", () => {
-      const result = prepareHtml(lightEmail);
-      assert.ok(result.includes("background-color:#ffffff"));
-    });
-
-    it("injects dark-mode filter inversion via CSS @media (prefers-color-scheme:dark)", () => {
-      const result = prepareHtml(lightEmail);
-      // color-scheme:light suppresses both CSS @media and window.matchMedia in modern
-      // browsers, so we must NOT set it. Use a plain CSS @media block instead.
-      assert.ok(!result.includes("color-scheme:light"), "must not set color-scheme:light");
-      assert.ok(result.includes("filter:invert(1) hue-rotate(180deg)"),
-        "should inject invert filter for dark mode");
-      assert.ok(result.match(/@media\(prefers-color-scheme:dark\)/),
-        "dark mode filter must be in a CSS @media rule");
-    });
-
-    it("sets app-matching dark background and text colour via pre-filter values", () => {
-      const result = prepareHtml(lightEmail);
-      // html gets stone-900 directly (no filter on html) to avoid browser bg-escape quirk
-      assert.ok(result.includes("#060e06"), "dark @media block should set html background-color:#060e06");
-      // body pre-filter bg: #f1f9f1 → filter → #060e06 (stone-900)
-      assert.ok(result.includes("#f1f9f1"), "dark @media block should set body background-color:#f1f9f1");
-      // body pre-filter color: #131f13 → filter → #e0ece0 (stone-100)
-      assert.ok(result.includes("#131f13"), "dark @media block should set body color:#131f13");
-    });
-
-    it("injects default font-family on html,body so unstyled emails match the client font", () => {
-      const result = prepareHtml(lightEmail);
-      assert.ok(result.includes("font-family:"), "should inject font-family on html,body");
-    });
-
-    it("injects counter-filter on img/video/picture/canvas to preserve image colors", () => {
-      const result = prepareHtml(lightEmail);
-      // These elements get the same filter applied twice (self-inverse).
-      // !important ensures email CSS cannot override the counter-filter.
-      assert.ok(result.includes("img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}"), `got: ${result}`);
+      const full = prepareHtml(documentWith("<p>Reply</p>"));
+      assert.ok(!full.includes('[data-quoted-reply="true"]'));
+      assert.ok(!full.includes(".gmail_quote"));
+      assert.ok(!full.includes("#divRplyFwdMsg"));
     });
   });
+});
 
-  describe("dark-mode-aware emails", () => {
-    const darkEmail =
-      "<html><head><style>@media (prefers-color-scheme: dark){body{background:#000}}</style></head><body></body></html>";
-
-    it("does not inject color-scheme:light", () => {
-      const result = prepareHtml(darkEmail);
-      assert.ok(!result.includes("color-scheme:light"));
-    });
-
-    it("does not inject a white background override", () => {
-      const result = prepareHtml(darkEmail);
-      // The injected style should only contain overflow:hidden, not a background color
-      const injectedStyle = result.match(/<style>(.*?)<\/style>/)?.[1] ?? "";
-      assert.ok(!injectedStyle.includes("background-color:#ffffff"), `got: ${injectedStyle}`);
-    });
-
-    it("does not inject a filter inversion (email handles its own dark mode)", () => {
-      const result = prepareHtml(darkEmail);
-      // Only one prefers-color-scheme reference — the email's own style, not our injected filter
-      const injectedStyle = result.match(/<style>(.*?)<\/style>/)?.[1] ?? "";
-      assert.ok(!injectedStyle.includes("filter:invert"), `injected style should not contain filter: ${injectedStyle}`);
-    });
-
-    it("still injects overflow:hidden", () => {
-      const result = prepareHtml(darkEmail);
-      assert.ok(result.includes("overflow:hidden"));
-    });
+describe("resolveEmbeddedImages", () => {
+  it("maps cid image references to authenticated inline downloads", () => {
+    const result = resolveEmbeddedImages(
+      '<img src="cid:hero@message"><table background="CID:bg@message"></table>',
+      [
+        {
+          type: "image/png",
+          size: 10,
+          blobId: "blob/hero",
+          name: "hero image.png",
+          cid: "hero@message",
+          disposition: "inline",
+        },
+        {
+          type: "image/jpeg",
+          size: 10,
+          blobId: "blob-bg",
+          cid: "<bg@message>",
+        },
+      ],
+    );
+    assert.ok(result.includes("/api/download?"));
+    assert.ok(result.includes("blobId=blob%2Fhero"));
+    assert.ok(result.includes("inline=true"));
+    assert.ok(!result.toLowerCase().includes("cid:"));
   });
+
+  it("leaves an unmatched cid reference untouched", () => {
+    assert.equal(
+      resolveEmbeddedImages('<img src="cid:missing">', []),
+      '<img src="cid:missing">',
+    );
+  });
+});
+
+describe("real-message rendering fixtures", () => {
+  const fixtures = [
+    "new-dental-appointment-for-phillip_Stp0bVMUG5Sc.json",
+    "start-small-and-scale-when-it-matters_Stp09-UTL1Lw.json",
+    "plan-your-weekend-10-open-houses-for-sale-near-bellevue-wa-9_Stp09-_Y2kmN.json",
+  ];
+
+  for (const fixture of fixtures) {
+    it(`preserves the sender layout for ${fixture}`, () => {
+      const email = JSON.parse(
+        readFileSync(new URL(`./fixtures/${fixture}`, import.meta.url), "utf8"),
+      ) as {
+        htmlBody: Array<{ partId?: string }>;
+        bodyValues: Record<string, { value: string }>;
+      };
+      const partId = email.htmlBody[0]?.partId;
+      assert.ok(partId);
+      const original = email.bodyValues[partId].value;
+      const result = prepareHtml(original);
+
+      assert.ok(result.length >= original.length);
+      assert.ok(!result.includes("data-mobile-friendly"));
+      assert.ok(!result.includes("filter:invert"));
+      assert.ok(result.includes("iframe-resize"));
+      if (/name=["']viewport["']/i.test(original)) {
+        assert.equal(
+          (result.match(/name=["']viewport["']/gi) ?? []).length,
+          (original.match(/name=["']viewport["']/gi) ?? []).length,
+        );
+      }
+    });
+  }
 });
 
 describe("prepareTextBody", () => {
-  it("returns a full HTML document", () => {
-    const result = prepareTextBody("hello world");
-    assert.ok(result.startsWith("<html>"), "should start with <html>");
-    assert.ok(result.includes("</html>"), "should end with </html>");
+  it("escapes markup and preserves line breaks", () => {
+    const result = prepareTextBody("<b>Hello</b>\nNext");
+    assert.ok(result.includes("&lt;b&gt;Hello&lt;/b&gt;\nNext"));
+    assert.ok(result.includes("white-space:pre-wrap"));
   });
 
-  it("escapes HTML entities in the text", () => {
-    const result = prepareTextBody("<b>bold</b> & \"quoted\"");
-    assert.ok(result.includes("&lt;b&gt;bold&lt;/b&gt;"), "< and > should be escaped");
-    assert.ok(result.includes("&amp;"), "& should be escaped");
-    assert.ok(!result.includes("<b>"), "raw <b> tag must not appear");
+  it("uses neutral system typography and dark-mode colours", () => {
+    const result = prepareTextBody("Hello");
+    assert.ok(result.includes("BlinkMacSystemFont"));
+    assert.ok(result.includes("#0f172a"));
+    assert.ok(result.includes("#e2e8f0"));
   });
 
-  it("uses the app's theme font (monospace)", () => {
-    const result = prepareTextBody("hello");
-    assert.ok(result.includes("monospace"), "should use app monospace font");
-  });
+  it("strips quoted lines only when requested", () => {
+    const text = "My reply\n\nOn Monday, Alice wrote:\n> Previous";
+    const stripped = prepareTextBody(text, { stripQuotes: true });
+    assert.ok(stripped.includes("My reply"));
+    assert.ok(!stripped.includes("Alice wrote"));
+    assert.ok(!stripped.includes("&gt; Previous"));
 
-  it("preserves newlines via white-space:pre-wrap", () => {
-    const result = prepareTextBody("line one\nline two");
-    assert.ok(result.includes("white-space:pre-wrap") || result.includes("white-space: pre-wrap"),
-      "should use pre-wrap to preserve newlines");
-    assert.ok(result.includes("line one\nline two"), "raw text with newlines should be present");
-  });
-
-  it("injects dark mode via CSS media query with app stone palette colors", () => {
-    const result = prepareTextBody("text");
-    // Must use CSS @media so dark mode applies before first paint (no flash)
-    assert.ok(result.match(/@media[^{]*prefers-color-scheme[^{]*dark/),
-      "dark mode must use a CSS @media rule");
-    // App stone-900 (#060e06) background, stone-100 (#e0ece0) text
-    assert.ok(result.includes("#060e06"), "dark background should use app stone-900 (#060e06)");
-    assert.ok(result.includes("#e0ece0"), "dark text should use app stone-100 (#e0ece0)");
-  });
-
-  it("injects the iframe resize postMessage script", () => {
-    const result = prepareTextBody("text");
-    assert.ok(result.includes("iframe-resize"), "should send iframe-resize postMessage");
-    assert.ok(result.includes("postMessage"), "should call postMessage");
-  });
-
-  it("sets overflow:hidden to prevent internal scrollbar", () => {
-    const result = prepareTextBody("text");
-    assert.ok(result.includes("overflow:hidden"));
-  });
-
-  describe("stripQuotes option", () => {
-    it("strips lines starting with > from plain text", () => {
-      const text = "Thanks for the update.\n\n> On Monday, Bob wrote:\n> some quoted text\n> more quoted text";
-      const result = prepareTextBody(text, { stripQuotes: true });
-      assert.ok(!result.includes("&gt; some quoted text"), "quoted lines should be removed");
-      assert.ok(result.includes("Thanks for the update."), "original content should be preserved");
-    });
-
-    it("strips the attribution line before quoted text", () => {
-      const text = "Got it.\n\nOn Monday, Bob wrote:\n> the previous message";
-      const result = prepareTextBody(text, { stripQuotes: true });
-      assert.ok(!result.includes("On Monday, Bob wrote:"), "attribution line should be removed");
-      assert.ok(result.includes("Got it."), "original content should be preserved");
-    });
-
-    it("strips blank lines between content and attribution", () => {
-      const text = "Reply here.\n\n\nOn Thu, Alice wrote:\n> quoted";
-      const result = prepareTextBody(text, { stripQuotes: true });
-      // Everything from the blank lines onward should be gone
-      assert.ok(!result.includes("On Thu, Alice wrote:"), "attribution should be removed");
-      assert.ok(!result.includes("&gt; quoted"), "quoted content should be removed");
-      assert.ok(result.includes("Reply here."), "reply should be preserved");
-    });
-
-    it("leaves text untouched when there are no quoted lines", () => {
-      const text = "No quotes here.\nJust plain text.";
-      const result = prepareTextBody(text, { stripQuotes: true });
-      assert.ok(result.includes("No quotes here."), "text should be unchanged");
-      assert.ok(result.includes("Just plain text."), "text should be unchanged");
-    });
-
-    it("does not strip when stripQuotes is false", () => {
-      const text = "My reply.\n\n> quoted line";
-      const result = prepareTextBody(text, { stripQuotes: false });
-      assert.ok(result.includes("&gt; quoted line"), "quoted line should be present when stripping is off");
-    });
-
-    it("does not strip when stripQuotes is omitted", () => {
-      const text = "My reply.\n\n> quoted line";
-      const result = prepareTextBody(text);
-      assert.ok(result.includes("&gt; quoted line"), "quoted line should be present by default");
-    });
-  });
-});
-
-describe("prepareHtml stripQuotes option", () => {
-  const selectors = [
-    { name: "Gmail (.gmail_quote)", html: '<div class="gmail_quote">quoted</div>' },
-    { name: "Apple Mail (blockquote[type=cite])", html: '<blockquote type="cite">quoted</blockquote>' },
-    { name: "Outlook (#divRplyFwdMsg)", html: '<div id="divRplyFwdMsg">quoted</div>' },
-    { name: "Yahoo (.yahoo_quoted)", html: '<div class="yahoo_quoted">quoted</div>' },
-  ];
-
-  for (const { name, html } of selectors) {
-    it(`injects JS to remove ${name} quote container`, () => {
-      const email = `<html><head></head><body><p>My reply</p>${html}</body></html>`;
-      const result = prepareHtml(email, { stripQuotes: true });
-      // The injected script should contain the relevant CSS selector
-      const selector = html.match(/class="([^"]+)"/)?.[1]
-        ? `.${html.match(/class="([^"]+)"/)![1]}`
-        : html.match(/id="([^"]+)"/)?.[1]
-        ? `#${html.match(/id="([^"]+)"/)![1]}`
-        : 'blockquote[type="cite"]';
-      assert.ok(result.includes(selector), `should inject selector for ${name}: ${selector}`);
-    });
-  }
-
-  it("does not inject quote-stripping JS when stripQuotes is false", () => {
-    const email = '<html><head></head><body><p>hi</p></body></html>';
-    const result = prepareHtml(email, { stripQuotes: false });
-    assert.ok(!result.includes("querySelectorAll"), "querySelectorAll should not be injected when stripping is off");
-  });
-
-  it("does not inject quote-stripping JS by default", () => {
-    const email = '<html><head></head><body><p>hi</p></body></html>';
-    const result = prepareHtml(email);
-    assert.ok(!result.includes("querySelectorAll"), "querySelectorAll should not be injected by default");
-  });
-
-  it("quote-stripping runs after load so DOM is fully parsed", () => {
-    const email = '<html><head></head><body><div class="gmail_quote">quoted</div></body></html>';
-    const result = prepareHtml(email, { stripQuotes: true });
-    // The strip-quotes IIFE must be inside the load event listener, not at the top level,
-    // so it runs after the full document is parsed.
-    const loadListenerMatch = result.match(/addEventListener\('load',function\(\)\{([\s\S]*?)\}\)/);
-    assert.ok(loadListenerMatch, "should have a load event listener");
-    assert.ok(loadListenerMatch![1].includes("gmail_quote"), "strip-quotes JS should run inside the load listener");
-  });
-});
-
-describe("linkifyHtmlText (via prepareHtml)", () => {
-  function wrap(body: string) {
-    return `<html><head></head><body>${body}</body></html>`;
-  }
-
-  it("linkifies a bare URL in a table cell — Capitol Hill regression", () => {
-    const email = wrap(
-      '<table><tr><td>Click here: https://www.soundtransit.org/ride-with-us/changes-affect-my-ride/navigating-service-disruptions#1line</td></tr></table>'
-    );
-    const result = prepareHtml(email);
-    assert.ok(
-      result.includes('<a href="https://www.soundtransit.org/ride-with-us/changes-affect-my-ride/navigating-service-disruptions#1line"'),
-      "URL with hash fragment inside a table cell should be linkified"
-    );
-  });
-
-  it("linkifies multiple bare URLs in the same text block", () => {
-    const result = prepareHtml(wrap("See https://example.com and https://other.org for details."));
-    assert.ok(result.includes('<a href="https://example.com"'), "first URL should be linked");
-    assert.ok(result.includes('<a href="https://other.org"'), "second URL should be linked");
-  });
-
-  it("trims trailing period so sentence-ending URLs parse correctly", () => {
-    const result = prepareHtml(wrap("Visit https://example.com. That's the site."));
-    assert.ok(result.includes('<a href="https://example.com"'), "href should not include trailing period");
-    assert.ok(result.includes("</a>."), "period should follow the closing tag");
-  });
-
-  it("trims trailing closing parenthesis", () => {
-    const result = prepareHtml(wrap("(see https://example.com)"));
-    assert.ok(result.includes('<a href="https://example.com"'), "href should not include trailing paren");
-    assert.ok(result.includes("</a>)"), "paren should follow the closing tag");
-  });
-
-  it("preserves query parameters including & in the href", () => {
-    const result = prepareHtml(wrap("Track: https://example.com/path?a=1&b=2"));
-    assert.ok(
-      result.includes('href="https://example.com/path?a=1&amp;b=2"'),
-      "& in query string should be escaped as &amp; in href attribute"
-    );
-  });
-
-  it("does not double-link a URL that is already wrapped in <a>", () => {
-    const input = wrap('<a href="https://example.com">https://example.com</a>');
-    const result = prepareHtml(input);
-    const anchorCount = (result.match(/<a /g) ?? []).length;
-    assert.equal(anchorCount, 1, "should not create a nested anchor around an already-linked URL");
-  });
-
-  it("does not linkify a URL in a <script> block", () => {
-    const input = '<html><head><script>var u="https://tracker.example.com/pixel"</script></head><body>hi</body></html>';
-    const result = prepareHtml(input);
-    assert.ok(!result.includes('<a href="https://tracker.example.com'), "URL inside script must not be linkified");
-  });
-
-  it("does not linkify a URL in a <style> block", () => {
-    const input = '<html><head><style>body{background:url(https://example.com/bg.png)}</style></head><body>hi</body></html>';
-    const result = prepareHtml(input);
-    assert.ok(!result.includes('<a href="https://example.com/bg.png"'), "URL inside style must not be linkified");
-  });
-
-  it("does not modify emails with no bare URLs", () => {
-    const email = wrap("<p>Hello world. No URLs here.</p>");
-    const result = prepareHtml(email);
-    assert.ok(!result.includes("<a href="), "no anchors should be injected when there are no bare URLs");
-  });
-
-  it("linkified anchor opens in a new tab", () => {
-    const result = prepareHtml(wrap("Go to https://example.com now."));
-    assert.ok(result.includes('target="_blank"'), "linkified URL should have target=_blank");
-    assert.ok(result.includes('rel="noopener"'), "linkified URL should have noopener rel");
-  });
-
-  it("injects cursor:pointer on anchors so hover cursor works inside the sandboxed iframe", () => {
-    const result = prepareHtml(wrap("<p>hello</p>"));
-    assert.ok(result.includes("a{cursor:pointer}"), "cursor:pointer must be in the injected style");
-  });
-
-  it("unwraps Google Calendar redirect URLs in href attributes", () => {
-    const zoomUrl = "https://coreweave.zoom.us/j/86296412870";
-    const googleRedirectUrl = `https://www.google.com/url?q=${encodeURIComponent(zoomUrl)}&sa=D&source=calendar&ust=1780956240000000&usg=AOvVaw2hpQdEyAOVox_UyoWKRPB1`;
-    const email = wrap(`<a href="${googleRedirectUrl}">Join Zoom Meeting</a>`);
-    const result = prepareHtml(email);
-    assert.ok(
-      result.includes(`href="${zoomUrl}"`),
-      "Google Calendar redirect should be unwrapped to the direct Zoom URL"
-    );
-    assert.ok(
-      !result.includes("google.com/url"),
-      "Google redirect wrapper should be removed"
-    );
-  });
-
-  it("preserves non-Google URLs unchanged", () => {
-    const regularUrl = "https://example.com/meeting";
-    const email = wrap(`<a href="${regularUrl}">Click here</a>`);
-    const result = prepareHtml(email);
-    assert.ok(
-      result.includes(`href="${regularUrl}"`),
-      "regular URLs should not be modified"
-    );
-  });
-
-  it("handles HTML-escaped characters in Google redirect URLs", () => {
-    const zoomUrl = "https://zoom.us/j/123456?pwd=xyz";
-    const googleRedirectUrl = `https://www.google.com/url?q=${encodeURIComponent(zoomUrl)}&sa=D`;
-    // HTML-escaped version
-    const escapedUrl = googleRedirectUrl.replace(/&/g, "&amp;");
-    const email = wrap(`<a href="${escapedUrl}">Join</a>`);
-    const result = prepareHtml(email);
-    assert.ok(
-      result.includes("zoom.us/j/123456"),
-      "Google redirect should be unwrapped even with HTML-escaped ampersands"
-    );
+    const full = prepareTextBody(text);
+    assert.ok(full.includes("&gt; Previous"));
   });
 });

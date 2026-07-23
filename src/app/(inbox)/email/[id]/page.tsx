@@ -24,7 +24,7 @@ export default async function EmailPage({ params, searchParams }: Props) {
 
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
-      <div className="max-w-3xl mx-auto px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
         <MobileBackButton label={backLabel} />
         <EmailDetailView
           email={email}

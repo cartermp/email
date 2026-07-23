@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
-import { wrapComposePreviewHtml, wrapEmailHtml } from "@/lib/composeHtml";
+import {
+  markQuotedReplyHtml,
+  wrapComposePreviewHtml,
+  wrapEmailHtml,
+} from "@/lib/composeHtml";
 import { normalizeComposeMarkdown, htmlToPlainText } from "@/lib/compose";
 
 // ---------------------------------------------------------------------------
@@ -287,15 +291,16 @@ export default function Composer({
       const withImages = replacePlaceholders(html, (id) => {
         return inlineImages.find((img) => img.id === id)?.dataUrl ?? "";
       });
-      const body = forwardedHtml
+      const composed = forwardedHtml
         ? withImages + appendForwardedHtml(forwardedHtml)
         : withImages;
+      const body = inReplyToId ? markQuotedReplyHtml(composed) : composed;
       if (!cancelled) setPreview(wrapComposePreviewHtml(body));
     })();
     return () => {
       cancelled = true;
     };
-  }, [markdown, inlineImages, forwardedHtml]);
+  }, [markdown, inlineImages, forwardedHtml, inReplyToId]);
 
   // Auto-save: debounce 2s after any content change
   useEffect(() => {
@@ -478,9 +483,12 @@ export default function Composer({
     try {
       const rawHtml = await marked.parse(normalizeComposeMarkdown(markdown));
       const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
-      const composedBody = forwardedHtml
+      const renderedBody = forwardedHtml
         ? htmlWithCids + appendForwardedHtml(forwardedHtml)
         : htmlWithCids;
+      const composedBody = inReplyToId
+        ? markQuotedReplyHtml(renderedBody)
+        : renderedBody;
 
       const splitAddrs = (val: string) =>
         val
@@ -497,9 +505,9 @@ export default function Composer({
           cc: showCc && cc.trim() ? splitAddrs(cc) : undefined,
           bcc: showBcc && bcc.trim() ? splitAddrs(bcc) : undefined,
           subject,
-          textBody: forwardedHtml
-            ? markdown + "\n\n" + htmlToPlainText(forwardedHtml)
-            : markdown,
+          // Drafts stay Markdown, while the text/plain transport is a clean,
+          // readable fallback derived from the rendered representation.
+          textBody: htmlToPlainText(composedBody),
           htmlBody: wrapEmailHtml(composedBody),
           inlineImages: inlineImagesRef.current.map(({ id, blobId, type }) => ({
             id,
@@ -611,7 +619,7 @@ export default function Composer({
   const fieldClass =
     "flex-1 text-sm text-stone-700 dark:text-stone-300 bg-transparent outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600";
   const labelClass = "text-xs text-stone-400 dark:text-stone-500 w-16";
-  const rowClass = "flex items-center px-6 py-2 gap-3";
+  const rowClass = "flex items-center px-4 sm:px-6 py-2 gap-3";
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-stone-900" onKeyDown={handleComposerKeyDown}>
@@ -696,7 +704,7 @@ export default function Composer({
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-4 px-6 py-2 border-b border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/50">
+      <div className="flex items-center gap-3 px-4 sm:px-6 py-2 border-b border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/50">
         <span className="text-xs text-stone-400 dark:text-stone-500">Markdown</span>
         {uploading > 0 && (
           <span className="text-xs text-stone-400 dark:text-stone-500">
@@ -730,7 +738,7 @@ export default function Composer({
                 : "text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200"
             }`}
           >
-            Split
+            Preview
           </button>
         </div>
       </div>
@@ -738,10 +746,10 @@ export default function Composer({
       {/* Editor area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <div
-          className={`flex flex-col ${
+          className={`flex-col ${
             showPreview
-              ? "w-1/2 border-r border-stone-200 dark:border-stone-800"
-              : "w-full"
+              ? "hidden md:flex md:w-1/2 md:border-r md:border-stone-200 md:dark:border-stone-800"
+              : "flex w-full"
           }`}
         >
           <textarea
@@ -752,12 +760,12 @@ export default function Composer({
             placeholder={
               "Write your email in Markdown…\n\n**Bold**, *italic*, `code`, lists, links — all supported.\nPaste an image anywhere to embed it."
             }
-            className="flex-1 resize-none px-6 py-4 text-sm text-stone-700 dark:text-stone-300 font-mono leading-relaxed outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600 bg-white dark:bg-stone-900"
+            className="flex-1 resize-none px-4 sm:px-6 py-4 text-sm text-stone-700 dark:text-stone-300 font-mono leading-relaxed outline-none placeholder:text-stone-300 dark:placeholder:text-stone-600 bg-white dark:bg-stone-900"
           />
         </div>
 
         {showPreview && (
-          <div className="w-1/2 overflow-auto bg-white dark:bg-stone-900">
+          <div className="w-full md:w-1/2 overflow-auto bg-white dark:bg-stone-900">
             <iframe
               srcDoc={preview}
               className="w-full h-full border-0"
@@ -770,7 +778,7 @@ export default function Composer({
 
       {/* Attachment pills */}
       {attachments.length > 0 && (
-        <div className="border-t border-stone-100 dark:border-stone-800 px-6 py-2 flex flex-wrap gap-2 bg-white dark:bg-stone-900">
+        <div className="border-t border-stone-100 dark:border-stone-800 px-4 sm:px-6 py-2 flex flex-wrap gap-2 bg-white dark:bg-stone-900">
           {attachments.map((att) => (
             <div
               key={att.id}
@@ -797,7 +805,7 @@ export default function Composer({
       )}
 
       {/* Footer */}
-      <div className="border-t border-stone-200 dark:border-stone-800 px-6 py-3 flex items-center gap-4 bg-white dark:bg-stone-900">
+      <div className="border-t border-stone-200 dark:border-stone-800 px-4 sm:px-6 py-3 flex items-center gap-4 bg-white dark:bg-stone-900">
         <button
           onClick={handleSend}
           disabled={sending || uploading > 0}

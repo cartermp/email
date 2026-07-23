@@ -95,6 +95,12 @@ const EMAIL_LIST_PROPERTIES = [
   "size",
 ];
 
+// HTML is usually compact because image payloads are separate MIME parts, but
+// complex newsletters can exceed the previous 1 MB cap and were silently
+// returned as truncated bodyValues. Keep a generous bounded cap so full
+// layouts render without turning normal list queries into body downloads.
+const MAX_RENDERED_BODY_BYTES = 10 * 1024 * 1024;
+
 const CALENDAR_CANDIDATE_PROPERTIES = [
   "id",
   "messageId",
@@ -356,7 +362,7 @@ export async function getEmail(
         ],
         fetchHTMLBodyValues: true,
         fetchTextBodyValues: true,
-        maxBodyValueBytes: 1024 * 1024, // 1MB
+        maxBodyValueBytes: MAX_RENDERED_BODY_BYTES,
       },
       "0",
     ],
@@ -395,7 +401,7 @@ export async function getThreadEmails(
         ],
         fetchHTMLBodyValues: true,
         fetchTextBodyValues: true,
-        maxBodyValueBytes: 1024 * 1024,
+        maxBodyValueBytes: MAX_RENDERED_BODY_BYTES,
       },
       "e",
     ],

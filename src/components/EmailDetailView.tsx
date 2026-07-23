@@ -141,7 +141,11 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
 
       {/* Body */}
       {body ? (
-        <EmailBody body={body} type={bodyType} />
+        <EmailBody
+          body={body}
+          type={bodyType}
+          embeddedParts={email.attachments}
+        />
       ) : (
         <p className="text-stone-400 dark:text-stone-500 text-sm">
           No body content.

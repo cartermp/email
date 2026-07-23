@@ -1,91 +1,124 @@
 /**
- * Prepare email HTML for display in a sandboxed iframe.
+ * Prepare untrusted email HTML for display in a sandboxed iframe.
  *
- * Dark mode strategy:
- * - Emails with native dark mode (prefers-color-scheme: dark rules): step
- *   aside entirely, let their own CSS handle theming.
- * - All other emails: in dark mode, apply filter:invert(1) hue-rotate(180deg)
- *   to the html element. This flips white→black and dark text→light text.
- *   A counter-filter on img/video restores images to their original colors
- *   (applying the same filter twice is self-inverse for images).
- *
- * Scrolling: overflow:hidden on html,body prevents the iframe from ever
- * getting its own scrollbar; the parent container handles all scrolling.
- *
- * Resizing: the injected script reports { height, width } via postMessage.
- * The parent (EmailBody) sizes the iframe element to these natural dimensions
- * and applies a CSS transform to scale it down when the content is wider
- * than the available space. This handles the iOS Safari limitation where
- * <meta viewport> is ignored inside iframes and content lays out at ~980px.
- *
- * Readable mobile mode: the parent posts the rendered container width into
- * the iframe. On narrow screens we clamp html/body to that width and apply
- * aggressive wrapping rules so text emails hidden inside fixed-width HTML can
- * reflow instead of being scaled down to unreadably small text.
+ * The sender's layout is treated as the source of truth. The injected CSS only
+ * prevents media from overflowing or being cropped; it does not rewrite table
+ * widths, cell widths, colours, or responsive helper classes. If a message is
+ * wider than the reader, EmailBody scales the complete document as one unit.
  */
 import { defaultEmailRenderTheme, type EmailRenderTheme } from "./emailRenderTheme";
+import type { EmailBodyPart } from "./types";
 
-// Unwrap Google Calendar redirect URLs to their actual destination.
-// Google Calendar wraps meeting links (especially Zoom) like:
-// https://www.google.com/url?q=<actual_url>&sa=D&source=calendar&...
-// This function extracts the real URL so users can click directly to join meetings.
 function unwrapGoogleCalendarUrl(href: string): string {
   try {
-    // Match Google's URL wrapper pattern - the q parameter contains the actual URL
-    const googleUrlMatch = href.match(/[?&]q=([^&]+)/);
-    if (googleUrlMatch && googleUrlMatch[1]) {
-      const decoded = decodeURIComponent(googleUrlMatch[1]);
-      // Only unwrap if it's a valid http(s) URL (avoid security issues)
-      // and it came from a Google domain
-      if (/^https?:\/\//.test(decoded) && /(?:www\.)?google\.com\/url/.test(href)) {
-        return decoded;
-      }
+    const url = new URL(href.replace(/&amp;/g, "&"));
+    if (
+      (url.hostname === "google.com" || url.hostname === "www.google.com") &&
+      url.pathname === "/url"
+    ) {
+      const destination = url.searchParams.get("q");
+      if (destination && /^https?:\/\//i.test(destination)) return destination;
     }
   } catch {
-    // If URL parsing fails, return original
+    // Malformed links are left untouched.
   }
   return href;
 }
 
-// Unwrap Google redirect URLs in href attributes
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function unwrapGoogleUrlsInHtml(html: string): string {
-  // Match href="..." and href='...' attributes and unwrap their URLs
   return html.replace(/\bhref=(['"])(.*?)\1/gi, (_match, quote, href) => {
-    const unescaped = href.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
-    const unwrapped = unwrapGoogleCalendarUrl(unescaped);
-    // Re-escape for HTML attribute
-    const reescaped = unwrapped.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-    return `href=${quote}${reescaped}${quote}`;
+    const unescaped = href
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&");
+    return `href=${quote}${escapeAttribute(unwrapGoogleCalendarUrl(unescaped))}${quote}`;
   });
 }
 
-// Linkify bare URLs in HTML text content at the string level (server-side),
-// so no browser DOM manipulation is needed. Skips content inside <a>, <script>,
-// and <style> tags. Tracks <a> nesting so already-linked URLs are not re-wrapped.
 const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
-const TOKEN_RE = /(<script[\s\S]*?<\/script\s*>|<style[\s\S]*?<\/style\s*>|<\/a\s*>|<a[\s>][^>]*>|<[^>]*>)|([^<]*)/gi;
+const TOKEN_RE =
+  /(<script[\s\S]*?<\/script\s*>|<style[\s\S]*?<\/style\s*>|<\/a\s*>|<a[\s>][^>]*>|<[^>]*>)|([^<]*)/gi;
+
 function linkifyHtmlText(html: string): string {
   let inAnchor = 0;
-  return html.replace(TOKEN_RE, (_match, tag: string | undefined, text: string | undefined) => {
-    if (tag !== undefined) {
-      if (/^<\/a/i.test(tag)) inAnchor = Math.max(0, inAnchor - 1);
-      else if (/^<a[\s>]/i.test(tag)) inAnchor++;
-      return tag;
-    }
-    if (!text || inAnchor > 0) return text ?? "";
-    return text.replace(URL_RE, (url) => {
-      const trimmed = url.replace(/[.,;:!?)]+$/, "");
-      const rest = url.slice(trimmed.length);
-      const safeHref = trimmed.replace(/&/g, "&amp;");
-      return `<a href="${safeHref}" target="_blank" rel="noopener">${trimmed}</a>${rest}`;
-    });
-  });
+  return html.replace(
+    TOKEN_RE,
+    (_match, tag: string | undefined, text: string | undefined) => {
+      if (tag !== undefined) {
+        if (/^<\/a/i.test(tag)) inAnchor = Math.max(0, inAnchor - 1);
+        else if (/^<a[\s>]/i.test(tag)) inAnchor++;
+        return tag;
+      }
+      if (!text || inAnchor > 0) return text ?? "";
+      return text.replace(URL_RE, (url) => {
+        const trimmed = url.replace(/[.,;:!?)]+$/, "");
+        const rest = url.slice(trimmed.length);
+        return `<a href="${escapeAttribute(trimmed)}" target="_blank" rel="noopener noreferrer">${trimmed}</a>${rest}`;
+      });
+    },
+  );
 }
 
-// JS injected into HTML emails to remove quoted reply sections.
-// Targets the most common quote containers across major email clients.
+function normalizeCid(value: string): string {
+  let decoded = value;
+  try {
+    decoded = decodeURIComponent(value);
+  } catch {
+    // Keep the original when it is not valid URL-encoded text.
+  }
+  return decoded.replace(/^cid:/i, "").replace(/^<|>$/g, "").trim().toLowerCase();
+}
+
+function inlinePartUrl(part: EmailBodyPart): string | null {
+  if (!part.blobId) return null;
+  const name = part.name || "inline-image";
+  const params = new URLSearchParams({
+    blobId: part.blobId,
+    name,
+    type: part.type,
+    inline: "true",
+  });
+  return `/api/download?${params.toString()}`;
+}
+
+/**
+ * Replace cid: image references with authenticated local download URLs.
+ * JMAP exposes the matching content-id and blob id on the body part.
+ */
+export function resolveEmbeddedImages(
+  html: string,
+  parts: EmailBodyPart[] = [],
+): string {
+  const byCid = new Map<string, string>();
+  for (const part of parts) {
+    if (!part.cid) continue;
+    const url = inlinePartUrl(part);
+    if (url) byCid.set(normalizeCid(part.cid), url);
+  }
+  if (byCid.size === 0) return html;
+
+  return html.replace(
+    /\b(src|background)=(['"])(cid:[^'"]+)\2/gi,
+    (match, attribute: string, quote: string, cidUrl: string) => {
+      const resolved = byCid.get(normalizeCid(cidUrl));
+      return resolved
+        ? `${attribute}=${quote}${escapeAttribute(resolved)}${quote}`
+        : match;
+    },
+  );
+}
+
 const STRIP_QUOTES_JS = `(function(){
   var sels=[
+    '[data-quoted-reply="true"]',
+    '.email-client-quoted-reply',
     'blockquote[type="cite"]',
     '.gmail_quote','.gmail_extra',
     '#divRplyFwdMsg','#appendonsend',
@@ -94,144 +127,102 @@ const STRIP_QUOTES_JS = `(function(){
   ];
   sels.forEach(function(s){
     var els=document.querySelectorAll(s);
-    for(var i=0;i<els.length;i++){els[i].parentNode&&els[i].parentNode.removeChild(els[i]);}
-  });
-  // Remove "On [date], [name] wrote:" attribution line immediately before a removed quote.
-  // After removal above, look for trailing <br> + attribution text nodes and drop them.
-  function trimTrailingAttribution(node){
-    if(!node)return;
-    var ch=node.childNodes;
-    for(var i=ch.length-1;i>=0;i--){
-      var n=ch[i];
-      if(n.nodeType===3&&n.nodeValue&&n.nodeValue.trim()==='')continue;
-      if(n.nodeType===1&&n.tagName==='BR'){n.parentNode.removeChild(n);continue;}
-      if(n.nodeType===3&&/wrote:\\s*$/.test(n.nodeValue)){n.parentNode.removeChild(n);}
-      break;
+    for(var i=0;i<els.length;i++){
+      var el=els[i];
+      el.parentNode&&el.parentNode.removeChild(el);
     }
-  }
-  trimTrailingAttribution(document.body);
+  });
 })();`;
 
-const MOBILE_READABLE_MAX_WIDTH = 640;
-
-export function prepareHtml(
-  html: string,
-  opts?: { stripQuotes?: boolean; theme?: EmailRenderTheme },
-): string {
-  const theme = opts?.theme ?? defaultEmailRenderTheme;
-  const hasNativeDark = /prefers-color-scheme\s*:\s*dark/i.test(html);
-
-  // Strip any existing viewport meta — we control sizing from outside.
-  html = html.replace(/<meta[^>]*name=["']viewport["'][^>]*>/gi, "");
-
-  // Unwrap Google Calendar redirect URLs so Zoom links and other meeting links work directly.
-  html = unwrapGoogleUrlsInHtml(html);
-
-  // Auto-link bare URLs in text content (server-side, no DOM manipulation needed).
-  html = linkifyHtmlText(html);
-
-  const mobileReadableStyle = [
-    'html[data-mobile-friendly="true"],html[data-mobile-friendly="true"] body{',
-    "width:var(--iframe-parent-width)!important;",
-    "max-width:var(--iframe-parent-width)!important;",
-    "min-width:0!important}",
-    'html[data-mobile-friendly="true"] body>*{max-width:100%!important}',
-    'html[data-mobile-friendly="true"] p,html[data-mobile-friendly="true"] div,html[data-mobile-friendly="true"] li,html[data-mobile-friendly="true"] td,html[data-mobile-friendly="true"] th,html[data-mobile-friendly="true"] blockquote,html[data-mobile-friendly="true"] span,html[data-mobile-friendly="true"] a{overflow-wrap:anywhere;word-break:break-word}',
-    'html[data-mobile-friendly="true"] table,html[data-mobile-friendly="true"] table[width]{width:100%!important;max-width:100%!important;table-layout:auto!important}',
-    'html[data-mobile-friendly="true"] td,html[data-mobile-friendly="true"] th,html[data-mobile-friendly="true"] td[width],html[data-mobile-friendly="true"] th[width]{width:auto!important;max-width:100%!important;min-width:0!important}',
-    'html[data-mobile-friendly="true"] img,html[data-mobile-friendly="true"] img[width]{display:block!important;max-width:100%!important;width:auto!important;height:auto!important}',
-    'html[data-mobile-friendly="true"] table[class~="flexible"]{width:100%!important;max-width:100%!important}',
-    'html[data-mobile-friendly="true"] [class~="hide"]{display:none!important;width:0!important;height:0!important;max-width:0!important;max-height:0!important;min-width:0!important;overflow:hidden!important;padding:0!important;font-size:0!important;line-height:0!important}',
-    'html[data-mobile-friendly="true"] [class~="db"]{display:block!important}',
-    'html[data-mobile-friendly="true"] pre,html[data-mobile-friendly="true"] code,html[data-mobile-friendly="true"] blockquote{overflow-wrap:anywhere;word-break:break-word}',
-  ].join("");
-
-  const baseStyle = [
-    hasNativeDark
-      ? "html,body{overflow:hidden;height:auto!important}"
-      : `html,body{background-color:#ffffff;color:#000000;overflow:hidden;height:auto!important;font-family:${theme.fontFamily}}`,
-    "a{cursor:pointer}",
-    "img{max-width:100%!important;height:auto!important}",
-    mobileReadableStyle,
-    hasNativeDark
-      ? ""
-      : "@media(prefers-color-scheme:dark){" +
-          // html gets the actual dark colour directly — no filter on html avoids
-          // browser quirks where the html/body background escapes the filter scope.
-          `html{background-color:${theme.htmlDarkBg}}` +
-          `body{filter:invert(1) hue-rotate(180deg);background-color:${theme.bodyDarkPreFilterBg};color:${theme.bodyDarkPreFilterColor}}` +
-          "img,video,picture,canvas{filter:invert(1) hue-rotate(180deg)!important}}",
-  ].join("");
-
-  const stripQuotesJs = opts?.stripQuotes ? STRIP_QUOTES_JS : "";
-
-  const inject = [
-    `<style>${baseStyle}</style>`,
-    `<script>(function(){
-  var lastH=0,lastW=0,lastParentWidth=0;
-  function setParentWidth(width){
-    if(width===lastParentWidth)return false;
-    lastParentWidth=width;
-    if(width>0&&width<=${MOBILE_READABLE_MAX_WIDTH}){
-      document.documentElement.setAttribute('data-mobile-friendly','true');
-      document.documentElement.style.setProperty('--iframe-parent-width',width+'px');
-    }else{
-      document.documentElement.removeAttribute('data-mobile-friendly');
-      document.documentElement.style.removeProperty('--iframe-parent-width');
-    }
-    return true;
-  }
-  function send(){
-    var h=Math.max(
-      document.body?document.body.scrollHeight:0,
-      document.documentElement.scrollHeight
-    );
-    // Measure width via direct body children only (offsetLeft+offsetWidth).
-    // Using scrollWidth or descending into nested elements picks up inner-table
-    // margin/position micro-overflow (a few px) which creates an infinite
-    // scale loop. The direct-child offsetWidth gives the outer wrapper's true
-    // layout width (which expands correctly for min-width constraints) without
-    // leaking sub-element overflow.
-    var w=(document.documentElement.hasAttribute('data-mobile-friendly')?lastParentWidth:0)||document.documentElement.clientWidth||0;
-    if(document.body){
-      var ch=document.body.children;
-      for(var i=0;i<ch.length;i++){
-        var rr=ch[i].offsetLeft+ch[i].offsetWidth;
-        if(rr>w)w=rr;
-      }
-    }
+function resizeScript(stripQuotes: boolean): string {
+  return `<script>(function(){
+  var lastH=0,lastW=0,raf=0;
+  function measure(){
+    raf=0;
+    var root=document.documentElement;
+    var body=document.body;
+    var h=Math.ceil(Math.max(
+      root?root.scrollHeight:0,
+      root?root.offsetHeight:0,
+      body?body.scrollHeight:0,
+      body?body.offsetHeight:0
+    ));
+    var w=Math.ceil(Math.max(
+      root?root.scrollWidth:0,
+      root?root.offsetWidth:0,
+      body?body.scrollWidth:0,
+      body?body.offsetWidth:0
+    ));
+    if(!h||h<1)return;
     if(h===lastH&&w===lastW)return;
     lastH=h;lastW=w;
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
-  send();
-  window.addEventListener('message',function(e){
-    if(e.data==='iframe-ping'){send();return;}
-    if(e.data&&e.data.type==='iframe-parent-width'){
-      var parentWidth=Number(e.data.width)||0;
-      if(setParentWidth(parentWidth)){window.requestAnimationFrame(send);}
-    }
-  });
-  function openLinksInNewTab(){
+  function schedule(){
+    if(!raf)raf=window.requestAnimationFrame(measure);
+  }
+  function finishSetup(){
+    ${stripQuotes ? STRIP_QUOTES_JS : ""}
     var links=document.getElementsByTagName('a');
     for(var i=0;i<links.length;i++){
       links[i].setAttribute('target','_blank');
-      links[i].setAttribute('rel','noopener');
+      links[i].setAttribute('rel','noopener noreferrer');
     }
+    var media=document.querySelectorAll('img,video');
+    for(var j=0;j<media.length;j++){
+      media[j].addEventListener('load',schedule);
+      media[j].addEventListener('error',schedule);
+      media[j].addEventListener('loadedmetadata',schedule);
+    }
+    schedule();
   }
-  window.addEventListener('load',function(){
-    ${stripQuotesJs}
-    openLinksInNewTab();
-    send();
-    var imgs=document.getElementsByTagName('img');
-    for(var i=0;i<imgs.length;i++){
-      imgs[i].addEventListener('load',send);
-      imgs[i].addEventListener('error',send);
-    }
+  window.addEventListener('message',function(e){
+    if(e.data==='iframe-ping')schedule();
   });
-  if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement);}
-})();</script>`,
-  ].join("");
+  window.addEventListener('load',finishSetup);
+  document.addEventListener('DOMContentLoaded',schedule);
+  if(window.ResizeObserver){
+    new ResizeObserver(schedule).observe(document.documentElement);
+  }
+  if(window.MutationObserver){
+    new MutationObserver(schedule).observe(document.documentElement,{
+      childList:true,subtree:true,attributes:true
+    });
+  }
+  if(document.fonts&&document.fonts.ready){
+    document.fonts.ready.then(schedule);
+  }
+  schedule();
+})();</script>`;
+}
+
+export function prepareHtml(
+  html: string,
+  opts?: {
+    stripQuotes?: boolean;
+    theme?: EmailRenderTheme;
+    embeddedParts?: EmailBodyPart[];
+  },
+): string {
+  const theme = opts?.theme ?? defaultEmailRenderTheme;
+  html = resolveEmbeddedImages(html, opts?.embeddedParts);
+  html = unwrapGoogleUrlsInHtml(html);
+  html = linkifyHtmlText(html);
+
+  const hasViewport = /<meta[^>]*name=["']viewport["'][^>]*>/i.test(html);
+  const viewport = hasViewport
+    ? ""
+    : '<meta name="viewport" content="width=device-width, initial-scale=1">';
+  const baseStyle = `<style>
+    html,body{overflow:hidden;min-height:0}
+    html{background:#fff}
+    body{font-family:${theme.fontFamily}}
+    a{cursor:pointer}
+    img{max-width:100%!important;height:auto!important;object-fit:contain!important}
+    video,canvas,svg{max-width:100%!important;height:auto!important}
+    pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+  </style>`;
+  const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes)}`;
 
   if (/<head[\s>]/i.test(html)) {
     return html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
@@ -239,31 +230,25 @@ export function prepareHtml(
   return `<html><head>${inject}</head><body>${html}</body></html>`;
 }
 
-/**
- * Wrap a plain-text email body in themed HTML for iframe display.
- * Uses the same resize/dark-mode infrastructure as prepareHtml so the
- * rendered output matches the app's visual style.
- */
+function stripQuotedText(text: string): string {
+  const lines = text.split("\n");
+  let cutAt = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^>/.test(lines[i])) {
+      cutAt = i > 0 && /wrote:\s*$/i.test(lines[i - 1].trim()) ? i - 1 : i;
+      while (cutAt > 0 && lines[cutAt - 1].trim() === "") cutAt--;
+      break;
+    }
+  }
+  return cutAt > 0 ? lines.slice(0, cutAt).join("\n").trimEnd() : text;
+}
+
 export function prepareTextBody(
   text: string,
   opts?: { stripQuotes?: boolean; theme?: EmailRenderTheme },
 ): string {
   const theme = opts?.theme ?? defaultEmailRenderTheme;
-  if (opts?.stripQuotes) {
-    // Find the first quoted line or "On ... wrote:" attribution and trim from there.
-    const lines = text.split("\n");
-    let cutAt = -1;
-    for (let i = 0; i < lines.length; i++) {
-      if (/^>/.test(lines[i])) {
-        // Also include the attribution line immediately before it, if present.
-        cutAt = i > 0 && /wrote:\s*$/.test(lines[i - 1].trim()) ? i - 1 : i;
-        // Walk back over any blank lines before the attribution.
-        while (cutAt > 0 && lines[cutAt - 1].trim() === "") cutAt--;
-        break;
-      }
-    }
-    if (cutAt > 0) text = lines.slice(0, cutAt).join("\n").trimEnd();
-  }
+  if (opts?.stripQuotes) text = stripQuotedText(text);
 
   const escaped = text
     .replace(/&/g, "&amp;")
@@ -271,42 +256,20 @@ export function prepareTextBody(
     .replace(/>/g, "&gt;");
 
   return `<html><head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 html,body{margin:0;padding:0;overflow:hidden}
 body{
+  box-sizing:border-box;
   font-family:${theme.fontFamily};
-  font-size:14px;line-height:1.6;
-  color:#1c1917;background:#ffffff;
-  padding:0;word-break:break-word;white-space:pre-wrap;
+  font-size:15px;line-height:1.65;
+  color:${theme.textLightColor};background:${theme.textLightBg};
+  word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap;
 }
 @media(prefers-color-scheme:dark){
-  html{background:${theme.textDarkBg}}
-  body{color:${theme.textDarkColor};background:${theme.textDarkBg}}
+  html,body{color:${theme.textDarkColor};background:${theme.textDarkBg}}
 }
 </style>
-<script>(function(){
-  var lastH=0,lastW=0;
-  function send(){
-    var h=Math.max(
-      document.body?document.body.scrollHeight:0,
-      document.documentElement.scrollHeight
-    );
-    var w=document.documentElement.clientWidth||0;
-    if(document.body){
-      var ch=document.body.children;
-      for(var i=0;i<ch.length;i++){
-        var rr=ch[i].offsetLeft+ch[i].offsetWidth;
-        if(rr>w)w=rr;
-      }
-    }
-    if(h===lastH&&w===lastW)return;
-    lastH=h;lastW=w;
-    window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
-  }
-  send();
-  window.addEventListener('message',function(e){if(e.data==='iframe-ping')send();});
-  window.addEventListener('load',send);
-  if(window.ResizeObserver){new ResizeObserver(send).observe(document.documentElement);}
-})();</script>
+${resizeScript(false)}
 </head><body>${escaped}</body></html>`;
 }

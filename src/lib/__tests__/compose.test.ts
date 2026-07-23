@@ -87,7 +87,13 @@ describe("buildReplyQuote", () => {
 
   it("includes the attribution line", () => {
     const result = buildReplyQuote("Mon Jan 1", "Alice <alice@example.com>", "body");
-    assert.ok(result.includes("On Mon Jan 1, Alice <alice@example.com> wrote:"));
+    assert.ok(result.includes("> On Mon Jan 1, Alice <alice@example.com> wrote:"));
+  });
+
+  it("keeps the attribution and prior content inside one Markdown quote", () => {
+    const result = buildReplyQuote("Mon Jan 1", "alice@example.com", "body");
+    assert.ok(!result.includes("\n---\n"));
+    assert.ok(result.includes("> On Mon Jan 1, alice@example.com wrote:\n>\n> body"));
   });
 
   it("trims trailing newlines from body before quoting", () => {

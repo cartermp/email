@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Share_Tech_Mono } from "next/font/google";
 import Link from "next/link";
 import { auth, signOut } from "@/auth";
 import LiveUnreadCountBadge from "@/components/LiveUnreadCountBadge";
@@ -8,13 +7,6 @@ import UnreadCountBadge from "@/components/UnreadCountBadge";
 import UnreadCountProvider from "@/components/UnreadCountProvider";
 import { getAccountId, getMailboxes, getSession as getJmapSession } from "@/lib/jmap";
 import "./globals.css";
-
-const shareTechMono = Share_Tech_Mono({
-  variable: "--font-share-tech-mono",
-  weight: "400",
-  subsets: ["latin"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Mail",
@@ -44,62 +36,59 @@ export default async function RootLayout({
   }
 
   return (
-    <html
-      lang="en"
-      className={`${shareTechMono.variable} h-full`}
-    >
+    <html lang="en" className="h-full">
       <body className="h-full flex flex-col bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
         <UnreadCountProvider initialCount={unreadTotal}>
           {/* Row: desktop sidebar + main content */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Sidebar — desktop only */}
-            <nav className="hidden md:flex print:hidden w-44 shrink-0 flex-col bg-stone-100 dark:bg-stone-950 border-r border-stone-300 dark:border-stone-500 px-3 py-5">
-              <span className="text-sm font-bold tracking-widest text-stone-700 dark:text-blue-300 px-2 mb-6">
-                [MAIL]
+            <nav className="hidden md:flex print:hidden w-48 shrink-0 flex-col bg-white dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
+              <span className="text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100 px-2 mb-6">
+                Mail
               </span>
 
               <div className="flex flex-col gap-1">
                 <Link
                   href="/"
-                  className="flex items-center justify-between gap-2 text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
-                  <span>[INBOX]</span>
+                  <span>Inbox</span>
                   <LiveUnreadCountBadge className="shrink-0" />
                 </Link>
                 <Link
                   href="/drafts"
-                  className="flex items-center justify-between gap-2 text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
-                  <span>[DRAFTS]</span>
+                  <span>Drafts</span>
                   <UnreadCountBadge count={draftTotal} className="shrink-0" />
                 </Link>
                  <Link
                   href="/sent"
-                  className="text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
-                  [SENT]
+                  Sent
                 </Link>
                 <Link
                   href="/spam"
-                  className="flex items-center justify-between gap-2 text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
-                  <span>[SPAM]</span>
+                  <span>Spam</span>
                   <UnreadCountBadge count={spamUnreadTotal} className="shrink-0" />
                 </Link>
                 <Link
                   href="/calendar"
-                  className="text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
-                  [CALENDAR]
+                  Calendar
                 </Link>
               </div>
 
               <div className="mt-auto flex flex-col gap-1">
                 <Link
                   href="/settings"
-                  className="text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                  className="rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
-                  [SETTINGS]
+                  Settings
                 </Link>
                 {session && (
                   <form
@@ -110,9 +99,9 @@ export default async function RootLayout({
                   >
                     <button
                       type="submit"
-                      className="w-full text-left text-xs tracking-widest uppercase text-stone-500 dark:text-stone-300 hover:text-stone-900 dark:hover:text-stone-100 border border-stone-400 dark:border-stone-300 hover:border-stone-700 dark:hover:border-stone-100 px-2 py-1.5 transition-colors"
+                      className="w-full text-left rounded-md text-sm text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                     >
-                      [SIGN OUT]
+                      Sign out
                     </button>
                   </form>
                 )}

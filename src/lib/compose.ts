@@ -50,7 +50,7 @@ export function buildReplyQuote(
     .split("\n")
     .map((line) => `> ${line}`)
     .join("\n");
-  return `\n\n---\n\n*On ${date}, ${from} wrote:*\n\n${quoted}`;
+  return `\n\n> On ${date}, ${from} wrote:\n>\n${quoted}`;
 }
 
 /**

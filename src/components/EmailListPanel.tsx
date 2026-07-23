@@ -262,7 +262,7 @@ export default function EmailListPanel({
   function checkLongPressMove(e: React.PointerEvent) {
     const dx = e.clientX - longPressPos.current.x;
     const dy = e.clientY - longPressPos.current.y;
-    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) cancelLongPress();
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) cancelLongPress();
   }
 
   // -------------------------------------------------------------------------
@@ -722,20 +722,20 @@ export default function EmailListPanel({
               return (
                 <div key={thread.threadId}>
                   {showPinnedDivider && (
-                    <div className="px-4 py-1 text-[10px] tracking-widest text-stone-400 dark:text-stone-400 border-y border-stone-300 dark:border-stone-500">
-                      {"// pinned"}
+                    <div className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400 border-y border-stone-200 dark:border-stone-800 bg-stone-100/70 dark:bg-stone-950">
+                      Pinned
                     </div>
                   )}
                   {showRestDivider && (
-                    <div className="px-4 py-1 text-[10px] tracking-widest text-stone-400 dark:text-stone-400 border-y border-stone-300 dark:border-stone-500">
-                      {"// all mail"}
+                    <div className="px-4 py-1.5 text-[10px] font-medium uppercase tracking-wide text-stone-500 dark:text-stone-400 border-y border-stone-200 dark:border-stone-800 bg-stone-100/70 dark:bg-stone-950">
+                      All mail
                     </div>
                   )}
 
                   {/* Thread row */}
                   <div
                     className={[
-                      "group flex items-center gap-2.5 px-3 py-2.5 border-b border-stone-100 dark:border-stone-700/60 select-none transition-colors",
+                      "group flex items-center gap-2.5 px-3 py-2.5 border-b border-stone-100 dark:border-stone-800 select-none touch-pan-y transition-colors",
                       isChecked
                         ? "bg-blue-50 dark:bg-blue-950/25"
                         : isRouteSelected

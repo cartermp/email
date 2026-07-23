@@ -79,7 +79,10 @@ export async function GET(req: NextRequest) {
     const headers: Record<string, string> = {
       "Content-Type": contentType,
       "Content-Disposition": formatContentDisposition(disposition, name),
-      "Cross-Origin-Resource-Policy": "same-origin",
+      // Sandboxed srcdoc iframes have an opaque origin. Inline images must be
+      // embeddable there even though the authenticated route is same-site.
+      "Cross-Origin-Resource-Policy":
+        disposition === "inline" ? "cross-origin" : "same-origin",
       "X-Content-Type-Options": "nosniff",
     };
     const contentLength = res.headers.get("Content-Length");

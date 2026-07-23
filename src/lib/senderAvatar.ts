@@ -16,21 +16,20 @@ export const WEBMAIL_DOMAINS = new Set([
   "yandex.com", "yandex.ru",
 ]);
 
-// Avatar backgrounds: visible against the near-black row bg (#060e06).
-// Dark enough to not compete with text, bright enough to be distinct (~3:1 vs bg).
+// Calm, distinct avatar colours that work against both neutral app surfaces.
 export const PALETTE = [
-  "#1a5c2a", // medium dark green
-  "#245a1e", // medium forest
-  "#1e5030", // dark teal-green
-  "#2a5c1a", // medium olive-green
-  "#1a5a3a", // dark sea-green
-  "#285020", // dark medium green
-  "#1e4a2e", // cool dark green
-  "#244c1c", // dark leafy green
-  "#204e34", // dark evergreen
-  "#2a4e1a", // yellow-green dark
-  "#1c4e28", // dark green variant
-  "#264828", // deep teal
+  "#475569",
+  "#0369a1",
+  "#1d4ed8",
+  "#4338ca",
+  "#6d28d9",
+  "#a21caf",
+  "#be123c",
+  "#b45309",
+  "#047857",
+  "#0f766e",
+  "#0e7490",
+  "#4f46e5",
 ];
 
 export function colorFor(seed: string): string {

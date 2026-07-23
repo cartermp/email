@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";

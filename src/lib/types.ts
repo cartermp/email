@@ -28,6 +28,9 @@ export interface EmailBodyPart {
   type: string;
   charset?: string;
   name?: string;
+  cid?: string | null;
+  disposition?: string | null;
+  location?: string | null;
 }
 
 export interface Email {
