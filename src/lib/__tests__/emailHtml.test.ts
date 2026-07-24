@@ -218,6 +218,31 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("e.data.type==='iframe-parent-width'"));
   });
 
+  it("mirrors a missing trailing spacer in a centered email wrapper", async () => {
+    const dom = new JSDOM(
+      prepareHtml(
+        documentWith(
+          '<table width="100%"><tr><td class="device-width">&nbsp;</td><td class="content-width"><p>Message</p></td></tr></table>',
+          "<style>td.device-width{width:25%}td.content-width{width:50%}</style>",
+        ),
+      ),
+      { runScripts: "dangerously", pretendToBeVisual: true },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const cells = dom.window.document.querySelectorAll(
+      'table[width="100%"] > tbody > tr > td',
+    );
+    assert.equal(cells.length, 3);
+    assert.equal(cells[2].className, "device-width");
+    assert.equal(
+      cells[2].getAttribute("data-email-client-mirrored-spacer"),
+      "true",
+    );
+    assert.equal(cells[2].getAttribute("aria-hidden"), "true");
+    dom.window.close();
+  });
+
   describe("links", () => {
     it("linkifies a bare URL without nesting an existing link", () => {
       const result = prepareHtml(

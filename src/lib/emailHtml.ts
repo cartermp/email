@@ -246,6 +246,33 @@ function resizeScript(
   return `<script>(function(){
   var lastH=0,lastW=0,raf=0,forceMeasure=false;
   ${adaptiveTheme ? darkTextAdaptationScript(adaptiveTheme) : ""}
+  function repairOneSidedCenteredWrappers(){
+    if(!document.body)return;
+    var rows=document.querySelectorAll(
+      'table[width="100%"] > tbody > tr'
+    );
+    for(var rowIndex=0;rowIndex<rows.length;rowIndex++){
+      var row=rows[rowIndex];
+      var cells=[];
+      for(var childIndex=0;childIndex<row.children.length;childIndex++){
+        var child=row.children[childIndex];
+        if(child.tagName==='TD'||child.tagName==='TH')cells.push(child);
+      }
+      if(cells.length!==2)continue;
+      var leading=cells[0];
+      var content=cells[1];
+      if(
+        !leading.classList.contains('device-width')||
+        !content.classList.contains('content-width')||
+        String(leading.textContent||'').replace(/\\u00a0/g,'').trim()||
+        !String(content.textContent||'').trim()
+      )continue;
+      var trailing=leading.cloneNode(true);
+      trailing.setAttribute('data-email-client-mirrored-spacer','true');
+      trailing.setAttribute('aria-hidden','true');
+      row.appendChild(trailing);
+    }
+  }
   function measure(){
     raf=0;
     var root=document.documentElement;
@@ -273,6 +300,7 @@ function resizeScript(
   }
   function finishSetup(){
     ${stripQuotes ? STRIP_QUOTES_JS : ""}
+    repairOneSidedCenteredWrappers();
     var links=document.getElementsByTagName('a');
     for(var i=0;i<links.length;i++){
       links[i].setAttribute('target','_blank');
@@ -298,6 +326,7 @@ function resizeScript(
   });
   window.addEventListener('load',finishSetup);
   document.addEventListener('DOMContentLoaded',function(){
+    repairOneSidedCenteredWrappers();
     schedule();
     ${adaptiveTheme ? "safelyAdaptDarkText();" : ""}
   });
