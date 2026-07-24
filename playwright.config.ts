@@ -19,6 +19,11 @@ export default defineConfig({
     command: `pnpm dev --hostname 127.0.0.1 --port ${port}`,
     env: {
       MAIL_BROWSER_SMOKE_TESTS: "1",
+      // The smoke app renders through the real root layout, which calls
+      // Auth.js even though these fixtures do not sign in. Keep this local to
+      // Playwright so CI has valid test configuration without a repository
+      // secret or production credential.
+      AUTH_SECRET: "mail-playwright-smoke-tests-only-not-for-production",
     },
     reuseExistingServer: false,
     timeout: 120_000,
