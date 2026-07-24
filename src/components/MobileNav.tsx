@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import MailIcon, { type MailIconName } from "@/components/MailIcon";
 import { useMailboxCounts } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
+import useModalDialog from "@/components/useModalDialog";
 
 interface Destination {
   href: string;
@@ -108,15 +109,8 @@ export default function MobileNav() {
   const from = searchParams.get("from");
   const counts = useMailboxCounts();
   const [moreOpen, setMoreOpen] = useState(false);
-
-  useEffect(() => {
-    if (!moreOpen) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setMoreOpen(false);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [moreOpen]);
+  const closeMore = () => setMoreOpen(false);
+  const dialogRef = useModalDialog(closeMore, moreOpen);
 
   const primary: Destination[] = [
     { href: "/", label: "Inbox", icon: "inbox", badge: counts.inbox },
@@ -142,13 +136,15 @@ export default function MobileNav() {
           <button
             type="button"
             className="absolute inset-0 bg-black/35"
-            onClick={() => setMoreOpen(false)}
+            onClick={closeMore}
             aria-label="Close more navigation"
           />
           <div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="more-navigation-title"
+            tabIndex={-1}
             className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-stone-200 bg-white px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3 shadow-2xl dark:border-stone-700 dark:bg-stone-950"
           >
             <div className="mb-3 flex items-center justify-between px-2">
@@ -160,7 +156,7 @@ export default function MobileNav() {
               </h2>
               <button
                 type="button"
-                onClick={() => setMoreOpen(false)}
+                onClick={closeMore}
                 className="flex h-10 w-10 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
                 aria-label="Close"
               >
@@ -174,7 +170,7 @@ export default function MobileNav() {
                   item={item}
                   active={destinationActive(item.href, pathname, from)}
                   compact
-                  onNavigate={() => setMoreOpen(false)}
+                  onNavigate={closeMore}
                 />
               ))}
             </div>

@@ -63,6 +63,11 @@ export function stripSignatureSeparator(sig: string): string {
   return sig.replace(/^(--[ \t]*\r?\n)+/, "").trimStart();
 }
 
+export function formatSignatureForSave(signature: string): string {
+  const normalized = signature.trim();
+  return normalized ? `-- \n${normalized}` : "";
+}
+
 /**
  * Escape RFC-3676 signature separator lines so markdown renderers do not
  * interpret them as Setext heading underlines.

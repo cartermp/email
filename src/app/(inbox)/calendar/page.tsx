@@ -67,36 +67,43 @@ export default async function CalendarPage({ searchParams }: Props) {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2 md:w-auto">
             {monthKey !== currentMonthKey && (
               <Link
                 href={`/calendar?month=${currentMonthKey}`}
-                className="min-h-10 rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors inline-flex items-center hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+                className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
               >
                 Today
               </Link>
             )}
             <Link
               href={`/calendar?month=${addMonths(monthKey, -1)}`}
-              className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+              aria-label="Previous month"
+              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-md border border-stone-200 px-2 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100 sm:px-3"
             >
-              Prev
+              <span aria-hidden="true">←</span>
+              <span className="ml-1 hidden sm:inline">Previous</span>
             </Link>
-            <div className="min-w-40 text-center text-sm font-medium text-stone-800 dark:text-stone-200">
+            <h2 className="min-w-0 flex-1 text-center text-sm font-medium text-stone-800 dark:text-stone-200 md:min-w-40">
               {monthTitle(monthKey)}
-            </div>
+            </h2>
             <Link
               href={`/calendar?month=${addMonths(monthKey, 1)}`}
-              className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+              aria-label="Next month"
+              className="inline-flex min-h-10 min-w-10 items-center justify-center rounded-md border border-stone-200 px-2 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100 sm:px-3"
             >
-              Next
+              <span className="mr-1 hidden sm:inline">Next</span>
+              <span aria-hidden="true">→</span>
             </Link>
           </div>
         </div>
 
         <MobileCalendarAgenda monthKey={monthKey} entries={monthEntries} />
 
-        <div className="hidden md:block rounded-xl overflow-hidden border border-stone-200 dark:border-stone-700 bg-stone-200 dark:bg-stone-700">
+        <div
+          className="hidden overflow-hidden rounded-xl border border-stone-200 bg-stone-200 dark:border-stone-700 dark:bg-stone-700 md:block"
+          aria-label={`${monthTitle(monthKey)} calendar`}
+        >
               <div className="grid grid-cols-7">
                 {DAY_LABELS.map((label) => (
                   <div
@@ -116,7 +123,9 @@ export default async function CalendarPage({ searchParams }: Props) {
                     ].join(" ")}
                   >
                     <div className="mb-2 flex items-center justify-between">
-                      <span
+                      <time
+                        dateTime={day.key}
+                        aria-current={day.isToday ? "date" : undefined}
                         className={[
                           "inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium",
                           day.isToday
@@ -127,7 +136,7 @@ export default async function CalendarPage({ searchParams }: Props) {
                         ].join(" ")}
                       >
                         {day.date.getDate()}
-                      </span>
+                      </time>
                     </div>
                     <div className="space-y-1.5">
                       {day.events.map((event) => (

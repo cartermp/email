@@ -9,6 +9,7 @@ import {
   htmlToPlainText,
   normalizeComposeMarkdown,
   quotedSectionStart,
+  formatSignatureForSave,
   stripSignatureSeparator,
 } from "../compose";
 
@@ -201,6 +202,19 @@ describe("stripSignatureSeparator", () => {
 
   it("trims leading whitespace after stripping the separator", () => {
     assert.equal(stripSignatureSeparator("-- \n  Phillip"), "Phillip");
+  });
+});
+
+describe("formatSignatureForSave", () => {
+  it("adds one canonical separator and trims outer whitespace", () => {
+    assert.equal(
+      formatSignatureForSave("  Phillip\nhttps://example.com  "),
+      "-- \nPhillip\nhttps://example.com",
+    );
+  });
+
+  it("stores an empty signature without a separator", () => {
+    assert.equal(formatSignatureForSave(" \n "), "");
   });
 });
 

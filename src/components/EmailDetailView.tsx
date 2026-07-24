@@ -11,6 +11,7 @@ import NotSpamButton from "@/components/NotSpamButton";
 import { getJmapMailboxContext } from "@/lib/jmapServer";
 import SenderAvatar from "@/components/SenderAvatar";
 import MailIcon from "@/components/MailIcon";
+import Popover from "@/components/Popover";
 
 interface Props {
   email: Email;
@@ -88,11 +89,15 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
             </div>
             <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-400 dark:text-stone-500">
               <span className="truncate">{recipientSummary}</span>
-              <details className="relative shrink-0">
-                <summary className="cursor-pointer list-none rounded px-1 py-0.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-200 [&::-webkit-details-marker]:hidden">
-                  Details
-                </summary>
-                <dl className="absolute left-0 top-full z-20 mt-2 grid w-[min(28rem,calc(100vw-3rem))] grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5 rounded-lg border border-stone-200 bg-white p-3 text-xs shadow-lg dark:border-stone-700 dark:bg-stone-900">
+              <Popover
+                label="Message details"
+                role="dialog"
+                align="left"
+                trigger={<span>Details</span>}
+                triggerClassName="rounded px-1 py-0.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-200"
+                contentClassName="w-[min(28rem,calc(100vw-3rem))] rounded-lg border border-stone-200 bg-white p-3 text-xs shadow-lg dark:border-stone-700 dark:bg-stone-900"
+              >
+                <dl className="grid grid-cols-[max-content_1fr] gap-x-3 gap-y-1.5">
                   <dt className="text-stone-400 dark:text-stone-500">From</dt>
                   <dd className="break-all text-stone-700 dark:text-stone-300">
                     {formatAddressList(email.from)}
@@ -122,7 +127,7 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
                     </>
                   ) : null}
                 </dl>
-              </details>
+              </Popover>
             </div>
           </div>
         </div>
@@ -156,27 +161,33 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
               initiallyPinned={!!email.keywords?.["$flagged"]}
             />
             <MarkUnreadButton emailId={email.id} />
-            <details className="relative">
-              <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1 rounded-md border border-stone-200 px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100 [&::-webkit-details-marker]:hidden">
-                More
-                <MailIcon name="chevronDown" className="h-3.5 w-3.5" />
-              </summary>
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-36 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+            <Popover
+              label="More message actions"
+              trigger={
+                <>
+                  More
+                  <MailIcon name="chevronDown" className="h-3.5 w-3.5" />
+                </>
+              }
+              triggerClassName="flex min-h-10 items-center gap-1 rounded-md border border-stone-200 px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+              contentClassName="min-w-36 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900"
+            >
                 <Link
                   href={`/compose?mode=forward&id=${email.id}`}
-                  className="block px-3 py-2 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                  role="menuitem"
+                  className="block px-3 py-2.5 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
                 >
                   Forward
                 </Link>
                 <Link
                   href={`/print/${email.id}`}
                   target="_blank"
-                  className="block px-3 py-2 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                  role="menuitem"
+                  className="block px-3 py-2.5 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
                 >
                   Print
                 </Link>
-              </div>
-            </details>
+            </Popover>
           </div>
         </div>
       </div>

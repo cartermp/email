@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { togglePinAction } from "@/app/(inbox)/actions";
+import { useToast } from "@/components/ToastProvider";
 
 interface Props {
   emailId: string;
@@ -21,6 +22,7 @@ export default function PinButton({ emailId, initiallyPinned }: Props) {
   const router = useRouter();
   const [pinned, setPinned] = useState(initiallyPinned);
   const [pending, setPending] = useState(false);
+  const showToast = useToast();
 
   async function handleClick() {
     const next = !pinned;
@@ -32,6 +34,14 @@ export default function PinButton({ emailId, initiallyPinned }: Props) {
         new CustomEvent("email-pin-changed", { detail: { id: emailId, pinned: next } })
       );
       router.refresh();
+    } catch {
+      setPinned(!next);
+      showToast({
+        message: next
+          ? "Couldn’t pin this message."
+          : "Couldn’t remove the pin.",
+        tone: "error",
+      });
     } finally {
       setPending(false);
     }
@@ -41,6 +51,7 @@ export default function PinButton({ emailId, initiallyPinned }: Props) {
     <button
       onClick={handleClick}
       disabled={pending}
+      aria-pressed={pinned}
       className={[
         "inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 text-xs transition-colors disabled:opacity-50",
         pinned

@@ -52,7 +52,26 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
+  const pauseTimer = useCallback(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+
+  const resumeTimer = useCallback(() => {
+    if (!toast) return;
+    pauseTimer();
+    timer.current = setTimeout(dismiss, Math.min(toast.duration ?? 5000, 3000));
+  }, [dismiss, pauseTimer, toast]);
+
   useEffect(() => dismiss, [dismiss]);
+  useEffect(() => {
+    if (!toast) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") dismiss();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dismiss, toast]);
 
   async function runAction() {
     if (!toast?.onAction || actionPending) return;
@@ -95,6 +114,10 @@ export default function ToastProvider({ children }: { children: ReactNode }) {
                 : "border-stone-700 bg-stone-900 text-stone-100 dark:border-stone-200 dark:bg-stone-100 dark:text-stone-900",
             ].join(" ")}
             role={toast.tone === "error" ? "alert" : "status"}
+            onMouseEnter={pauseTimer}
+            onMouseLeave={resumeTimer}
+            onFocusCapture={pauseTimer}
+            onBlurCapture={resumeTimer}
           >
             <span className="min-w-0 flex-1">{toast.message}</span>
             {toast.actionLabel && toast.onAction && (

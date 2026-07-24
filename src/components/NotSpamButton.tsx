@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { promoteNotSpamAction } from "@/app/(inbox)/email/[id]/actions";
+import { useToast } from "@/components/ToastProvider";
 
 interface Props {
   emailId: string;
@@ -13,11 +14,20 @@ interface Props {
 export default function NotSpamButton({ emailId, mailboxIds, inboxMailboxId }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const showToast = useToast();
 
   function handleClick() {
     startTransition(async () => {
-      await promoteNotSpamAction(emailId, mailboxIds, inboxMailboxId);
-      router.push("/spam");
+      try {
+        await promoteNotSpamAction(emailId, mailboxIds, inboxMailboxId);
+        showToast({ message: "Moved to Inbox" });
+        router.push("/spam");
+      } catch {
+        showToast({
+          message: "Couldn’t move this message to Inbox.",
+          tone: "error",
+        });
+      }
     });
   }
 

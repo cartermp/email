@@ -74,39 +74,34 @@ export function MessageLoadingSkeleton() {
     >
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
         <div className="animate-pulse">
-          <SkeletonBar className="mb-6 h-7 w-[min(34rem,78%)]" />
+          <SkeletonBar className="mb-5 h-4 w-16 lg:hidden" />
+          <SkeletonBar className="mb-5 h-7 w-[min(34rem,78%)]" />
 
-          <div className="mb-5 grid grid-cols-[3rem_1fr] gap-x-4 gap-y-2">
-            <SkeletonBar className="h-3 w-10 justify-self-end" />
-            <SkeletonBar className="h-3 w-48" />
-            <SkeletonBar className="h-3 w-7 justify-self-end" />
-            <SkeletonBar className="h-3 w-56" />
-            <SkeletonBar className="h-3 w-9 justify-self-end" />
-            <SkeletonBar className="h-3 w-36" />
-          </div>
-
-          <div className="mb-7 flex gap-2 border-b border-stone-200 pb-6 dark:border-stone-700">
-            {[64, 104, 58, 72, 62].map((width) => (
-              <SkeletonBar
-                key={width}
-                className="h-8 rounded-md"
-                style={{ width }}
-              />
-            ))}
+          <div className="mb-7 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800/50">
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <div className="h-10 w-10 shrink-0 rounded-full bg-stone-200/80 dark:bg-stone-700/70" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-center justify-between gap-4">
+                  <SkeletonBar className="h-3.5 w-36" />
+                  <SkeletonBar className="h-2.5 w-20" />
+                </div>
+                <SkeletonBar className="h-2.5 w-28" />
+              </div>
+            </div>
+            <div className="flex gap-2 border-t border-stone-100 px-4 py-3 dark:border-stone-700/70">
+              <SkeletonBar className="h-10 w-24 rounded-md" />
+              <SkeletonBar className="h-10 w-16 rounded-md" />
+              <SkeletonBar className="ml-auto h-10 w-20 rounded-md" />
+            </div>
           </div>
 
           <div className="mx-auto max-w-2xl space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="h-11 w-11 rounded-lg bg-stone-200/80 dark:bg-stone-700/70" />
-              <div className="flex-1 space-y-2">
-                <SkeletonBar className="h-4 w-40" />
-                <SkeletonBar className="h-3 w-24" />
-              </div>
-            </div>
-            <SkeletonBar className="h-4 w-11/12" />
+            <SkeletonBar className="h-4 w-32" />
             <SkeletonBar className="h-4 w-full" />
+            <SkeletonBar className="h-4 w-11/12" />
             <SkeletonBar className="h-4 w-4/5" />
-            <div className="h-44 rounded-xl border border-stone-200 bg-stone-100/80 dark:border-stone-700 dark:bg-stone-800/70" />
+            <div className="h-6" />
+            <SkeletonBar className="h-4 w-5/6" />
             <SkeletonBar className="h-4 w-full" />
             <SkeletonBar className="h-4 w-3/4" />
           </div>

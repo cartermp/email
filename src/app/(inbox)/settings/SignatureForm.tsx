@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { saveSignatureAction } from "./actions";
-import { stripSignatureSeparator } from "@/lib/compose";
+import {
+  formatSignatureForSave,
+  stripSignatureSeparator,
+} from "@/lib/compose";
+import { useToast } from "@/components/ToastProvider";
 
 interface Props {
   identityLabel?: string;
@@ -16,53 +20,144 @@ function stripSepPrefix(sig: string): string {
 }
 
 export default function SignatureForm({ identityLabel, initialSignature }: Props) {
-  const [value, setValue] = useState(() => stripSepPrefix(initialSignature));
-  const [saved, setSaved] = useState(false);
+  const initialValue = stripSepPrefix(initialSignature);
+  const [value, setValue] = useState(initialValue);
+  const [savedValue, setSavedValue] = useState(initialValue);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const showToast = useToast();
+  const dirty = value !== savedValue;
+
+  useEffect(() => {
+    if (!dirty) return;
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty]);
 
   function handleSave() {
+    if (!dirty || isPending) return;
     setError(null);
-    setSaved(false);
     startTransition(async () => {
       try {
         // Re-add the `-- \n` prefix so Fastmail stores it in standard format,
         // which other mail clients (Fastmail web, mobile apps) also expect.
-        const toSave = value.trim() ? `-- \n${value.trim()}` : "";
+        const normalized = value.trim();
+        const toSave = formatSignatureForSave(value);
         await saveSignatureAction(toSave);
-        setSaved(true);
+        setValue(normalized);
+        setSavedValue(normalized);
+        showToast({ message: "Signature saved" });
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to save");
+        const message = e instanceof Error ? e.message : "Failed to save";
+        setError(message);
+        showToast({ message: "Couldn’t save the signature.", tone: "error" });
       }
     });
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       {identityLabel && (
-        <p className="text-xs text-stone-500 dark:text-stone-400 font-mono">{identityLabel}</p>
+        <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 dark:border-stone-700 dark:bg-stone-900/60">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500">
+            Sending as
+          </p>
+          <p className="mt-1 break-all text-xs text-stone-600 dark:text-stone-300">
+            {identityLabel}
+          </p>
+        </div>
       )}
-      <textarea
-        value={value}
-        onChange={(e) => { setValue(e.target.value); setSaved(false); }}
-        rows={6}
-        placeholder="Your signature here…"
-        className="w-full text-sm font-mono text-stone-700 dark:text-stone-300 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-4 py-3 resize-y outline-none focus:border-stone-400 dark:focus:border-stone-500 placeholder:text-stone-300 dark:placeholder:text-stone-600"
-      />
+      <div>
+        <label
+          htmlFor="signature"
+          className="mb-2 block text-xs font-medium text-stone-600 dark:text-stone-300"
+        >
+          Signature text
+        </label>
+        <textarea
+          id="signature"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(event) => {
+            if (
+              event.key.toLowerCase() === "s" &&
+              (event.metaKey || event.ctrlKey)
+            ) {
+              event.preventDefault();
+              handleSave();
+            }
+          }}
+          rows={6}
+          placeholder="Your signature here…"
+          aria-describedby="signature-help signature-status"
+          className="w-full resize-y rounded-lg border border-stone-200 bg-white px-4 py-3 font-mono text-sm leading-relaxed text-stone-700 outline-none placeholder:text-stone-300 focus:border-stone-400 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:placeholder:text-stone-600 dark:focus:border-stone-500"
+        />
+        <p
+          id="signature-help"
+          className="mt-2 text-xs text-stone-400 dark:text-stone-500"
+        >
+          Plain text · ⌘S or Ctrl+S to save
+        </p>
+      </div>
+
+      <div>
+        <p className="mb-2 text-xs font-medium text-stone-600 dark:text-stone-300">
+          Preview
+        </p>
+        <div className="min-h-28 rounded-lg border border-stone-200 bg-stone-50 px-4 py-3 text-sm leading-relaxed text-stone-600 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-300">
+          {value.trim() ? (
+            <div className="whitespace-pre-wrap">
+              <span className="text-stone-400 dark:text-stone-500">--</span>
+              {"\n"}
+              {value.trim()}
+            </div>
+          ) : (
+            <span className="text-stone-400 dark:text-stone-500">
+              No signature will be added.
+            </span>
+          )}
+        </div>
+      </div>
+
       <div className="flex items-center gap-3">
         <button
+          type="button"
           onClick={handleSave}
-          disabled={isPending}
-          className="text-sm bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 px-4 py-2 rounded-lg hover:bg-stone-700 dark:hover:bg-stone-300 transition-colors disabled:opacity-50"
+          disabled={isPending || !dirty}
+          className="min-h-10 rounded-lg bg-stone-900 px-4 text-sm font-medium text-white transition-colors hover:bg-stone-700 disabled:opacity-40 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300"
         >
           {isPending ? "Saving…" : "Save"}
         </button>
-        {saved && (
-          <span className="text-xs text-green-600 dark:text-green-400">Saved</span>
+        {dirty && !isPending && (
+          <button
+            type="button"
+            onClick={() => {
+              setValue(savedValue);
+              setError(null);
+            }}
+            className="min-h-10 rounded-lg px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+          >
+            Reset
+          </button>
         )}
-        {error && (
-          <span className="text-xs text-red-500">{error}</span>
-        )}
+        <span
+          id="signature-status"
+          className={[
+            "ml-auto text-xs",
+            error
+              ? "text-red-500 dark:text-red-400"
+              : dirty
+                ? "text-amber-600 dark:text-amber-400"
+                : "text-stone-400 dark:text-stone-500",
+          ].join(" ")}
+          role={error ? "alert" : "status"}
+          aria-live="polite"
+        >
+          {error || (dirty ? "Unsaved changes" : "Up to date")}
+        </span>
       </div>
     </div>
   );

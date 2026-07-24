@@ -13,6 +13,7 @@ import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import NotSpamButton from "@/components/NotSpamButton";
 import { visibleAttachments } from "@/lib/attachments";
+import Popover from "@/components/Popover";
 
 // ---------------------------------------------------------------------------
 // Body resolution (mirrors email/[id]/page.tsx logic)
@@ -191,27 +192,35 @@ function EmailStackItem({
             )}
             <PinButton emailId={email.id} initiallyPinned={!!email.keywords?.["$flagged"]} />
             <MarkUnreadButton emailId={email.id} />
-            <details className="relative ml-auto">
-              <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1 rounded-md border border-stone-200 px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100 [&::-webkit-details-marker]:hidden">
-                More
-                <MailIcon name="chevronDown" className="h-3.5 w-3.5" />
-              </summary>
-              <div className="absolute right-0 top-full z-20 mt-1 min-w-36 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+            <span className="ml-auto">
+              <Popover
+                label="More message actions"
+                trigger={
+                  <>
+                    More
+                    <MailIcon name="chevronDown" className="h-3.5 w-3.5" />
+                  </>
+                }
+                triggerClassName="flex min-h-10 items-center gap-1 rounded-md border border-stone-200 px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+                contentClassName="min-w-36 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900"
+              >
                 <Link
                   href={`/compose?mode=forward&id=${email.id}`}
-                  className="block px-3 py-2 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                  role="menuitem"
+                  className="block px-3 py-2.5 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
                 >
                   Forward
                 </Link>
                 <Link
                   href={`/print/${email.id}`}
                   target="_blank"
-                  className="block px-3 py-2 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                  role="menuitem"
+                  className="block px-3 py-2.5 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
                 >
                   Print
                 </Link>
-              </div>
-            </details>
+              </Popover>
+            </span>
           </div>
 
           {/* Calendar invite */}

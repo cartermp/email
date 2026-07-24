@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { markEmailAsUnread } from "@/app/(inbox)/email/[id]/actions";
 import { dispatchUnreadCountEvent } from "@/lib/unreadCount";
+import { useToast } from "@/components/ToastProvider";
 
 interface Props {
   emailId: string;
@@ -12,14 +13,23 @@ interface Props {
 export default function MarkUnreadButton({ emailId }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const showToast = useToast();
 
   function handleClick() {
     startTransition(async () => {
-      await markEmailAsUnread(emailId);
-      // Signal EmailListPanel to remove this email from its optimistic-read set
-      window.dispatchEvent(new CustomEvent("email-mark-unread", { detail: emailId }));
-      dispatchUnreadCountEvent("unread", [emailId]);
-      router.push("/");
+      try {
+        await markEmailAsUnread(emailId);
+        // Signal EmailListPanel to remove this email from its optimistic-read set
+        window.dispatchEvent(new CustomEvent("email-mark-unread", { detail: emailId }));
+        dispatchUnreadCountEvent("unread", [emailId]);
+        showToast({ message: "Marked as unread" });
+        router.push("/");
+      } catch {
+        showToast({
+          message: "Couldn’t mark this message as unread.",
+          tone: "error",
+        });
+      }
     });
   }
 

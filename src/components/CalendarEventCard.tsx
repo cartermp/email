@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { sendCalendarReplyAction } from "@/app/(inbox)/email/[id]/actions";
+import { useToast } from "@/components/ToastProvider";
 
 export interface CalendarEventData {
   uid: string;
@@ -122,6 +123,7 @@ export default function CalendarEventCard({ event, persistedResponse, onResponse
   const [sentResponse, setSentResponse] = useState<Response | null>(initial);
   const [pendingResponse, setPendingResponse] = useState<Response | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const showToast = useToast();
 
   const isCancelled = event.method === "CANCEL";
   const isBusy = pendingResponse !== null;
@@ -134,8 +136,20 @@ export default function CalendarEventCard({ event, persistedResponse, onResponse
       await sendCalendarReplyAction(event.icsText, response, event.emailId, event.inReplyToMessageId);
       setSentResponse(response);
       onResponseSent?.(response);
+      const label =
+        response === "ACCEPTED"
+          ? "Invitation accepted"
+          : response === "DECLINED"
+            ? "Invitation declined"
+            : "Marked as maybe";
+      showToast({ message: label });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to send response");
+      const message = e instanceof Error ? e.message : "Failed to send response";
+      setError(message);
+      showToast({
+        message: "Couldn’t send your calendar response.",
+        tone: "error",
+      });
     } finally {
       setPendingResponse(null);
     }
@@ -203,8 +217,9 @@ export default function CalendarEventCard({ event, persistedResponse, onResponse
                   key={response}
                   onClick={() => respond(response)}
                   disabled={isBusy}
+                  aria-pressed={isSent}
                   className={[
-                    "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md border transition-colors disabled:cursor-default",
+                    "inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 text-xs transition-colors disabled:cursor-default",
                     isSent || isPending ? active : IDLE,
                     isBusy && !isSent && !isPending ? "opacity-40" : "",
                   ].join(" ")}
@@ -216,7 +231,7 @@ export default function CalendarEventCard({ event, persistedResponse, onResponse
               );
             })}
             {error && (
-              <p className="w-full text-xs text-red-500 dark:text-red-400 mt-1">{error}</p>
+              <p role="alert" className="mt-1 w-full text-xs text-red-500 dark:text-red-400">{error}</p>
             )}
           </>
         )}

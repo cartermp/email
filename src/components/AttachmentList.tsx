@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import SpreadsheetViewer from "@/components/SpreadsheetViewer";
 import useBodyClass from "@/components/useBodyClass";
+import useModalDialog from "@/components/useModalDialog";
 import { visibleAttachments } from "@/lib/attachments";
 import { isSpreadsheetAttachment } from "@/lib/spreadsheet";
 import { EmailBodyPart } from "@/lib/types";
@@ -40,26 +41,24 @@ interface PdfModalProps {
 
 function PdfModal({ attachment, onClose }: PdfModalProps) {
   const name = attachment.name ?? "document.pdf";
+  const dialogRef = useModalDialog(onClose);
 
   useBodyClass("rich-content-open");
 
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
     <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pdf-preview-title"
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       {/* Header bar */}
       <div className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-700 shrink-0">
-        <span className="text-base leading-none">📄</span>
-        <span className="flex-1 text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
+        <span className="text-base leading-none" aria-hidden="true">📄</span>
+        <span id="pdf-preview-title" className="flex-1 text-sm font-medium text-stone-800 dark:text-stone-200 truncate">
           {name}
         </span>
         <span className="text-xs text-stone-400 dark:text-stone-500 shrink-0">
@@ -68,7 +67,7 @@ function PdfModal({ attachment, onClose }: PdfModalProps) {
         <a
           href={downloadUrl(attachment)}
           download={name}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors shrink-0"
+          className="flex min-h-10 items-center gap-1.5 rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100 shrink-0"
         >
           {/* Download icon */}
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
@@ -79,7 +78,7 @@ function PdfModal({ attachment, onClose }: PdfModalProps) {
         </a>
         <button
           onClick={onClose}
-          className="p-1.5 rounded-md text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-300 transition-colors shrink-0"
+          className="flex h-10 w-10 items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300 shrink-0"
           aria-label="Close"
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">

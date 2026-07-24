@@ -63,22 +63,22 @@ export default async function RootLayout({
             {/* Row: desktop sidebar + main content */}
             <div className="flex flex-1 min-h-0 overflow-hidden">
               {/* Sidebar — desktop only */}
-              <nav className="hidden lg:flex print:hidden w-52 shrink-0 flex-col bg-white dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
-                <div className="mb-6 flex items-center gap-2.5 px-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-4 w-4" aria-hidden="true">
-                      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-                      <path d="m4 7 7 5.5a1.6 1.6 0 0 0 2 0L20 7" />
-                    </svg>
-                  </span>
-                  <span className="text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100">
-                    Mail
-                  </span>
-                </div>
+              {session && (
+                <nav className="hidden lg:flex print:hidden w-52 shrink-0 flex-col bg-white dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
+                  <div className="mb-6 flex items-center gap-2.5 px-2">
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-4 w-4" aria-hidden="true">
+                        <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                        <path d="m4 7 7 5.5a1.6 1.6 0 0 0 2 0L20 7" />
+                      </svg>
+                    </span>
+                    <span className="text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+                      Mail
+                    </span>
+                  </div>
 
-                <DesktopNav />
+                  <DesktopNav />
 
-                {session && (
                   <form
                     className="mt-1"
                     action={async () => {
@@ -93,15 +93,17 @@ export default async function RootLayout({
                       Sign out
                     </button>
                   </form>
-                )}
-              </nav>
+                </nav>
+              )}
 
               {/* Main content */}
               <main className="flex-1 overflow-hidden min-w-0 h-full">{children}</main>
             </div>
 
             {/* Mobile bottom nav — hidden on desktop */}
-            <div className="print:hidden"><MobileNav /></div>
+            {session && (
+              <div className="print:hidden"><MobileNav /></div>
+            )}
           </ToastProvider>
         </UnreadCountProvider>
       </body>
