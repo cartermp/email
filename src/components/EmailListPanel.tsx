@@ -55,6 +55,7 @@ interface Props {
   spamReadTotal?: number;
   spamMailboxId?: string;
   deferredContent?: ReactNode;
+  threadHrefPrefix?: string;
 }
 
 type View = "inbox" | "drafts" | "sent" | "spam";
@@ -184,6 +185,7 @@ export default function EmailListPanel({
   spamReadTotal: initialSpamReadTotal = 0,
   spamMailboxId,
   deferredContent,
+  threadHrefPrefix = "/thread",
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -870,8 +872,8 @@ export default function EmailListPanel({
         if (!confirmNavigation()) return;
         router.push(
           view === "spam"
-            ? `/thread/${activeThread.threadId}?from=spam`
-            : `/thread/${activeThread.threadId}`,
+            ? `${threadHrefPrefix}/${activeThread.threadId}?from=spam`
+            : `${threadHrefPrefix}/${activeThread.threadId}`,
         );
       } else if (
         event.key.toLowerCase() === "e" &&
@@ -908,6 +910,7 @@ export default function EmailListPanel({
     selectedThreadId,
     selectionMode,
     shortcutHelpOpen,
+    threadHrefPrefix,
     view,
     visibleThreads,
   ]);
@@ -1252,7 +1255,10 @@ export default function EmailListPanel({
             !isSearching &&
             visibleThreads.map((thread, idx) => {
               const { latestEmail, senders } = thread;
-              const threadHref = view === "spam" ? `/thread/${thread.threadId}?from=spam` : `/thread/${thread.threadId}`;
+              const threadHref =
+                view === "spam"
+                  ? `${threadHrefPrefix}/${thread.threadId}?from=spam`
+                  : `${threadHrefPrefix}/${thread.threadId}`;
               const isRouteSelected =
                 thread.threadId === selectedThreadId ||
                 thread.latestEmail.id === selectedEmailId;
