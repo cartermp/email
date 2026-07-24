@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import SpreadsheetViewer from "@/components/SpreadsheetViewer";
 import useBodyClass from "@/components/useBodyClass";
+import { visibleAttachments } from "@/lib/attachments";
 import { isSpreadsheetAttachment } from "@/lib/spreadsheet";
 import { EmailBodyPart } from "@/lib/types";
 
@@ -109,13 +110,7 @@ export default function AttachmentList({ attachments }: Props) {
   const [previewPdf, setPreviewPdf] = useState<EmailBodyPart | null>(null);
   const [previewSpreadsheet, setPreviewSpreadsheet] = useState<EmailBodyPart | null>(null);
 
-  const visible = attachments.filter(
-    (a) =>
-      a.type !== "text/calendar" &&
-      a.blobId &&
-      !a.cid &&
-      a.disposition?.toLowerCase() !== "inline",
-  );
+  const visible = visibleAttachments(attachments);
   if (visible.length === 0) return null;
 
   return (

@@ -10,6 +10,7 @@ import AttachmentList from "@/components/AttachmentList";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import NotSpamButton from "@/components/NotSpamButton";
+import { visibleAttachments } from "@/lib/attachments";
 
 // ---------------------------------------------------------------------------
 // Body resolution (mirrors email/[id]/page.tsx logic)
@@ -64,6 +65,7 @@ function EmailStackItem({
   const isUnread = !email.keywords?.["$seen"];
   const resolved = resolveBody(email);
   const isSpam = !!(spamMailboxId && email.mailboxIds[spamMailboxId]);
+  const downloadableAttachments = visibleAttachments(email.attachments);
 
   return (
     <div
@@ -95,7 +97,25 @@ function EmailStackItem({
             >
               {formatAddressList(email.from) || "(no sender)"}
             </span>
-            <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
+            <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
+              {downloadableAttachments.length > 0 && (
+                <span
+                  title={`${downloadableAttachments.length} attachment${downloadableAttachments.length === 1 ? "" : "s"}`}
+                  aria-label={`${downloadableAttachments.length} attachment${downloadableAttachments.length === 1 ? "" : "s"}`}
+                  className="inline-flex items-center gap-0.5"
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="h-3.5 w-3.5"
+                    aria-hidden="true"
+                  >
+                    <path d="M15.621 3.379a3 3 0 0 0-4.242 0L4.257 10.5a4.25 4.25 0 1 0 6.01 6.01l6.365-6.364a.75.75 0 1 0-1.061-1.06L9.207 15.45a2.75 2.75 0 0 1-3.89-3.89l7.122-7.12a1.5 1.5 0 0 1 2.121 2.12l-7.07 7.072a.75.75 0 1 0 1.06 1.06l7.071-7.07a3 3 0 0 0 0-4.243Z" />
+                  </svg>
+                  {downloadableAttachments.length > 1 &&
+                    downloadableAttachments.length}
+                </span>
+              )}
               {formatFullDate(email.receivedAt)}
             </span>
           </div>
@@ -203,9 +223,9 @@ function EmailStackItem({
           )}
 
           {/* Attachments */}
-          {email.attachments?.length > 0 && (
+          {downloadableAttachments.length > 0 && (
             <div className="px-4">
-              <AttachmentList attachments={email.attachments} />
+              <AttachmentList attachments={downloadableAttachments} />
             </div>
           )}
         </div>
