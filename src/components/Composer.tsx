@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 import { useToast } from "@/components/ToastProvider";
+import { useNavigationGuard } from "@/components/NavigationGuardProvider";
 import {
   markQuotedReplyHtml,
   wrapComposePreviewHtml,
@@ -215,6 +216,24 @@ function fileToDataUrl(file: File): Promise<string> {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
+function draftFingerprint({
+  identityId,
+  to,
+  cc,
+  bcc,
+  subject,
+  markdown,
+}: {
+  identityId: string;
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  markdown: string;
+}) {
+  return JSON.stringify([identityId, to, cc, bcc, subject, markdown]);
+}
+
 export default function Composer({
   identities,
   initialTo = "",
@@ -251,6 +270,16 @@ export default function Composer({
   const [draftId, setDraftId] = useState<string | null>(initialDraftId ?? null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [savedFingerprint, setSavedFingerprint] = useState(() =>
+    draftFingerprint({
+      identityId: identities[0]?.id ?? "",
+      to: initialTo,
+      cc: initialCc,
+      bcc: initialBcc,
+      subject: initialSubject,
+      markdown: initialBody,
+    }),
+  );
   const draftIdRef = useRef<string | null>(initialDraftId ?? null);
   const savingRef = useRef(false);
   const isInitialRender = useRef(true);
@@ -269,6 +298,23 @@ export default function Composer({
     hasQuotedHistory && !showQuotedHistory
       ? markdown.slice(0, quoteStart)
       : markdown;
+  const currentFingerprint = draftFingerprint({
+    identityId,
+    to,
+    cc: showCc ? cc : "",
+    bcc: showBcc ? bcc : "",
+    subject,
+    markdown,
+  });
+  const hasUnsavedDraftChanges =
+    currentFingerprint !== savedFingerprint ||
+    attachments.length > 0 ||
+    inlineImages.length > 0 ||
+    uploading > 0;
+  useNavigationGuard(
+    hasUnsavedDraftChanges && !sending,
+    "Leave this message? Recent changes may not be saved.",
+  );
   useEffect(() => {
     inlineImagesRef.current = inlineImages;
   }, [inlineImages]);
@@ -368,6 +414,16 @@ export default function Composer({
         }
 
         setSaveStatus("saved");
+        setSavedFingerprint(
+          draftFingerprint({
+            identityId,
+            to,
+            cc: showCc ? cc : "",
+            bcc: showBcc ? bcc : "",
+            subject,
+            markdown,
+          }),
+        );
         setLastSaved(new Date());
       } catch {
         if (!isMountedRef.current || suppressDraftSideEffectsRef.current) return;

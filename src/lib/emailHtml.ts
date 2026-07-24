@@ -134,10 +134,19 @@ const STRIP_QUOTES_JS = `(function(){
   });
 })();`;
 
-function darkTextAdaptationScript(theme: EmailRenderTheme): string {
+export type EmailColorMode = "system" | "light" | "dark";
+
+function darkTextAdaptationScript(
+  theme: EmailRenderTheme,
+  colorMode: EmailColorMode,
+): string {
   const fallbackBackground = JSON.stringify(theme.surfaceDarkColor);
+  const darkModeSource =
+    colorMode === "system"
+      ? "window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)')"
+      : `{matches:${colorMode === "dark"}}`;
   return `
-  var darkMode=window.matchMedia&&window.matchMedia('(prefers-color-scheme:dark)');
+  var darkMode=${darkModeSource};
   function parseRgb(value){
     var text=String(value||'');
     var hex=text.match(/^#([\\da-f]{6})$/i);
@@ -251,10 +260,11 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
 function resizeScript(
   stripQuotes: boolean,
   adaptiveTheme?: EmailRenderTheme,
+  colorMode: EmailColorMode = "system",
 ): string {
   return `<script>(function(){
   var lastH=0,lastW=0,raf=0,forceMeasure=false;
-  ${adaptiveTheme ? darkTextAdaptationScript(adaptiveTheme) : ""}
+  ${adaptiveTheme ? darkTextAdaptationScript(adaptiveTheme, colorMode) : ""}
   function repairOneSidedCenteredWrappers(){
     if(!document.body)return;
     var rows=document.querySelectorAll(
@@ -360,9 +370,11 @@ export function prepareHtml(
     stripQuotes?: boolean;
     theme?: EmailRenderTheme;
     embeddedParts?: EmailBodyPart[];
+    colorMode?: EmailColorMode;
   },
 ): string {
   const theme = opts?.theme ?? defaultEmailRenderTheme;
+  const colorMode = opts?.colorMode ?? "system";
   html = resolveEmbeddedImages(html, opts?.embeddedParts);
   html = unwrapGoogleUrlsInHtml(html);
   html = linkifyHtmlText(html);
@@ -371,26 +383,33 @@ export function prepareHtml(
   const viewport = hasViewport
     ? ""
     : '<meta name="viewport" content="width=device-width, initial-scale=1">';
-  const baseStyle = `<style>
-    html,body{overflow:hidden;min-height:0}
-    html:not([bgcolor]):not([background]){background:${theme.surfaceLightColor}}
-    body:not([bgcolor]):not([background]){background:transparent}
-    body:not([text]){color:${theme.textLightColor}}
-    body{font-family:${theme.fontFamily}}
-    body:not([link]) a{color:${theme.linkLightColor}}
-    a{cursor:pointer}
-    img{max-width:100%!important;height:auto!important;object-fit:contain!important}
-    video,canvas,svg{max-width:100%!important;height:auto!important}
-    pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
-    @media(prefers-color-scheme:dark){
+  const useDarkDefaults = colorMode === "dark";
+  const darkRules = `
       html:not([bgcolor]):not([background]){background:${theme.surfaceDarkColor}}
       body:not([text]){color:${theme.textDarkColor}}
       body:not([link]) a{color:${theme.linkDarkColor}}
       [data-email-client-adapted-text]{color:${theme.textDarkColor}!important}
-      li[data-email-client-adapted-marker]::marker{color:${theme.textDarkColor}!important}
-    }
+      li[data-email-client-adapted-marker]::marker{color:${theme.textDarkColor}!important}`;
+  const darkModeRules =
+    colorMode === "system"
+      ? `@media(prefers-color-scheme:dark){${darkRules}}`
+      : colorMode === "dark"
+        ? darkRules
+        : "";
+  const baseStyle = `<style>
+    html,body{overflow:hidden;min-height:0}
+    html:not([bgcolor]):not([background]){background:${useDarkDefaults ? theme.surfaceDarkColor : theme.surfaceLightColor}}
+    body:not([bgcolor]):not([background]){background:transparent}
+    body:not([text]){color:${useDarkDefaults ? theme.textDarkColor : theme.textLightColor}}
+    body{font-family:${theme.fontFamily}}
+    body:not([link]) a{color:${useDarkDefaults ? theme.linkDarkColor : theme.linkLightColor}}
+    a{cursor:pointer}
+    img{max-width:100%!important;height:auto!important;object-fit:contain!important}
+    video,canvas,svg{max-width:100%!important;height:auto!important}
+    pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
+    ${darkModeRules}
   </style>`;
-  const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes, theme)}`;
+  const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes, theme, colorMode)}`;
 
   if (/<head[\s>]/i.test(html)) {
     return html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);
@@ -413,9 +432,14 @@ function stripQuotedText(text: string): string {
 
 export function prepareTextBody(
   text: string,
-  opts?: { stripQuotes?: boolean; theme?: EmailRenderTheme },
+  opts?: {
+    stripQuotes?: boolean;
+    theme?: EmailRenderTheme;
+    colorMode?: EmailColorMode;
+  },
 ): string {
   const theme = opts?.theme ?? defaultEmailRenderTheme;
+  const colorMode = opts?.colorMode ?? "system";
   if (opts?.stripQuotes) text = stripQuotedText(text);
 
   const escaped = text
@@ -423,23 +447,31 @@ export function prepareTextBody(
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
+  const useDarkDefaults = colorMode === "dark";
+  const darkRules = `
+  html{background:${theme.surfaceDarkColor}}
+  body{color:${theme.textDarkColor};background:transparent}`;
+  const darkModeRules =
+    colorMode === "system"
+      ? `@media(prefers-color-scheme:dark){${darkRules}}`
+      : colorMode === "dark"
+        ? darkRules
+        : "";
+
   return `<html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
 html,body{margin:0;padding:0;overflow:hidden}
-html{background:${theme.surfaceLightColor}}
+html{background:${useDarkDefaults ? theme.surfaceDarkColor : theme.surfaceLightColor}}
 body{
   box-sizing:border-box;
   font-family:${theme.fontFamily};
   font-size:15px;line-height:1.65;
-  color:${theme.textLightColor};background:transparent;
+  color:${useDarkDefaults ? theme.textDarkColor : theme.textLightColor};background:transparent;
   word-break:break-word;overflow-wrap:anywhere;white-space:pre-wrap;
 }
-@media(prefers-color-scheme:dark){
-  html{background:${theme.surfaceDarkColor}}
-  body{color:${theme.textDarkColor};background:transparent}
-}
+${darkModeRules}
 </style>
-${resizeScript(false)}
+${resizeScript(false, undefined, colorMode)}
 </head><body>${escaped}</body></html>`;
 }

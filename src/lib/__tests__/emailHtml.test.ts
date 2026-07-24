@@ -95,6 +95,32 @@ describe("prepareHtml", () => {
     assert.ok(!result.includes("html{background:#fff}"));
   });
 
+  it("honors an explicit dark client preference instead of the device theme", () => {
+    const result = prepareHtml(documentWith("<p>Unstyled message</p>"), {
+      colorMode: "dark",
+    });
+    assert.ok(
+      result.includes(
+        "html:not([bgcolor]):not([background]){background:#0f172a}",
+      ),
+    );
+    assert.ok(result.includes("var darkMode={matches:true}"));
+    assert.ok(!result.includes("@media(prefers-color-scheme:dark)"));
+  });
+
+  it("keeps an explicit light preference light on a dark device", () => {
+    const result = prepareHtml(documentWith("<p>Unstyled message</p>"), {
+      colorMode: "light",
+    });
+    assert.ok(
+      result.includes(
+        "html:not([bgcolor]):not([background]){background:#f8fafc}",
+      ),
+    );
+    assert.ok(result.includes("var darkMode={matches:false}"));
+    assert.ok(!result.includes("@media(prefers-color-scheme:dark)"));
+  });
+
   it("allows sender-authored body backgrounds and text colours to win", () => {
     const original =
       '<html><head><style>body{background:#fff;color:#111}</style></head><body bgcolor="#ffffff" text="#111111"><p>Designed message</p></body></html>';
@@ -396,6 +422,17 @@ describe("prepareTextBody", () => {
     assert.ok(result.includes("#e2e8f0"));
     assert.ok(result.includes("background:transparent"));
     assert.ok(!result.includes("background:#ffffff"));
+  });
+
+  it("honors forced light and dark modes", () => {
+    const light = prepareTextBody("Hello", { colorMode: "light" });
+    const dark = prepareTextBody("Hello", { colorMode: "dark" });
+
+    assert.ok(light.includes("html{background:#f8fafc}"));
+    assert.ok(!light.includes("@media(prefers-color-scheme:dark)"));
+    assert.ok(dark.includes("html{background:#0f172a}"));
+    assert.ok(dark.includes("color:#e2e8f0"));
+    assert.ok(!dark.includes("@media(prefers-color-scheme:dark)"));
   });
 
   it("strips quoted lines only when requested", () => {

@@ -2,6 +2,7 @@ import { getIdentities } from "@/lib/jmap";
 import SignatureForm from "./SignatureForm";
 import MobileBackButton from "@/components/MobileBackButton";
 import { getJmapContext } from "@/lib/jmapServer";
+import AppearanceSettings from "./AppearanceSettings";
 
 export default async function SettingsPage() {
   const { session, accountId } = await getJmapContext();
@@ -20,6 +21,20 @@ export default async function SettingsPage() {
             Personalize how your outgoing mail appears.
           </p>
         </div>
+
+        <section className="mb-5 overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800/40">
+          <div className="border-b border-stone-100 px-5 py-4 dark:border-stone-700/70">
+            <h2 className="text-sm font-semibold text-stone-700 dark:text-stone-200">
+              Appearance
+            </h2>
+            <p className="mt-1 text-xs leading-relaxed text-stone-400 dark:text-stone-500">
+              Quiet controls for the surfaces you read throughout the day.
+            </p>
+          </div>
+          <div className="p-5">
+            <AppearanceSettings />
+          </div>
+        </section>
 
         <section className="overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800/40">
           <div className="border-b border-stone-100 px-5 py-4 dark:border-stone-700/70">

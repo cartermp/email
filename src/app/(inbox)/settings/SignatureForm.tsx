@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { saveSignatureAction } from "./actions";
 import {
   formatSignatureForSave,
   stripSignatureSeparator,
 } from "@/lib/compose";
 import { useToast } from "@/components/ToastProvider";
+import { useNavigationGuard } from "@/components/NavigationGuardProvider";
 
 interface Props {
   identityLabel?: string;
@@ -27,15 +28,7 @@ export default function SignatureForm({ identityLabel, initialSignature }: Props
   const [isPending, startTransition] = useTransition();
   const showToast = useToast();
   const dirty = value !== savedValue;
-
-  useEffect(() => {
-    if (!dirty) return;
-    function warnBeforeUnload(event: BeforeUnloadEvent) {
-      event.preventDefault();
-    }
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [dirty]);
+  useNavigationGuard(dirty, "Discard your unsaved signature changes?");
 
   function handleSave() {
     if (!dirty || isPending) return;

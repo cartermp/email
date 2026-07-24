@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useConfirmNavigation } from "@/components/NavigationGuardProvider";
 
 export default function MobileBackButton({
   label = "Back",
@@ -10,9 +11,11 @@ export default function MobileBackButton({
   compact?: boolean;
 }) {
   const router = useRouter();
+  const confirmNavigation = useConfirmNavigation();
   return (
     <button
       onClick={() => {
+        if (!confirmNavigation()) return;
         if (window.history.length > 1) router.back();
         else router.push("/");
       }}

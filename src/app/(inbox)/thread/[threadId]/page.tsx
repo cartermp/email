@@ -33,7 +33,7 @@ export default async function ThreadPage({ params, searchParams }: Props) {
   if (emails.length === 1) {
     return (
       <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
-        <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
+        <div className="mail-reader-container mx-auto max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
           <MobileBackButton label={backLabel} />
           <EmailDetailView
             email={emails[0]}
@@ -60,7 +60,7 @@ export default async function ThreadPage({ params, searchParams }: Props) {
 
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
-      <div className="max-w-4xl mx-auto px-4 sm:px-8 py-6 sm:py-8">
+      <div className="mail-reader-container mx-auto max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
         <MobileBackButton label={backLabel} />
         <div className="flex items-start justify-between gap-4 mb-6">
           <div className="min-w-0 flex flex-wrap items-center gap-2">

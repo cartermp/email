@@ -1264,7 +1264,7 @@ export default function EmailListPanel({
 
                     <div
                       className={[
-                        "group relative flex items-center gap-2.5 px-3 py-2.5 select-none touch-pan-y transition-colors",
+                        "mail-list-row group relative flex items-center gap-2.5 px-3 py-2.5 select-none touch-pan-y transition-colors",
                         isChecked
                           ? "bg-blue-50 dark:bg-blue-950/25"
                           : keyboardThreadId === thread.threadId
@@ -1394,7 +1394,7 @@ export default function EmailListPanel({
                       </div>
                       {/* Preview */}
                       {latestEmail.preview && (
-                        <p className="text-xs text-stone-400 dark:text-stone-500 truncate">
+                        <p className="mail-list-preview text-xs text-stone-400 dark:text-stone-500 truncate">
                           {latestEmail.preview}
                         </p>
                       )}
@@ -1513,7 +1513,7 @@ export default function EmailListPanel({
               >
                 <Link
                   href={`/compose?draftId=${draft.id}`}
-                  className="flex flex-col gap-0.5 px-4 py-2.5 flex-1 min-w-0"
+                  className="mail-list-row flex flex-col gap-0.5 px-4 py-2.5 flex-1 min-w-0"
                 >
                   <div className="flex items-center gap-2 pr-6">
                     <span className="flex-1 text-sm truncate text-stone-500 dark:text-stone-400">
@@ -1565,7 +1565,7 @@ export default function EmailListPanel({
                 key={email.id}
                 href={`/email/${email.id}?from=sent`}
                 className={[
-                  "flex flex-col gap-0.5 px-4 py-2.5 border-b border-stone-100 dark:border-stone-700/60 transition-colors",
+                  "mail-list-row flex flex-col gap-0.5 px-4 py-2.5 border-b border-stone-100 dark:border-stone-700/60 transition-colors",
                   email.id === selectedEmailId
                     ? "bg-stone-200 dark:bg-stone-800"
                     : "hover:bg-stone-100 dark:hover:bg-stone-900",
@@ -1583,7 +1583,7 @@ export default function EmailListPanel({
                   {email.subject || "(no subject)"}
                 </div>
                 {email.preview && (
-                  <p className="text-xs text-stone-400 dark:text-stone-500 truncate">
+                  <p className="mail-list-preview text-xs text-stone-400 dark:text-stone-500 truncate">
                     {email.preview}
                   </p>
                 )}

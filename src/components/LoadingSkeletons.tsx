@@ -42,7 +42,7 @@ export function MailRowsLoadingSkeleton({ count = 7 }: { count?: number }) {
       {Array.from({ length: count }).map((_, index) => (
         <div
           key={index}
-          className="flex gap-3 border-b border-stone-100 px-3 py-3 dark:border-stone-800"
+          className="mail-list-row flex gap-3 border-b border-stone-100 px-3 py-3 dark:border-stone-800"
         >
           <div className="h-9 w-9 shrink-0 animate-pulse rounded-full bg-stone-200/80 dark:bg-stone-700/70" />
           <div className="min-w-0 flex-1 animate-pulse space-y-2">
@@ -72,7 +72,7 @@ export function MessageLoadingSkeleton() {
       aria-label="Loading message"
       aria-busy="true"
     >
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
+      <div className="mail-reader-container mx-auto max-w-4xl px-4 py-6 sm:px-8 sm:py-8">
         <div className="animate-pulse">
           <SkeletonBar className="mb-5 h-4 w-16 lg:hidden" />
           <SkeletonBar className="mb-5 h-7 w-[min(34rem,78%)]" />

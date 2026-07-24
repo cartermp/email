@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import useBodyClass from "@/components/useBodyClass";
+import { useAppearance } from "@/components/AppearanceProvider";
 import { lockEmailContentWidth } from "@/lib/emailFrameLayout";
 import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 import type { EmailBodyPart } from "@/lib/types";
@@ -25,6 +26,7 @@ export default function EmailBody({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const lastDimsRef = useRef({ h: 0, w: 0, availableWidth: 0 });
   const lockedContentWidthRef = useRef<number | null>(null);
+  const { preferences } = useAppearance();
 
   useBodyClass("rich-content-open");
 
@@ -128,9 +130,16 @@ export default function EmailBody({
   const srcDoc = useMemo(
     () =>
       type === "html"
-        ? prepareHtml(body, { stripQuotes, embeddedParts })
-        : prepareTextBody(body, { stripQuotes }),
-    [body, embeddedParts, stripQuotes, type],
+        ? prepareHtml(body, {
+            stripQuotes,
+            embeddedParts,
+            colorMode: preferences.theme,
+          })
+        : prepareTextBody(body, {
+            stripQuotes,
+            colorMode: preferences.theme,
+          }),
+    [body, embeddedParts, preferences.theme, stripQuotes, type],
   );
 
   return (
