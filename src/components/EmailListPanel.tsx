@@ -20,6 +20,7 @@ import { useToast } from "@/components/ToastProvider";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
 import ThreadCountBadge from "@/components/ThreadCountBadge";
+import { useConfirmNavigation } from "@/components/NavigationGuardProvider";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Email } from "@/lib/types";
 import {
@@ -183,6 +184,7 @@ export default function EmailListPanel({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const confirmNavigation = useConfirmNavigation();
   const showToast = useToast();
   const selectedThreadId = pathname.startsWith("/thread/")
     ? pathname.slice("/thread/".length)
@@ -350,6 +352,14 @@ export default function EmailListPanel({
     threadId: string,
     emailIds: string[],
   ) {
+    // Pointer capture is only needed for touch/pen swipe gestures. Capturing a
+    // mouse pointer can retarget the completed click to this wrapper instead
+    // of the nested conversation link, leaving desktop rows unopenable.
+    if (event.pointerType === "mouse") {
+      cancelLongPress();
+      swipeGesture.current = null;
+      return;
+    }
     event.currentTarget.setPointerCapture(event.pointerId);
     swipeGesture.current = {
       threadId,
@@ -1265,6 +1275,7 @@ export default function EmailListPanel({
                     <div
                       className={[
                         "mail-list-row group relative flex items-center gap-2.5 px-3 py-2.5 select-none touch-pan-y transition-colors",
+                        selectionMode ? "" : "cursor-pointer",
                         isChecked
                           ? "bg-blue-50 dark:bg-blue-950/25"
                           : keyboardThreadId === thread.threadId
@@ -1292,6 +1303,33 @@ export default function EmailListPanel({
                       }
                       onPointerUp={() => finishRowPointer(thread, isUnread)}
                       onPointerCancel={() => cancelRowPointer(thread.threadId)}
+                      onClick={(event) => {
+                        if (longPressActive.current) {
+                          longPressActive.current = false;
+                          return;
+                        }
+                        if (
+                          suppressLinkClick.current === thread.threadId
+                        ) {
+                          suppressLinkClick.current = null;
+                          return;
+                        }
+                        if (selectionMode) return;
+
+                        const target = event.target;
+                        if (
+                          target instanceof Element &&
+                          target.closest(
+                            "a, button, [data-thread-selection-control]",
+                          )
+                        ) {
+                          return;
+                        }
+
+                        if (!confirmNavigation()) return;
+                        setKeyboardThreadId(thread.threadId);
+                        router.push(threadHref);
+                      }}
                     >
                     {/* Unread / pin indicator */}
                     <div className="w-2 shrink-0 flex items-center justify-center">
@@ -1303,6 +1341,7 @@ export default function EmailListPanel({
                     {/* Avatar — morphs to checkbox on hover / in selection mode */}
                     <div
                       className="relative w-9 h-9 shrink-0 rounded-full cursor-pointer"
+                      data-thread-selection-control
                       onClick={() => {
                         if (!selectionMode) setSelectionMode(true);
                         // Toggle all emails in this thread
