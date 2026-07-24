@@ -132,7 +132,9 @@ export function senderAvatarDomain(email: string): string | null {
 
 export function senderAvatarUrl(from: EmailAddress[] | null): string | null {
   const domain = senderAvatarDomain(from?.[0]?.email ?? "");
-  return domain ? `/api/avatar?domain=${encodeURIComponent(domain)}` : null;
+  return domain
+    ? `/api/avatar?domain=${encodeURIComponent(domain)}&v=2`
+    : null;
 }
 
 /**
