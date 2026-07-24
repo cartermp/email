@@ -11,6 +11,35 @@ function documentWith(body: string, head = "") {
   return `<html><head>${head}</head><body>${body}</body></html>`;
 }
 
+function createStaticEmailDom(html: string, virtualConsole?: VirtualConsole) {
+  return new JSDOM(html, {
+    runScripts: "dangerously",
+    pretendToBeVisual: true,
+    virtualConsole,
+    beforeParse(window) {
+      // These tests exercise synchronous document setup, not iframe resizing.
+      // Leaving the real visual timers running lets a queued resize callback
+      // outlive JSDOM's window on slower CI workers.
+      window.requestAnimationFrame = (() => 1) as typeof window.requestAnimationFrame;
+      Object.defineProperty(window, "MutationObserver", {
+        configurable: true,
+        value: undefined,
+      });
+      Object.defineProperty(window, "ResizeObserver", {
+        configurable: true,
+        value: undefined,
+      });
+    },
+  });
+}
+
+async function waitForWindowLoad(dom: JSDOM) {
+  if (dom.window.document.readyState === "complete") return;
+  await new Promise<void>((resolve) => {
+    dom.window.addEventListener("load", () => resolve(), { once: true });
+  });
+}
+
 describe("prepareHtml", () => {
   it("injects into an existing head without losing its attributes", () => {
     const result = prepareHtml(
@@ -166,7 +195,10 @@ describe("prepareHtml", () => {
   });
 
   it("darkens near-white canvases without changing image-backed or coloured sections", async () => {
-    const dom = new JSDOM(
+    const scriptErrors: Error[] = [];
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on("jsdomError", (error) => scriptErrors.push(error));
+    const dom = createStaticEmailDom(
       prepareHtml(
         documentWith(
           [
@@ -180,43 +212,46 @@ describe("prepareHtml", () => {
         ),
         { colorMode: "dark" },
       ),
-      { runScripts: "dangerously", pretendToBeVisual: true },
+      virtualConsole,
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    try {
+      await waitForWindowLoad(dom);
 
-    const canvas = dom.window.document.querySelector("#canvas");
-    const lightCopy = dom.window.document.querySelector("#light-copy");
-    const darkCopy = dom.window.document.querySelector("#dark-copy");
-    const imagePanel = dom.window.document.querySelector("#image-panel");
-    const brandPanel = dom.window.document.querySelector("#brand-panel");
+      const canvas = dom.window.document.querySelector("#canvas");
+      const lightCopy = dom.window.document.querySelector("#light-copy");
+      const darkCopy = dom.window.document.querySelector("#dark-copy");
+      const imagePanel = dom.window.document.querySelector("#image-panel");
+      const brandPanel = dom.window.document.querySelector("#brand-panel");
 
-    assert.equal(
-      canvas?.getAttribute("data-email-client-adapted-background"),
-      "true",
-    );
-    assert.equal(
-      lightCopy?.hasAttribute("data-email-client-adapted-text"),
-      false,
-    );
-    assert.equal(
-      darkCopy?.getAttribute("data-email-client-adapted-text"),
-      "true",
-    );
-    assert.equal(
-      imagePanel?.hasAttribute("data-email-client-adapted-background"),
-      false,
-    );
-    assert.equal(
-      imagePanel?.hasAttribute("data-email-client-adapted-text"),
-      false,
-    );
-    assert.equal(
-      brandPanel?.hasAttribute("data-email-client-adapted-background"),
-      false,
-    );
-
-    dom.window.close();
+      assert.equal(
+        canvas?.getAttribute("data-email-client-adapted-background"),
+        "true",
+      );
+      assert.equal(
+        lightCopy?.hasAttribute("data-email-client-adapted-text"),
+        false,
+      );
+      assert.equal(
+        darkCopy?.getAttribute("data-email-client-adapted-text"),
+        "true",
+      );
+      assert.equal(
+        imagePanel?.hasAttribute("data-email-client-adapted-background"),
+        false,
+      );
+      assert.equal(
+        imagePanel?.hasAttribute("data-email-client-adapted-text"),
+        false,
+      );
+      assert.equal(
+        brandPanel?.hasAttribute("data-email-client-adapted-background"),
+        false,
+      );
+      assert.deepEqual(scriptErrors, []);
+    } finally {
+      dom.window.close();
+    }
   });
 
   it("never lets theme adaptation block iframe sizing", async () => {
@@ -280,18 +315,21 @@ describe("prepareHtml", () => {
       },
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.ok(
-      resizeMessages.some(
-        (message) =>
-          typeof message === "object" &&
-          message !== null &&
-          "type" in message &&
-          message.type === "iframe-resize",
-      ),
-    );
-    assert.deepEqual(scriptErrors, []);
-    dom.window.close();
+    try {
+      await waitForWindowLoad(dom);
+      assert.ok(
+        resizeMessages.some(
+          (message) =>
+            typeof message === "object" &&
+            message !== null &&
+            "type" in message &&
+            message.type === "iframe-resize",
+        ),
+      );
+      assert.deepEqual(scriptErrors, []);
+    } finally {
+      dom.window.close();
+    }
   });
 
   it("measures full scroll geometry and batches updates in animation frames", () => {
@@ -306,28 +344,30 @@ describe("prepareHtml", () => {
   });
 
   it("mirrors a missing trailing spacer in a centered email wrapper", async () => {
-    const dom = new JSDOM(
+    const dom = createStaticEmailDom(
       prepareHtml(
         documentWith(
           '<table width="100%"><tr><td class="device-width">&nbsp;</td><td class="content-width"><p>Message</p></td></tr></table>',
           "<style>td.device-width{width:25%}td.content-width{width:50%}</style>",
         ),
       ),
-      { runScripts: "dangerously", pretendToBeVisual: true },
     );
 
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const cells = dom.window.document.querySelectorAll(
-      'table[width="100%"] > tbody > tr > td',
-    );
-    assert.equal(cells.length, 3);
-    assert.equal(cells[2].className, "device-width");
-    assert.equal(
-      cells[2].getAttribute("data-email-client-mirrored-spacer"),
-      "true",
-    );
-    assert.equal(cells[2].getAttribute("aria-hidden"), "true");
-    dom.window.close();
+    try {
+      await waitForWindowLoad(dom);
+      const cells = dom.window.document.querySelectorAll(
+        'table[width="100%"] > tbody > tr > td',
+      );
+      assert.equal(cells.length, 3);
+      assert.equal(cells[2].className, "device-width");
+      assert.equal(
+        cells[2].getAttribute("data-email-client-mirrored-spacer"),
+        "true",
+      );
+      assert.equal(cells[2].getAttribute("aria-hidden"), "true");
+    } finally {
+      dom.window.close();
+    }
   });
 
   describe("links", () => {
