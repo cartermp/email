@@ -164,8 +164,8 @@ export default async function ComposePage({ searchParams }: Props) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="sticky top-0 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-6 py-4 flex items-center gap-3">
-        <MobileBackButton label="" />
+      <div className="sticky top-0 flex min-h-[52px] items-center gap-3 border-b border-stone-200 bg-white px-4 dark:border-stone-800 dark:bg-stone-900 sm:px-6">
+        <MobileBackButton label="" compact />
         <h1 className="text-sm font-semibold text-stone-900 dark:text-stone-100">
           {title}
         </h1>

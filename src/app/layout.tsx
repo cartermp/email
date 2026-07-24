@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { Suspense } from "react";
 import { auth, signOut } from "@/auth";
-import LiveUnreadCountBadge from "@/components/LiveUnreadCountBadge";
+import DesktopNav from "@/components/DesktopNav";
 import MobileNav from "@/components/MobileNav";
+import ToastProvider from "@/components/ToastProvider";
 import UnreadCountProvider, {
   MailboxCountSync,
 } from "@/components/UnreadCountProvider";
@@ -54,64 +54,33 @@ export default async function RootLayout({
     <html lang="en" className="h-full">
       <body className="h-full flex flex-col bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
         <UnreadCountProvider>
-          {session && (
-            <Suspense fallback={null}>
-              <MailboxCountsLoader />
-            </Suspense>
-          )}
-          {/* Row: desktop sidebar + main content */}
-          <div className="flex flex-1 min-h-0 overflow-hidden">
-            {/* Sidebar — desktop only */}
-            <nav className="hidden md:flex print:hidden w-48 shrink-0 flex-col bg-white dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
-              <span className="text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100 px-2 mb-6">
-                Mail
-              </span>
+          <ToastProvider>
+            {session && (
+              <Suspense fallback={null}>
+                <MailboxCountsLoader />
+              </Suspense>
+            )}
+            {/* Row: desktop sidebar + main content */}
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              {/* Sidebar — desktop only */}
+              <nav className="hidden lg:flex print:hidden w-52 shrink-0 flex-col bg-white dark:bg-stone-950 border-r border-stone-200 dark:border-stone-800 px-3 py-5">
+                <div className="mb-6 flex items-center gap-2.5 px-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} className="h-4 w-4" aria-hidden="true">
+                      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                      <path d="m4 7 7 5.5a1.6 1.6 0 0 0 2 0L20 7" />
+                    </svg>
+                  </span>
+                  <span className="text-base font-semibold tracking-tight text-stone-900 dark:text-stone-100">
+                    Mail
+                  </span>
+                </div>
 
-              <div className="flex flex-col gap-1">
-                <Link
-                  href="/"
-                  className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
-                >
-                  <span>Inbox</span>
-                  <LiveUnreadCountBadge className="shrink-0" />
-                </Link>
-                <Link
-                  href="/drafts"
-                  className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
-                >
-                  <span>Drafts</span>
-                  <LiveUnreadCountBadge mailbox="drafts" className="shrink-0" />
-                </Link>
-                 <Link
-                  href="/sent"
-                  className="rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
-                >
-                  Sent
-                </Link>
-                <Link
-                  href="/spam"
-                  className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
-                >
-                  <span>Spam</span>
-                  <LiveUnreadCountBadge mailbox="spam" className="shrink-0" />
-                </Link>
-                <Link
-                  href="/calendar"
-                  className="rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
-                >
-                  Calendar
-                </Link>
-              </div>
+                <DesktopNav />
 
-              <div className="mt-auto flex flex-col gap-1">
-                <Link
-                  href="/settings"
-                  className="rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
-                >
-                  Settings
-                </Link>
                 {session && (
                   <form
+                    className="mt-1"
                     action={async () => {
                       "use server";
                       await signOut({ redirectTo: "/login" });
@@ -119,21 +88,21 @@ export default async function RootLayout({
                   >
                     <button
                       type="submit"
-                      className="w-full text-left rounded-md text-sm text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
+                      className="min-h-10 w-full rounded-lg px-3 text-left text-sm text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
                     >
                       Sign out
                     </button>
                   </form>
                 )}
-              </div>
-            </nav>
+              </nav>
 
-            {/* Main content */}
-            <main className="flex-1 overflow-hidden min-w-0 h-full">{children}</main>
-          </div>
+              {/* Main content */}
+              <main className="flex-1 overflow-hidden min-w-0 h-full">{children}</main>
+            </div>
 
-          {/* Mobile bottom nav — hidden on desktop */}
-          <div className="print:hidden"><MobileNav /></div>
+            {/* Mobile bottom nav — hidden on desktop */}
+            <div className="print:hidden"><MobileNav /></div>
+          </ToastProvider>
         </UnreadCountProvider>
       </body>
     </html>

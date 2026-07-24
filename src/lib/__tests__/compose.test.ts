@@ -8,6 +8,7 @@ import {
   buildForwardQuote,
   htmlToPlainText,
   normalizeComposeMarkdown,
+  quotedSectionStart,
   stripSignatureSeparator,
 } from "../compose";
 
@@ -223,5 +224,32 @@ describe("normalizeComposeMarkdown", () => {
       normalizeComposeMarkdown("## Heading\n\n---\n\nvalue -- detail"),
       "## Heading\n\n---\n\nvalue -- detail"
     );
+  });
+});
+
+describe("quotedSectionStart", () => {
+  it("finds reply history after the editable body", () => {
+    const markdown =
+      "My reply.\n\n> On Monday, Maya wrote:\n>\n> Original message";
+    assert.equal(quotedSectionStart(markdown), "My reply.\n\n".length);
+  });
+
+  it("finds forwarded history after the editable body", () => {
+    const markdown =
+      "For your review.\n\n---\n\n**---------- Forwarded message ----------**\n\nOriginal";
+    assert.equal(quotedSectionStart(markdown), "For your review.\n\n".length);
+  });
+
+  it("leaves ordinary Markdown fully editable", () => {
+    assert.equal(
+      quotedSectionStart("A paragraph.\n\n> A normal blockquote\n\n---\n\nFooter"),
+      -1
+    );
+  });
+
+  it("uses the earliest history marker", () => {
+    const markdown =
+      "Reply\n\n> On Monday, Maya wrote:\n>\n> Text\n\n---\n\n**---------- Forwarded message ----------**";
+    assert.equal(quotedSectionStart(markdown), "Reply\n\n".length);
   });
 });

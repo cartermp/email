@@ -42,7 +42,7 @@ export default function PinButton({ emailId, initiallyPinned }: Props) {
       onClick={handleClick}
       disabled={pending}
       className={[
-        "inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-md border transition-colors disabled:opacity-50",
+        "inline-flex min-h-10 items-center gap-1.5 rounded-md border px-3 text-xs transition-colors disabled:opacity-50",
         pinned
           ? "border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-950/60"
           : "border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100",

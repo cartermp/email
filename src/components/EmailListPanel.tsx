@@ -13,13 +13,21 @@ import {
   type ReactNode,
 } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
+import EmptyState from "@/components/EmptyState";
+import MailIcon from "@/components/MailIcon";
 import { MailRowsLoadingSkeleton } from "@/components/LoadingSkeletons";
+import { useToast } from "@/components/ToastProvider";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
 import ThreadCountBadge from "@/components/ThreadCountBadge";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Email } from "@/lib/types";
-import { isPinned, mergeEmailUpdates, groupIntoThreads } from "@/lib/emailList";
+import {
+  isPinned,
+  mergeEmailUpdates,
+  groupIntoThreads,
+  type ThreadSummary,
+} from "@/lib/emailList";
 import { formatDate } from "@/lib/format";
 import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox } from "@/app/(inbox)/actions";
 import { deleteDraftAction } from "@/app/compose/actions";
@@ -78,7 +86,7 @@ export function DeferredMailPanelSync({
 
 function IconCheck() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
     </svg>
   );
@@ -86,7 +94,7 @@ function IconCheck() {
 
 function IconDot() {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true">
       <circle cx="12" cy="12" r="5" />
     </svg>
   );
@@ -94,7 +102,7 @@ function IconDot() {
 
 function IconPin() {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+    <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5" aria-hidden="true">
       <path d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0z" />
     </svg>
   );
@@ -102,7 +110,7 @@ function IconPin() {
 
 function IconUnpin() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0 1 11.186 0zM3 3l18 18" />
     </svg>
   );
@@ -110,7 +118,7 @@ function IconUnpin() {
 
 function IconArchive() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
     </svg>
   );
@@ -118,7 +126,7 @@ function IconArchive() {
 
 function IconTrash() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-3.5 h-3.5" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
     </svg>
   );
@@ -126,7 +134,7 @@ function IconTrash() {
 
 function IconX() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" aria-hidden="true">
       <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
     </svg>
   );
@@ -140,6 +148,7 @@ function IconRefresh({ spinning = false }: { spinning?: boolean }) {
       stroke="currentColor"
       strokeWidth={1.8}
       className={["w-4 h-4", spinning ? "animate-spin" : ""].join(" ")}
+      aria-hidden="true"
     >
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992V4.356" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M20.49 9A9 9 0 0 0 5.64 5.64L3 8.28" />
@@ -174,6 +183,7 @@ export default function EmailListPanel({
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const showToast = useToast();
   const selectedThreadId = pathname.startsWith("/thread/")
     ? pathname.slice("/thread/".length)
     : undefined;
@@ -281,10 +291,22 @@ export default function EmailListPanel({
   const [selectedIds, setSelectedIds] = useState(new Set<string>());
   const [selectionMode, setSelectionMode] = useState(false);
   const [archivedIds, setArchivedIds] = useState(new Set<string>());
+  const [keyboardThreadId, setKeyboardThreadId] = useState<string | null>(null);
+  const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressActive = useRef(false);
   const longPressPos = useRef({ x: 0, y: 0 });
+  const [swipeOffsets, setSwipeOffsets] = useState<Record<string, number>>({});
+  const swipeOffsetRef = useRef<Record<string, number>>({});
+  const swipeGesture = useRef<{
+    threadId: string;
+    startX: number;
+    startY: number;
+    active: boolean;
+  } | null>(null);
+  const suppressLinkClick = useRef<string | null>(null);
 
   // -------------------------------------------------------------------------
   // Refresh state
@@ -299,14 +321,14 @@ export default function EmailListPanel({
     setSelectionMode(false);
   }
 
-  function startLongPress(e: React.PointerEvent, emailId: string) {
+  function startLongPress(e: React.PointerEvent, emailIds: string[]) {
     longPressPos.current = { x: e.clientX, y: e.clientY };
     longPressActive.current = false;
     longPressTimer.current = setTimeout(() => {
       longPressActive.current = true;
       if ("vibrate" in navigator) navigator.vibrate(50);
       setSelectionMode(true);
-      setSelectedIds(new Set([emailId]));
+      setSelectedIds(new Set(emailIds));
     }, 500);
   }
 
@@ -321,6 +343,68 @@ export default function EmailListPanel({
     const dx = e.clientX - longPressPos.current.x;
     const dy = e.clientY - longPressPos.current.y;
     if (Math.abs(dx) > 12 || Math.abs(dy) > 12) cancelLongPress();
+  }
+
+  function startRowPointer(
+    event: React.PointerEvent,
+    threadId: string,
+    emailIds: string[],
+  ) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    swipeGesture.current = {
+      threadId,
+      startX: event.clientX,
+      startY: event.clientY,
+      active: false,
+    };
+    startLongPress(event, emailIds);
+  }
+
+  function moveRowPointer(event: React.PointerEvent, threadId: string) {
+    const gesture = swipeGesture.current;
+    if (!gesture || gesture.threadId !== threadId) return;
+    const dx = event.clientX - gesture.startX;
+    const dy = event.clientY - gesture.startY;
+
+    if (!gesture.active && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      gesture.active = true;
+      cancelLongPress();
+    }
+    if (!gesture.active) {
+      checkLongPressMove(event);
+      return;
+    }
+
+    const canArchive = view === "inbox" && !!archiveMailboxId;
+    const bounded = Math.max(canArchive ? -88 : -24, Math.min(88, dx));
+    swipeOffsetRef.current[threadId] = bounded;
+    setSwipeOffsets((current) => ({ ...current, [threadId]: bounded }));
+  }
+
+  function finishRowPointer(thread: ThreadSummary, isUnread: boolean) {
+    cancelLongPress();
+    const gesture = swipeGesture.current;
+    swipeGesture.current = null;
+    const offset = swipeOffsetRef.current[thread.threadId] ?? 0;
+    swipeOffsetRef.current[thread.threadId] = 0;
+    setSwipeOffsets((current) => ({ ...current, [thread.threadId]: 0 }));
+
+    if (!gesture?.active) return;
+    suppressLinkClick.current = thread.threadId;
+    if ("vibrate" in navigator && Math.abs(offset) >= 58) navigator.vibrate(12);
+
+    if (offset >= 58) {
+      void toggleThreadReadState(thread, isUnread);
+    } else if (offset <= -58 && view === "inbox" && archiveMailboxId) {
+      moveThread(thread, archiveMailboxId);
+    }
+  }
+
+  function cancelRowPointer(threadId: string) {
+    cancelLongPress();
+    swipeGesture.current = null;
+    swipeOffsetRef.current[threadId] = 0;
+    setSwipeOffsets((current) => ({ ...current, [threadId]: 0 }));
   }
 
   // -------------------------------------------------------------------------
@@ -507,8 +591,15 @@ export default function EmailListPanel({
     setClientReadIds((prev) => new Set([...prev, ...ids]));
     setClientUnreadIds((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
     dispatchUnreadCountEvent("read", ids);
-    await bulkMarkAsRead(ids);
-    router.refresh();
+    try {
+      await bulkMarkAsRead(ids);
+      showToast({
+        message: ids.length === 1 ? "Marked as read" : `${ids.length} messages marked as read`,
+      });
+      router.refresh();
+    } catch {
+      showToast({ message: "Could not mark those messages as read.", tone: "error" });
+    }
   }
 
   async function handleBulkMarkUnread() {
@@ -519,8 +610,15 @@ export default function EmailListPanel({
     setClientUnreadIds((prev) => new Set([...prev, ...ids]));
     setClientReadIds((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
     dispatchUnreadCountEvent("unread", ids);
-    await bulkMarkAsUnread(ids);
-    router.refresh();
+    try {
+      await bulkMarkAsUnread(ids);
+      showToast({
+        message: ids.length === 1 ? "Marked as unread" : `${ids.length} messages marked as unread`,
+      });
+      router.refresh();
+    } catch {
+      showToast({ message: "Could not mark those messages as unread.", tone: "error" });
+    }
   }
 
   async function handleBulkPin() {
@@ -530,20 +628,67 @@ export default function EmailListPanel({
     ids.forEach((id) =>
       window.dispatchEvent(new CustomEvent("email-pin-changed", { detail: { id, pinned: pin } }))
     );
-    await bulkSetPin(ids, pin);
-    router.refresh();
+    try {
+      await bulkSetPin(ids, pin);
+      showToast({
+        message: pin
+          ? ids.length === 1 ? "Pinned" : `${ids.length} messages pinned`
+          : ids.length === 1 ? "Unpinned" : `${ids.length} messages unpinned`,
+      });
+      router.refresh();
+    } catch {
+      showToast({ message: "Could not update pinning.", tone: "error" });
+    }
+  }
+
+  async function moveMessages(emails: Email[], targetMailboxId: string) {
+    const ids = emails.map((e) => e.id);
+    const sourceMailboxId = currentMailboxId;
+    setArchivedIds((prev) => new Set([...prev, ...ids]));
+    clearSelection();
+    const movePromise = bulkMoveToMailbox(
+      emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
+      targetMailboxId
+    );
+    showToast({
+      message:
+        targetMailboxId === trashMailboxId
+          ? ids.length === 1 ? "Moved to trash" : `${ids.length} messages moved to trash`
+          : ids.length === 1 ? "Archived" : `${ids.length} messages archived`,
+      actionLabel: "Undo",
+      onAction: async () => {
+        await movePromise;
+        setArchivedIds((previous) => {
+          const next = new Set(previous);
+          ids.forEach((id) => next.delete(id));
+          return next;
+        });
+        await bulkMoveToMailbox(
+          emails.map((email) => ({
+            id: email.id,
+            mailboxIds: { [targetMailboxId]: true },
+          })),
+          sourceMailboxId,
+        );
+        router.refresh();
+      },
+    });
+    try {
+      await movePromise;
+      router.refresh();
+    } catch {
+      setArchivedIds((previous) => {
+        const next = new Set(previous);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      showToast({ message: "Could not move those messages.", tone: "error" });
+    }
   }
 
   async function handleBulkMove(targetMailboxId: string) {
     const emails = visibleEmails.filter((e) => selectedIds.has(e.id));
-    const ids = emails.map((e) => e.id);
-    setArchivedIds((prev) => new Set([...prev, ...ids]));
-    clearSelection();
-    await bulkMoveToMailbox(
-      emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
-      targetMailboxId
-    );
-    router.refresh();
+    await moveMessages(emails, targetMailboxId);
   }
 
   async function handleBulkNotSpam() {
@@ -551,15 +696,184 @@ export default function EmailListPanel({
     const ids = emails.map((e) => e.id);
     setArchivedIds((prev) => new Set([...prev, ...ids]));
     clearSelection();
-    await bulkMoveToMailbox(
-      emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
-      inboxId
-    );
+    try {
+      await bulkMoveToMailbox(
+        emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
+        inboxId
+      );
+      showToast({
+        message: ids.length === 1 ? "Moved to inbox" : `${ids.length} messages moved to inbox`,
+      });
+      router.refresh();
+    } catch {
+      setArchivedIds((previous) => {
+        const next = new Set(previous);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      showToast({ message: "Could not move those messages.", tone: "error" });
+    }
+  }
+
+  async function toggleThreadReadState(
+    thread: ThreadSummary,
+    currentlyUnread: boolean,
+  ) {
+    const ids = currentlyUnread
+      ? getUnreadEmailIds(thread.allEmails, clientReadIds, clientUnreadIds)
+      : getReadEmailIds(thread.allEmails, clientReadIds, clientUnreadIds);
+    if (ids.length === 0) return;
+
+    if (currentlyUnread) {
+      setClientReadIds((previous) => new Set([...previous, ...ids]));
+      setClientUnreadIds((previous) => {
+        const next = new Set(previous);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (view === "inbox") dispatchUnreadCountEvent("read", ids);
+      try {
+        await bulkMarkAsRead(ids);
+        showToast({ message: "Marked as read" });
+      } catch {
+        showToast({ message: "Could not mark that thread as read.", tone: "error" });
+      }
+    } else {
+      setClientUnreadIds((previous) => new Set([...previous, ...ids]));
+      setClientReadIds((previous) => {
+        const next = new Set(previous);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      if (view === "inbox") dispatchUnreadCountEvent("unread", ids);
+      try {
+        await bulkMarkAsUnread(ids);
+        showToast({ message: "Marked as unread" });
+      } catch {
+        showToast({ message: "Could not mark that thread as unread.", tone: "error" });
+      }
+    }
     router.refresh();
   }
 
+  function moveThread(thread: ThreadSummary, targetMailboxId: string) {
+    void moveMessages(thread.allEmails, targetMailboxId);
+  }
+
+  useEffect(() => {
+    if (!keyboardThreadId) return;
+    rowRefs.current
+      .get(keyboardThreadId)
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [keyboardThreadId]);
+
+  useEffect(() => {
+    function onKeyboardShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const isEditing =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT" ||
+        target?.isContentEditable;
+
+      if (event.key === "Escape" && shortcutHelpOpen) {
+        event.preventDefault();
+        setShortcutHelpOpen(false);
+        return;
+      }
+      if (isEditing || event.metaKey || event.ctrlKey || event.altKey) return;
+
+      if (event.key === "/" && view === "inbox") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      if (event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        router.push("/compose");
+        return;
+      }
+      if (event.key === "?") {
+        event.preventDefault();
+        setShortcutHelpOpen((open) => !open);
+        return;
+      }
+      if ((view !== "inbox" && view !== "spam") || visibleThreads.length === 0) {
+        return;
+      }
+
+      const routeIndex = visibleThreads.findIndex(
+        (thread) =>
+          thread.threadId === selectedThreadId ||
+          thread.latestEmail.id === selectedEmailId,
+      );
+      const currentIndex = keyboardThreadId
+        ? visibleThreads.findIndex((thread) => thread.threadId === keyboardThreadId)
+        : routeIndex;
+
+      if (event.key.toLowerCase() === "j" || event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        const direction = event.key.toLowerCase() === "j" ? 1 : -1;
+        const startingIndex =
+          currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 1;
+        const nextIndex = Math.max(
+          0,
+          Math.min(visibleThreads.length - 1, startingIndex + direction),
+        );
+        setKeyboardThreadId(visibleThreads[nextIndex].threadId);
+        return;
+      }
+
+      const activeThread =
+        visibleThreads.find((thread) => thread.threadId === keyboardThreadId) ??
+        (routeIndex >= 0 ? visibleThreads[routeIndex] : undefined);
+      if (!activeThread) return;
+
+      if (event.key === "Enter") {
+        event.preventDefault();
+        router.push(
+          view === "spam"
+            ? `/thread/${activeThread.threadId}?from=spam`
+            : `/thread/${activeThread.threadId}`,
+        );
+      } else if (
+        event.key.toLowerCase() === "e" &&
+        view === "inbox" &&
+        archiveMailboxId
+      ) {
+        event.preventDefault();
+        moveThread(activeThread, archiveMailboxId);
+      } else if (event.key.toLowerCase() === "u") {
+        event.preventDefault();
+        const unread = activeThread.allEmails.some((email) =>
+          isEmailUnread(email, clientReadIds, clientUnreadIds),
+        );
+        void toggleThreadReadState(activeThread, unread);
+      } else if (event.key.toLowerCase() === "r") {
+        event.preventDefault();
+        router.push(`/compose?mode=reply&id=${activeThread.latestEmail.id}`);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyboardShortcut);
+    return () => window.removeEventListener("keydown", onKeyboardShortcut);
+    // These function declarations intentionally use the current render state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    archiveMailboxId,
+    clientReadIds,
+    clientUnreadIds,
+    keyboardThreadId,
+    router,
+    selectedEmailId,
+    selectedThreadId,
+    shortcutHelpOpen,
+    view,
+    visibleThreads,
+  ]);
+
   const actionBtnCls =
-    "p-1.5 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 transition-colors shrink-0";
+    "flex h-10 w-10 items-center justify-center rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 transition-colors shrink-0";
 
   // -------------------------------------------------------------------------
   // Render
@@ -570,9 +884,9 @@ export default function EmailListPanel({
       <div className="flex flex-col h-full overflow-hidden w-full">
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-700 shrink-0">
+      <div className="flex min-h-[52px] items-center justify-between border-b border-stone-200 px-4 dark:border-stone-700 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-sm font-semibold text-stone-700 dark:text-stone-300 capitalize">
+          <span className="text-sm font-semibold text-stone-800 dark:text-stone-200 capitalize">
             {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : view === "sent" ? "Sent" : "Spam"}
           </span>
           {view === "inbox" && (
@@ -591,22 +905,30 @@ export default function EmailListPanel({
               type="button"
               onClick={handleRefresh}
               disabled={refreshPhase === "loading" || isPending}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-stone-500 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 transition-colors disabled:opacity-60 disabled:hover:bg-transparent disabled:cursor-default"
+              className="flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-200"
               title="Refresh mail"
+              aria-label="Refresh mail"
             >
               <IconRefresh spinning={refreshPhase === "loading"} />
-              Refresh
+              <span className="hidden xl:inline">Refresh</span>
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setShortcutHelpOpen(true)}
+            className="hidden h-10 w-10 items-center justify-center rounded-md text-sm text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200 lg:flex"
+            title="Keyboard shortcuts"
+            aria-label="Keyboard shortcuts"
+          >
+            ?
+          </button>
           <Link
             href="/compose"
-            className="p-1.5 rounded-md text-stone-400 dark:text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-700 dark:hover:text-stone-200 transition-colors"
+            className="flex h-10 w-10 items-center justify-center rounded-md text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200 lg:hidden"
             title="Compose"
+            aria-label="Compose"
           >
-            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-              <path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
-              <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
-            </svg>
+            <MailIcon name="compose" className="h-[18px] w-[18px]" />
           </Link>
         </div>
       </div>
@@ -614,6 +936,10 @@ export default function EmailListPanel({
       {/* Search (inbox only) */}
       {view === "inbox" && (
         <div className="relative px-3 py-2 border-b border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 shrink-0">
+          <MailIcon
+            name="search"
+            className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400 dark:text-stone-500"
+          />
           <input
             ref={searchInputRef}
             type="search"
@@ -623,14 +949,34 @@ export default function EmailListPanel({
             onFocus={() => setSearchFocused(true)}
             onBlur={() => setSearchFocused(false)}
             onKeyDown={(e) => {
-              if (e.key === "Escape" || e.key === "Enter") {
+              if (e.key === "Escape") {
+                if (searchQuery) {
+                  setSearchQuery("");
+                } else {
+                  setSearchFocused(false);
+                  searchInputRef.current?.blur();
+                }
+              } else if (e.key === "Enter") {
                 setSearchFocused(false);
                 searchInputRef.current?.blur();
               }
             }}
-            className="w-full text-sm rounded-md px-2.5 py-1.5 bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100 placeholder-stone-400 dark:placeholder-stone-500 border border-transparent focus:border-stone-300 dark:focus:border-stone-600 focus:outline-none"
+            className="min-h-10 w-full rounded-lg border border-transparent bg-stone-100 py-2 pl-9 pr-16 text-sm text-stone-900 outline-none placeholder:text-stone-400 focus:border-stone-300 dark:bg-stone-800 dark:text-stone-100 dark:placeholder:text-stone-500 dark:focus:border-stone-600"
+            aria-label="Search all mail"
           />
-          {searchFocused && (
+          {isInSearchMode && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearchQuery("");
+                searchInputRef.current?.focus();
+              }}
+              className="absolute right-5 top-1/2 flex h-8 items-center rounded-md px-2 text-[11px] text-stone-400 transition-colors -translate-y-1/2 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-700 dark:hover:text-stone-200"
+            >
+              Clear
+            </button>
+          )}
+          {searchFocused && !isInSearchMode && (
             <div className="absolute left-3 right-3 top-full mt-1 z-10 rounded-md border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-900 shadow-lg text-xs overflow-hidden">
               <div className="px-3 py-2 border-b border-stone-100 dark:border-stone-800 text-stone-400 dark:text-stone-500 font-medium uppercase tracking-wide text-[10px]">
                 Search syntax
@@ -674,10 +1020,64 @@ export default function EmailListPanel({
         </div>
       )}
 
+      {shortcutHelpOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-4">
+          <button
+            type="button"
+            className="absolute inset-0"
+            onClick={() => setShortcutHelpOpen(false)}
+            aria-label="Close keyboard shortcuts"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shortcut-help-title"
+            className="relative w-full max-w-sm rounded-xl border border-stone-200 bg-white p-5 shadow-xl dark:border-stone-700 dark:bg-stone-900"
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2
+                id="shortcut-help-title"
+                className="text-sm font-semibold text-stone-800 dark:text-stone-200"
+              >
+                Keyboard shortcuts
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShortcutHelpOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                aria-label="Close"
+              >
+                <MailIcon name="x" className="h-4 w-4" />
+              </button>
+            </div>
+            <dl className="grid grid-cols-[1fr_auto] gap-x-5 gap-y-3 text-sm">
+              {[
+                ["Search", "/"],
+                ["Next / previous thread", "J / K"],
+                ["Open thread", "Enter"],
+                ["Archive", "E"],
+                ["Mark read / unread", "U"],
+                ["Reply", "R"],
+                ["Compose", "C"],
+              ].map(([label, shortcut]) => (
+                <div key={label} className="contents">
+                  <dt className="text-stone-600 dark:text-stone-300">{label}</dt>
+                  <dd>
+                    <kbd className="rounded border border-stone-200 bg-stone-50 px-1.5 py-0.5 font-mono text-xs text-stone-500 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-400">
+                      {shortcut}
+                    </kbd>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
+
       {/* Bulk action bar */}
       {(view === "inbox" || view === "spam") && selectionMode && (
         <div className="flex items-center gap-0.5 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 shrink-0">
-          <button onClick={clearSelection} className={actionBtnCls} title="Cancel selection">
+          <button onClick={clearSelection} className={actionBtnCls} title="Cancel selection" aria-label="Cancel selection">
             <IconX />
           </button>
           <button
@@ -698,10 +1098,10 @@ export default function EmailListPanel({
               Not Spam
             </button>
           )}
-          <button onClick={handleBulkMarkRead} className={actionBtnCls} title="Mark as read">
+          <button onClick={handleBulkMarkRead} className={actionBtnCls} title="Mark as read" aria-label="Mark selected messages as read">
             <IconCheck />
           </button>
-          <button onClick={handleBulkMarkUnread} className={actionBtnCls} title="Mark as unread">
+          <button onClick={handleBulkMarkUnread} className={actionBtnCls} title="Mark as unread" aria-label="Mark selected messages as unread">
             <IconDot />
           </button>
           {view === "inbox" && (
@@ -709,17 +1109,18 @@ export default function EmailListPanel({
               onClick={handleBulkPin}
               className={actionBtnCls}
               title={allSelectedPinned ? "Unpin" : "Pin"}
+              aria-label={allSelectedPinned ? "Unpin selected messages" : "Pin selected messages"}
             >
               {allSelectedPinned ? <IconUnpin /> : <IconPin />}
             </button>
           )}
           {view === "inbox" && archiveMailboxId && (
-            <button onClick={() => handleBulkMove(archiveMailboxId)} className={actionBtnCls} title="Archive">
+            <button onClick={() => handleBulkMove(archiveMailboxId)} className={actionBtnCls} title="Archive" aria-label="Archive selected messages">
               <IconArchive />
             </button>
           )}
           {trashMailboxId && (
-            <button onClick={() => handleBulkMove(trashMailboxId)} className={actionBtnCls} title="Delete">
+            <button onClick={() => handleBulkMove(trashMailboxId)} className={actionBtnCls} title="Delete" aria-label="Move selected messages to trash">
               <IconTrash />
             </button>
           )}
@@ -750,15 +1151,46 @@ export default function EmailListPanel({
             <MailRowsLoadingSkeleton />
           )}
           {(!deferredPending || view !== "spam") && isSearching && (
-            <p className="p-4 text-sm text-stone-400 dark:text-stone-500">Searching…</p>
+            <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-stone-400 dark:text-stone-500">
+              <IconRefresh spinning />
+              Searching…
+            </div>
           )}
           {(!deferredPending || view !== "spam") &&
             !isSearching &&
             visibleEmails.length === 0 && (
-            <p className="p-6 text-sm text-stone-400 dark:text-stone-500">
-              {isInSearchMode ? "No results." : "No emails."}
-            </p>
+            <EmptyState
+              compact
+              icon={isInSearchMode ? "search" : view === "spam" ? "spam" : "inbox"}
+              title={
+                isInSearchMode
+                  ? `No matches for “${searchQuery.trim()}”`
+                  : view === "spam"
+                    ? "No spam"
+                    : "You’re all caught up"
+              }
+              description={
+                isInSearchMode
+                  ? "Try a broader phrase or remove one of the search filters."
+                  : view === "spam"
+                    ? "Messages identified as spam will appear here."
+                    : "New messages will appear here as they arrive."
+              }
+              action={
+                !isInSearchMode && view === "inbox"
+                  ? { href: "/compose", label: "Compose a message" }
+                  : undefined
+              }
+            />
           )}
+          {(!deferredPending || view !== "spam") &&
+            !isSearching &&
+            isInSearchMode &&
+            visibleThreads.length > 0 && (
+              <div className="border-b border-stone-200 px-4 py-2 text-[11px] text-stone-400 dark:border-stone-800 dark:text-stone-500">
+                {visibleThreads.length} {visibleThreads.length === 1 ? "thread" : "threads"}
+              </div>
+            )}
           {(!deferredPending || view !== "spam") &&
             !isSearching &&
             visibleThreads.map((thread, idx) => {
@@ -800,20 +1232,67 @@ export default function EmailListPanel({
 
                   {/* Thread row */}
                   <div
-                    className={[
-                      "group flex items-center gap-2.5 px-3 py-2.5 border-b border-stone-100 dark:border-stone-800 select-none touch-pan-y transition-colors",
-                      isChecked
-                        ? "bg-blue-50 dark:bg-blue-950/25"
-                        : isRouteSelected
-                          ? "bg-stone-200 dark:bg-stone-800"
-                          : "hover:bg-stone-100 dark:hover:bg-stone-900",
-                    ].join(" ")}
-                    onPointerDown={(e) => startLongPress(e, latestEmail.id)}
-                    onPointerMove={checkLongPressMove}
-                    onPointerUp={cancelLongPress}
-                    onPointerLeave={cancelLongPress}
-                    onPointerCancel={cancelLongPress}
+                    ref={(node) => {
+                      if (node) rowRefs.current.set(thread.threadId, node);
+                      else rowRefs.current.delete(thread.threadId);
+                    }}
+                    className="relative overflow-hidden border-b border-stone-100 dark:border-stone-800"
                   >
+                    <div
+                      className="pointer-events-none absolute inset-0 flex items-stretch justify-between text-xs font-semibold text-white"
+                      aria-hidden="true"
+                    >
+                      <div
+                        className={[
+                          "flex w-24 items-center gap-1.5 pl-4 transition-colors",
+                          isUnread ? "bg-blue-600" : "bg-stone-600",
+                        ].join(" ")}
+                      >
+                        <MailIcon
+                          name={isUnread ? "check" : "unread"}
+                          className="h-4 w-4"
+                        />
+                        {isUnread ? "Read" : "Unread"}
+                      </div>
+                      {view === "inbox" && archiveMailboxId && (
+                        <div className="flex w-24 items-center justify-end gap-1.5 bg-stone-700 pr-4">
+                          Archive
+                          <MailIcon name="archive" className="h-4 w-4" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div
+                      className={[
+                        "group relative flex items-center gap-2.5 px-3 py-2.5 select-none touch-pan-y transition-colors",
+                        isChecked
+                          ? "bg-blue-50 dark:bg-blue-950/25"
+                          : keyboardThreadId === thread.threadId
+                            ? "bg-blue-50/70 ring-1 ring-inset ring-blue-200 dark:bg-blue-950/20 dark:ring-blue-900"
+                          : isRouteSelected
+                            ? "bg-stone-200 dark:bg-stone-800"
+                            : "bg-stone-50 hover:bg-stone-100 dark:bg-stone-900 dark:hover:bg-stone-950",
+                      ].join(" ")}
+                      style={{
+                        transform: `translateX(${swipeOffsets[thread.threadId] ?? 0}px)`,
+                        transition:
+                          (swipeOffsets[thread.threadId] ?? 0) === 0
+                            ? "transform 160ms ease-out"
+                            : "none",
+                      }}
+                      onPointerDown={(event) =>
+                        startRowPointer(
+                          event,
+                          thread.threadId,
+                          thread.allEmails.map((email) => email.id),
+                        )
+                      }
+                      onPointerMove={(event) =>
+                        moveRowPointer(event, thread.threadId)
+                      }
+                      onPointerUp={() => finishRowPointer(thread, isUnread)}
+                      onPointerCancel={() => cancelRowPointer(thread.threadId)}
+                    >
                     {/* Unread / pin indicator */}
                     <div className="w-2 shrink-0 flex items-center justify-center">
                       {!selectionMode && isUnread && (
@@ -859,6 +1338,11 @@ export default function EmailListPanel({
                     <Link
                       href={threadHref}
                       onClick={(e) => {
+                        if (suppressLinkClick.current === thread.threadId) {
+                          e.preventDefault();
+                          suppressLinkClick.current = null;
+                          return;
+                        }
                         if (selectionMode) {
                           e.preventDefault();
                           const allIds = thread.allEmails.map((em) => em.id);
@@ -876,6 +1360,7 @@ export default function EmailListPanel({
                           e.preventDefault();
                           longPressActive.current = false;
                         }
+                        setKeyboardThreadId(thread.threadId);
                       }}
                       className="flex flex-col gap-0.5 flex-1 min-w-0"
                     >
@@ -915,33 +1400,76 @@ export default function EmailListPanel({
                       )}
                     </Link>
 
-                    {/* Quick-pin button — shown on hover or when already pinned */}
+                    {/* Quiet quick actions, visible on hover/focus. */}
                     {!selectionMode && (
-                      <button
-                        title={thread.isPinned ? "Unpin" : "Pin"}
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const ids = thread.allEmails.map((em) => em.id);
-                          const next = !thread.isPinned;
-                          ids.forEach((id) =>
-                            window.dispatchEvent(
-                              new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
-                            )
-                          );
-                          await bulkSetPin(ids, next);
-                          router.refresh();
-                        }}
-                        className={[
-                          "shrink-0 p-1 rounded transition-all",
-                          thread.isPinned
-                            ? "opacity-100 text-amber-400 hover:text-amber-500"
-                            : "opacity-0 group-hover:opacity-100 text-stone-300 dark:text-stone-600 hover:text-amber-400",
-                        ].join(" ")}
-                      >
-                        <IconPin />
-                      </button>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <div className="hidden items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 lg:flex">
+                          {view === "inbox" && archiveMailboxId && (
+                            <button
+                              type="button"
+                              title="Archive"
+                              aria-label="Archive thread"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                moveThread(thread, archiveMailboxId);
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                            >
+                              <MailIcon name="archive" className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            title={isUnread ? "Mark as read" : "Mark as unread"}
+                            aria-label={isUnread ? "Mark thread as read" : "Mark thread as unread"}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void toggleThreadReadState(thread, isUnread);
+                            }}
+                            className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                          >
+                            <MailIcon
+                              name={isUnread ? "check" : "unread"}
+                              className="h-4 w-4"
+                            />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          title={thread.isPinned ? "Unpin" : "Pin"}
+                          aria-label={thread.isPinned ? "Unpin thread" : "Pin thread"}
+                          onClick={async (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const ids = thread.allEmails.map((email) => email.id);
+                            const next = !thread.isPinned;
+                            ids.forEach((id) =>
+                              window.dispatchEvent(
+                                new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
+                              )
+                            );
+                            try {
+                              await bulkSetPin(ids, next);
+                              showToast({ message: next ? "Pinned" : "Unpinned" });
+                              router.refresh();
+                            } catch {
+                              showToast({ message: "Could not update pinning.", tone: "error" });
+                            }
+                          }}
+                          className={[
+                            "flex h-8 w-8 items-center justify-center rounded-md transition-all",
+                            thread.isPinned
+                              ? "text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                              : "text-stone-300 opacity-0 hover:bg-stone-200 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-stone-600 dark:hover:bg-stone-800 dark:hover:text-amber-400",
+                          ].join(" ")}
+                        >
+                          <IconPin />
+                        </button>
+                      </div>
                     )}
+                    </div>
                   </div>
                 </div>
               );
@@ -970,7 +1498,13 @@ export default function EmailListPanel({
           {deferredPending ? (
             <MailRowsLoadingSkeleton />
           ) : draftsList.length === 0 ? (
-            <p className="p-6 text-sm text-stone-400 dark:text-stone-500">No drafts.</p>
+            <EmptyState
+              compact
+              icon="drafts"
+              title="No drafts"
+              description="Messages you save for later will appear here."
+              action={{ href: "/compose", label: "Compose a message" }}
+            />
           ) : (
             draftsList.map((draft) => (
               <div
@@ -1018,7 +1552,13 @@ export default function EmailListPanel({
           {deferredPending ? (
             <MailRowsLoadingSkeleton />
           ) : sentList.length === 0 ? (
-            <p className="p-6 text-sm text-stone-400 dark:text-stone-500">No sent emails.</p>
+            <EmptyState
+              compact
+              icon="sent"
+              title="Nothing sent yet"
+              description="Messages you send will appear here."
+              action={{ href: "/compose", label: "Compose a message" }}
+            />
           ) : (
             sentList.map((email) => (
               <Link

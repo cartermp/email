@@ -25,7 +25,7 @@ export default function NotSpamButton({ emailId, mailboxIds, inboxMailboxId }: P
     <button
       onClick={handleClick}
       disabled={isPending}
-      className="whitespace-nowrap text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors disabled:opacity-50"
+      className="min-h-10 whitespace-nowrap rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
     >
       {isPending ? "Moving…" : "Not Spam"}
     </button>

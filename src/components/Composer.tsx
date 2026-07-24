@@ -4,12 +4,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { marked } from "marked";
 import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
+import { useToast } from "@/components/ToastProvider";
 import {
   markQuotedReplyHtml,
   wrapComposePreviewHtml,
   wrapEmailHtml,
 } from "@/lib/composeHtml";
-import { normalizeComposeMarkdown, htmlToPlainText } from "@/lib/compose";
+import {
+  normalizeComposeMarkdown,
+  htmlToPlainText,
+  quotedSectionStart,
+} from "@/lib/compose";
 
 // ---------------------------------------------------------------------------
 // RecipientInput — text input with contact autocomplete dropdown
@@ -223,6 +228,7 @@ export default function Composer({
   forwardedHtml,
 }: Props) {
   const router = useRouter();
+  const showToast = useToast();
   const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
   const [to, setTo] = useState(initialTo);
   const [cc, setCc] = useState(initialCc);
@@ -233,9 +239,10 @@ export default function Composer({
   const [markdown, setMarkdown] = useState(initialBody);
   const [preview, setPreview] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [showQuotedHistory, setShowQuotedHistory] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
   const [inlineImages, setInlineImages] = useState<InlineImage[]>([]);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [uploading, setUploading] = useState(0);
@@ -256,6 +263,12 @@ export default function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inlineImagesRef = useRef(inlineImages);
   const attachmentsRef = useRef(attachments);
+  const quoteStart = quotedSectionStart(markdown);
+  const hasQuotedHistory = quoteStart >= 0;
+  const editorMarkdown =
+    hasQuotedHistory && !showQuotedHistory
+      ? markdown.slice(0, quoteStart)
+      : markdown;
   useEffect(() => {
     inlineImagesRef.current = inlineImages;
   }, [inlineImages]);
@@ -450,6 +463,14 @@ export default function Composer({
   }, []);
 
   const handleDiscard = useCallback(async () => {
+    const hasContent =
+      !!to.trim() ||
+      !!cc.trim() ||
+      !!bcc.trim() ||
+      !!subject.trim() ||
+      !!markdown.trim() ||
+      attachmentsRef.current.length > 0;
+    if (hasContent && !window.confirm("Discard this draft?")) return;
     suppressDraftSideEffectsRef.current = true;
     cleanupPendingDraftsRef.current = true;
     if (!draftIdRef.current) {
@@ -465,7 +486,7 @@ export default function Composer({
     cleanupSuppressedDrafts();
     window.history.replaceState({}, "", "/compose");
     window.history.back();
-  }, [cleanupSuppressedDrafts]);
+  }, [bcc, cc, cleanupSuppressedDrafts, markdown, subject, to]);
 
   const handleSend = useCallback(async () => {
     if (!to.trim() || !subject.trim() || !markdown.trim()) {
@@ -544,9 +565,11 @@ export default function Composer({
         (typeof sendResult.threadId === "string" ? sendResult.threadId : undefined);
 
       if (destinationThreadId) {
+        showToast({ message: "Message sent" });
         router.replace(`/thread/${destinationThreadId}`);
       } else {
-        setSent(true);
+        showToast({ message: "Message sent" });
+        router.replace("/sent");
       }
     } catch (e) {
       const pendingDraftIds = pendingSuppressedDraftIdsRef.current;
@@ -577,6 +600,7 @@ export default function Composer({
     inReplyToId,
     replyThreadId,
     router,
+    showToast,
     cleanupSuppressedDrafts,
   ]);
 
@@ -588,32 +612,38 @@ export default function Composer({
     handleSend();
   }, [handleSend]);
 
-  if (sent) {
-    return (
-      <div className="flex items-center justify-center h-64 text-sm text-stone-500 dark:text-stone-400">
-        Message sent.{" "}
-        <button
-          onClick={() => {
-            setSent(false);
-            setTo("");
-            setCc("");
-            setBcc("");
-            setSubject("");
-            setMarkdown("");
-            setInlineImages([]);
-            setAttachments([]);
-            setDraftId(null);
-            draftIdRef.current = null;
-            setSaveStatus("idle");
-            setLastSaved(null);
-            window.history.replaceState({}, "", "/compose");
-          }}
-          className="ml-2 text-stone-900 dark:text-stone-100 underline"
-        >
-          Compose another
-        </button>
-      </div>
+  function updateEditorMarkdown(next: string) {
+    if (!hasQuotedHistory || showQuotedHistory) {
+      setMarkdown(next);
+      return;
+    }
+    setMarkdown(
+      `${next.trimEnd()}\n\n${markdown.slice(quoteStart).trimStart()}`,
     );
+  }
+
+  function insertMarkdown(
+    before: string,
+    after: string,
+    placeholder: string,
+  ) {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = editorMarkdown.slice(start, end) || placeholder;
+    const next =
+      editorMarkdown.slice(0, start) +
+      before +
+      selected +
+      after +
+      editorMarkdown.slice(end);
+    updateEditorMarkdown(next);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const selectionStart = start + before.length;
+      textarea.setSelectionRange(selectionStart, selectionStart + selected.length);
+    });
   }
 
   const fieldClass =
@@ -704,22 +734,80 @@ export default function Composer({
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-3 px-4 sm:px-6 py-2 border-b border-stone-100 dark:border-stone-800 bg-stone-50 dark:bg-stone-900/50">
-        <span className="text-xs text-stone-400 dark:text-stone-500">Markdown</span>
+      <div className="flex min-h-11 flex-wrap items-center gap-1.5 border-b border-stone-100 bg-stone-50 px-4 py-1.5 dark:border-stone-800 dark:bg-stone-900/50 sm:gap-2 sm:px-6">
+        <span className="mr-1 hidden shrink-0 text-[11px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500 sm:inline">
+          Markdown
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5" aria-label="Formatting">
+          <button
+            type="button"
+            onClick={() => insertMarkdown("**", "**", "bold text")}
+            className="flex h-8 min-w-8 items-center justify-center rounded text-xs font-bold text-stone-500 hover:bg-stone-200 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+            title="Bold"
+            aria-label="Bold"
+          >
+            B
+          </button>
+          <button
+            type="button"
+            onClick={() => insertMarkdown("*", "*", "italic text")}
+            className="flex h-8 min-w-8 items-center justify-center rounded text-xs italic text-stone-500 hover:bg-stone-200 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+            title="Italic"
+            aria-label="Italic"
+          >
+            I
+          </button>
+          <button
+            type="button"
+            onClick={() => insertMarkdown("[", "](https://)", "link text")}
+            className="flex h-8 min-w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-200 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+            title="Link"
+            aria-label="Insert link"
+          >
+            <span className="text-xs underline">Link</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => insertMarkdown("- ", "", "list item")}
+            className="flex h-8 min-w-8 items-center justify-center rounded text-stone-500 hover:bg-stone-200 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+            title="List"
+            aria-label="Insert list"
+          >
+            <span className="text-sm">•</span>
+          </button>
+        </div>
+        {hasQuotedHistory && (
+          <button
+            type="button"
+            onClick={() => setShowQuotedHistory((shown) => !shown)}
+            className="ml-1 shrink-0 rounded-md px-2 py-1 text-xs text-stone-500 transition-colors hover:bg-stone-200 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+            aria-label={showQuotedHistory ? "Hide quoted text" : "Show quoted text"}
+          >
+            <span className="sm:hidden">
+              {showQuotedHistory ? "Hide quote" : "Quote"}
+            </span>
+            <span className="hidden sm:inline">
+              {showQuotedHistory ? "Hide quoted text" : "Show quoted text"}
+            </span>
+          </button>
+        )}
         {uploading > 0 && (
-          <span className="text-xs text-stone-400 dark:text-stone-500">
-            Uploading {uploading} image{uploading > 1 ? "s" : ""}…
+          <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500">
+            Uploading {uploading} file{uploading > 1 ? "s" : ""}…
           </span>
         )}
         {/* Save status */}
-        <span className="text-xs text-stone-400 dark:text-stone-500">
+        <span
+          className="shrink-0 text-xs text-stone-400 dark:text-stone-500"
+          aria-live="polite"
+        >
           {saveStatus === "saving" && "Saving…"}
           {saveStatus === "saved" &&
             lastSaved &&
             `Saved ${lastSaved.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`}
           {saveStatus === "error" && "Draft save failed"}
         </span>
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="ml-auto flex shrink-0 items-center gap-1">
           <button
             onClick={() => setShowPreview(false)}
             className={`text-xs px-2 py-1 rounded ${
@@ -744,7 +832,35 @@ export default function Composer({
       </div>
 
       {/* Editor area */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div
+        className={[
+          "relative flex flex-1 min-h-0 overflow-hidden transition-shadow",
+          dragActive ? "ring-2 ring-inset ring-blue-400" : "",
+        ].join(" ")}
+        onDragEnter={(event) => {
+          if (event.dataTransfer.types.includes("Files")) {
+            event.preventDefault();
+            setDragActive(true);
+          }
+        }}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget === event.target) setDragActive(false);
+        }}
+        onDrop={(event) => {
+          if (event.dataTransfer.files.length === 0) return;
+          event.preventDefault();
+          setDragActive(false);
+          void handleAttach(event.dataTransfer.files);
+        }}
+      >
+        {dragActive && (
+          <div className="pointer-events-none absolute inset-3 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-blue-400 bg-blue-50/90 text-sm font-medium text-blue-700 dark:bg-blue-950/90 dark:text-blue-300">
+            Drop files to attach
+          </div>
+        )}
         <div
           className={`flex-col ${
             showPreview
@@ -754,8 +870,8 @@ export default function Composer({
         >
           <textarea
             ref={textareaRef}
-            value={markdown}
-            onChange={(e) => setMarkdown(e.target.value)}
+            value={editorMarkdown}
+            onChange={(e) => updateEditorMarkdown(e.target.value)}
             onPaste={handlePaste}
             placeholder={
               "Write your email in Markdown…\n\n**Bold**, *italic*, `code`, lists, links — all supported.\nPaste an image anywhere to embed it."

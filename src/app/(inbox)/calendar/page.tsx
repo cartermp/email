@@ -17,6 +17,7 @@ interface Props {
 export default async function CalendarPage({ searchParams }: Props) {
   const { month } = await searchParams;
   const monthKey = normalizeMonthKey(month);
+  const currentMonthKey = normalizeMonthKey(undefined);
 
   const { session, accountId, mailboxes } = await getJmapMailboxContext();
 
@@ -60,14 +61,24 @@ export default async function CalendarPage({ searchParams }: Props) {
               Calendar
             </h1>
             <p className="mt-1 text-sm text-stone-500 dark:text-stone-400">
-              Meetings parsed from recent calendar invite emails.
+              {monthEntries.length === 0
+                ? "No meetings found in invite emails this month."
+                : `${monthEntries.length} meeting${monthEntries.length === 1 ? "" : "s"} from calendar invite emails.`}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
+            {monthKey !== currentMonthKey && (
+              <Link
+                href={`/calendar?month=${currentMonthKey}`}
+                className="min-h-10 rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors inline-flex items-center hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+              >
+                Today
+              </Link>
+            )}
             <Link
               href={`/calendar?month=${addMonths(monthKey, -1)}`}
-              className="px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-xs text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
             >
               Prev
             </Link>
@@ -76,7 +87,7 @@ export default async function CalendarPage({ searchParams }: Props) {
             </div>
             <Link
               href={`/calendar?month=${addMonths(monthKey, 1)}`}
-              className="px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-xs text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
+              className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
             >
               Next
             </Link>
@@ -85,12 +96,7 @@ export default async function CalendarPage({ searchParams }: Props) {
 
         <MobileCalendarAgenda monthKey={monthKey} entries={monthEntries} />
 
-        {monthEntries.length === 0 ? (
-          <div className="hidden md:block rounded-xl border border-dashed border-stone-300 dark:border-stone-700 px-6 py-10 text-center text-sm text-stone-500 dark:text-stone-400">
-            No meetings found for {monthTitle(monthKey)}.
-          </div>
-        ) : (
-            <div className="hidden md:block rounded-xl overflow-hidden border border-stone-200 dark:border-stone-700 bg-stone-200 dark:bg-stone-700">
+        <div className="hidden md:block rounded-xl overflow-hidden border border-stone-200 dark:border-stone-700 bg-stone-200 dark:bg-stone-700">
               <div className="grid grid-cols-7">
                 {DAY_LABELS.map((label) => (
                   <div
@@ -132,7 +138,6 @@ export default async function CalendarPage({ searchParams }: Props) {
                 ))}
               </div>
             </div>
-        )}
       </div>
     </div>
   );

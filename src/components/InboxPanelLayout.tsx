@@ -23,7 +23,7 @@ export default function InboxPanelLayout({ list, children }: Props) {
       <div
         className={[
           "flex-col border-r border-stone-200 dark:border-stone-500 h-full overflow-hidden",
-          "md:flex md:w-96 md:shrink-0",
+          "lg:flex lg:w-96 lg:shrink-0",
           showDetail ? "hidden" : "flex w-full",
         ].join(" ")}
       >
@@ -36,7 +36,7 @@ export default function InboxPanelLayout({ list, children }: Props) {
       <div
         className={[
           "flex-1 overflow-hidden min-w-0 h-full",
-          showDetail ? "flex flex-col" : "hidden md:flex md:flex-col",
+          showDetail ? "flex flex-col" : "hidden lg:flex lg:flex-col",
         ].join(" ")}
       >
         {children}

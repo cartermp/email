@@ -1,6 +1,10 @@
 "use client";
 
-export default function ThreadError() {
+export default function ThreadError({
+  unstable_retry,
+}: {
+  unstable_retry: () => void;
+}) {
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
       <div className="max-w-3xl mx-auto px-4 sm:px-8 py-8">
@@ -9,8 +13,15 @@ export default function ThreadError() {
             Unable to load this thread
           </p>
           <p className="text-xs text-stone-400 dark:text-stone-500">
-            There was a problem fetching this email from the server. Refresh to try again.
+            There was a problem fetching this thread from the server.
           </p>
+          <button
+            type="button"
+            onClick={() => unstable_retry()}
+            className="mt-3 inline-flex min-h-10 items-center rounded-md bg-stone-900 px-4 text-sm font-medium text-white hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300"
+          >
+            Try again
+          </button>
         </div>
       </div>
     </div>

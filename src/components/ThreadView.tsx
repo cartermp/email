@@ -7,6 +7,8 @@ import EmailBody from "@/components/EmailBody";
 import PinButton from "@/components/PinButton";
 import CalendarEventCard, { CalendarEventData, CalendarResponse } from "@/components/CalendarEventCard";
 import AttachmentList from "@/components/AttachmentList";
+import MailIcon from "@/components/MailIcon";
+import MarkUnreadButton from "@/components/MarkUnreadButton";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import NotSpamButton from "@/components/NotSpamButton";
@@ -66,6 +68,8 @@ function EmailStackItem({
   const resolved = resolveBody(email);
   const isSpam = !!(spamMailboxId && email.mailboxIds[spamMailboxId]);
   const downloadableAttachments = visibleAttachments(email.attachments);
+  const hasMultipleRecipients =
+    (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;
 
   return (
     <div
@@ -79,6 +83,7 @@ function EmailStackItem({
       {/* Header — always visible, tap to expand/collapse */}
       <button
         onClick={onToggle}
+        aria-expanded={expanded}
         className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-stone-50 dark:hover:bg-stone-800/80 transition-colors"
       >
         <div className="shrink-0">
@@ -161,7 +166,22 @@ function EmailStackItem({
           </div>
 
           {/* Action buttons */}
-          <div className="px-4 py-2.5 flex flex-wrap items-center gap-2 border-b border-stone-100 dark:border-stone-700/50">
+          <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-3 dark:border-stone-700/50">
+            <Link
+              href={`/compose?mode=${hasMultipleRecipients ? "reply-all" : "reply"}&id=${email.id}`}
+              className="inline-flex min-h-10 items-center gap-2 rounded-md bg-stone-900 px-4 text-sm font-medium text-white transition-colors hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300"
+            >
+              <MailIcon name="reply" className="h-4 w-4" />
+              {hasMultipleRecipients ? "Reply all" : "Reply"}
+            </Link>
+            {hasMultipleRecipients && (
+              <Link
+                href={`/compose?mode=reply&id=${email.id}`}
+                className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
+              >
+                Reply
+              </Link>
+            )}
             {isSpam && inboxMailboxId && (
               <NotSpamButton
                 emailId={email.id}
@@ -170,31 +190,28 @@ function EmailStackItem({
               />
             )}
             <PinButton emailId={email.id} initiallyPinned={!!email.keywords?.["$flagged"]} />
-            <Link
-              href={`/compose?mode=reply&id=${email.id}`}
-              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-            >
-              Reply
-            </Link>
-            <Link
-              href={`/compose?mode=reply-all&id=${email.id}`}
-              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-            >
-              Reply All
-            </Link>
-            <Link
-              href={`/compose?mode=forward&id=${email.id}`}
-              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-            >
-              Forward
-            </Link>
-            <Link
-              href={`/print/${email.id}`}
-              target="_blank"
-              className="text-xs px-3 py-1.5 rounded-md border border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-100 dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-stone-100 transition-colors"
-            >
-              Print
-            </Link>
+            <MarkUnreadButton emailId={email.id} />
+            <details className="relative ml-auto">
+              <summary className="flex min-h-9 cursor-pointer list-none items-center gap-1 rounded-md border border-stone-200 px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100 [&::-webkit-details-marker]:hidden">
+                More
+                <MailIcon name="chevronDown" className="h-3.5 w-3.5" />
+              </summary>
+              <div className="absolute right-0 top-full z-20 mt-1 min-w-36 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900">
+                <Link
+                  href={`/compose?mode=forward&id=${email.id}`}
+                  className="block px-3 py-2 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                >
+                  Forward
+                </Link>
+                <Link
+                  href={`/print/${email.id}`}
+                  target="_blank"
+                  className="block px-3 py-2 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
+                >
+                  Print
+                </Link>
+              </div>
+            </details>
           </div>
 
           {/* Calendar invite */}

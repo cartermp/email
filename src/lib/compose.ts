@@ -71,6 +71,20 @@ export function normalizeComposeMarkdown(markdown: string): string {
   return markdown.replace(/^--[ \t]*$/gm, "&#45;&#45;");
 }
 
+/**
+ * Locate reply or forward history so the composer can keep the transport
+ * representation intact while presenting only the editable reply by default.
+ */
+export function quotedSectionStart(markdown: string): number {
+  const replyMatch = /(^|\n)> On [^\n]+ wrote:\n/m.exec(markdown);
+  const forwardMatch =
+    /(^|\n)---\n\n\*\*-+ Forwarded message -+\*\*/m.exec(markdown);
+  const starts = [replyMatch, forwardMatch]
+    .filter((match): match is RegExpExecArray => match !== null)
+    .map((match) => match.index + (match[1] ? 1 : 0));
+  return starts.length > 0 ? Math.min(...starts) : -1;
+}
+
 export function buildForwardQuote({
   from,
   to,

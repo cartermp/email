@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { CalendarEventData } from "@/components/CalendarEventCard";
 import CalendarEventLink from "@/components/CalendarEventLink";
+import EmptyState from "@/components/EmptyState";
 import { buildMonthDays } from "@/lib/calendarView";
 
 interface Props {
@@ -12,7 +13,10 @@ interface Props {
 
 export default function MobileCalendarAgenda({ monthKey, entries }: Props) {
   const days = useMemo(
-    () => buildMonthDays(monthKey, entries).filter((day) => day.inMonth),
+    () =>
+      buildMonthDays(monthKey, entries).filter(
+        (day) => day.inMonth && (day.events.length > 0 || day.isToday),
+      ),
     [monthKey, entries]
   );
   const todaySectionRef = useRef<HTMLElement | null>(null);
@@ -27,6 +31,14 @@ export default function MobileCalendarAgenda({ monthKey, entries }: Props) {
 
   return (
     <div className="md:hidden space-y-4">
+      {days.length === 0 && (
+        <EmptyState
+          compact
+          icon="calendar"
+          title="No meetings this month"
+          description="Calendar invitations for this month will appear here."
+        />
+      )}
       {days.map((day) => {
         const dayTitle = day.date.toLocaleDateString("en-US", {
           weekday: "long",
