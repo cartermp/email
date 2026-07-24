@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import useBodyClass from "@/components/useBodyClass";
+import { lockEmailContentWidth } from "@/lib/emailFrameLayout";
 import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 import type { EmailBodyPart } from "@/lib/types";
 
@@ -20,7 +21,8 @@ export default function EmailBody({
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const lastDimsRef = useRef({ h: 0, w: 0 });
+  const lastDimsRef = useRef({ h: 0, w: 0, availableWidth: 0 });
+  const lockedContentWidthRef = useRef<number | null>(null);
 
   useBodyClass("rich-content-open");
 
@@ -35,7 +37,16 @@ export default function EmailBody({
   }, []);
 
   useEffect(() => {
-    lastDimsRef.current = { h: 0, w: 0 };
+    const iframe = iframeRef.current;
+    const wrapper = wrapperRef.current;
+    lastDimsRef.current = { h: 0, w: 0, availableWidth: 0 };
+    lockedContentWidthRef.current = null;
+    if (iframe) {
+      iframe.style.width = "100%";
+      iframe.style.transform = "";
+      iframe.style.willChange = "";
+    }
+    if (wrapper) wrapper.style.height = "";
     window.requestAnimationFrame(syncIframeLayout);
   }, [body, type, syncIframeLayout]);
 
@@ -52,14 +63,28 @@ export default function EmailBody({
       const naturalW = Number(e.data.width);
       if (!Number.isFinite(naturalH) || naturalH <= 0) return;
       if (!Number.isFinite(naturalW) || naturalW < 0) return;
-      if (naturalH === lastDimsRef.current.h && naturalW === lastDimsRef.current.w) return;
-      lastDimsRef.current = { h: naturalH, w: naturalW };
 
       const availW = wrapper.clientWidth;
+      if (
+        naturalH === lastDimsRef.current.h &&
+        naturalW === lastDimsRef.current.w &&
+        availW === lastDimsRef.current.availableWidth
+      ) {
+        return;
+      }
+      lastDimsRef.current = { h: naturalH, w: naturalW, availableWidth: availW };
 
-      if (naturalW > availW + 2 && availW > 0) {
-        const scale = availW / naturalW;
-        iframe.style.width = naturalW + "px";
+      const previousLockedWidth = lockedContentWidthRef.current;
+      const lockedWidth = lockEmailContentWidth(
+        availW,
+        naturalW,
+        previousLockedWidth,
+      );
+      lockedContentWidthRef.current = lockedWidth;
+
+      if (lockedWidth !== null && availW > 0) {
+        const scale = availW / lockedWidth;
+        iframe.style.width = lockedWidth + "px";
         iframe.style.height = naturalH + "px";
         iframe.style.transform = `scale(${scale})`;
         iframe.style.transformOrigin = "top left";
@@ -71,6 +96,10 @@ export default function EmailBody({
         iframe.style.transform = "";
         iframe.style.willChange = "";
         wrapper.style.height = "";
+
+        if (previousLockedWidth !== null) {
+          window.requestAnimationFrame(syncIframeLayout);
+        }
       }
     };
 

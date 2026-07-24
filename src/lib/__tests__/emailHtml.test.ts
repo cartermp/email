@@ -214,6 +214,8 @@ describe("prepareHtml", () => {
     assert.ok(result.includes("requestAnimationFrame(measure)"));
     assert.ok(result.includes("ResizeObserver"));
     assert.ok(result.includes("document.fonts.ready"));
+    assert.ok(result.includes("forceMeasure=true"));
+    assert.ok(result.includes("e.data.type==='iframe-parent-width'"));
   });
 
   describe("links", () => {

@@ -244,7 +244,7 @@ function resizeScript(
   adaptiveTheme?: EmailRenderTheme,
 ): string {
   return `<script>(function(){
-  var lastH=0,lastW=0,raf=0;
+  var lastH=0,lastW=0,raf=0,forceMeasure=false;
   ${adaptiveTheme ? darkTextAdaptationScript(adaptiveTheme) : ""}
   function measure(){
     raf=0;
@@ -263,7 +263,8 @@ function resizeScript(
       body?body.offsetWidth:0
     ));
     if(!h||h<1)return;
-    if(h===lastH&&w===lastW)return;
+    if(h===lastH&&w===lastW&&!forceMeasure)return;
+    forceMeasure=false;
     lastH=h;lastW=w;
     window.parent.postMessage({type:'iframe-resize',height:h,width:w},'*');
   }
@@ -287,7 +288,13 @@ function resizeScript(
     ${adaptiveTheme ? "safelyAdaptDarkText();" : ""}
   }
   window.addEventListener('message',function(e){
-    if(e.data==='iframe-ping')schedule();
+    if(
+      e.data==='iframe-ping'||
+      (e.data&&e.data.type==='iframe-parent-width')
+    ){
+      forceMeasure=true;
+      schedule();
+    }
   });
   window.addEventListener('load',finishSetup);
   document.addEventListener('DOMContentLoaded',function(){
