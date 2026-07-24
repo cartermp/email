@@ -41,6 +41,23 @@ test("keeps the browser tab in sync with live unread mail", async ({
   await expect(page).toHaveTitle("Mail");
   await expect(favicon).toHaveAttribute("href", /\/icon\.svg$/);
   await expect(favicon).toHaveAttribute("data-unread-count", "");
+
+  await page.getByRole("button", { name: "Set 99 unread" }).click();
+  await page.getByRole("link", { name: "Inbox" }).click();
+  await page
+    .locator('a[href="/smoke-tests/thread/thread-release"]')
+    .click();
+
+  await expect(page).toHaveURL("/smoke-tests/thread/thread-release");
+  await expect(page.getByTestId("shared-unread-count")).toContainText("99");
+  await expect(page).toHaveTitle("(99+) Mail");
+  await expect(favicon).toHaveAttribute("data-unread-count", "99+");
+  expect(
+    await page.evaluate(() => {
+      const icons = [...document.querySelectorAll('link[rel~="icon"]')];
+      return icons.at(-1)?.getAttribute("data-mail-unread-favicon");
+    }),
+  ).toBe("true");
 });
 
 test("loads sender artwork and falls back cleanly when it is unavailable", async ({
