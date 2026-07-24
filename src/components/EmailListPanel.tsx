@@ -446,9 +446,22 @@ export default function EmailListPanel({
     };
   }, [autoSyncCheck, autoSyncIntervalMs, inboxId, router, startTransition]);
 
+  function applySelection(next: Set<string>) {
+    setSelectedIds(next);
+    setSelectionMode(next.size > 0);
+  }
+
+  function toggleSelection(emailIds: string[]) {
+    const next = new Set(selectedIds);
+    const allChecked = emailIds.every((id) => next.has(id));
+    emailIds.forEach((id) =>
+      allChecked ? next.delete(id) : next.add(id)
+    );
+    applySelection(next);
+  }
+
   function clearSelection() {
-    setSelectedIds(new Set());
-    setSelectionMode(false);
+    applySelection(new Set());
   }
 
   function startLongPress(e: React.PointerEvent, emailIds: string[]) {
@@ -457,8 +470,7 @@ export default function EmailListPanel({
     longPressTimer.current = setTimeout(() => {
       longPressActive.current = true;
       if ("vibrate" in navigator) navigator.vibrate(50);
-      setSelectionMode(true);
-      setSelectedIds(new Set(emailIds));
+      applySelection(new Set(emailIds));
     }, 500);
   }
 
@@ -1052,7 +1064,11 @@ export default function EmailListPanel({
       <button
         onClick={() => {
           const allSelected = visibleEmails.every((e) => selectedIds.has(e.id));
-          setSelectedIds(allSelected ? new Set() : new Set(visibleEmails.map((e) => e.id)));
+          applySelection(
+            allSelected
+              ? new Set()
+              : new Set(visibleEmails.map((e) => e.id)),
+          );
         }}
         className="flex-1 truncate rounded-md px-1.5 py-1 text-left text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/60"
       >
@@ -1552,17 +1568,9 @@ export default function EmailListPanel({
                         isChecked ? "Deselect" : "Select"
                       } conversation from ${senderLabel}`}
                       onClick={() => {
-                        if (!selectionMode) setSelectionMode(true);
-                        // Toggle all emails in this thread
-                        const allIds = thread.allEmails.map((e) => e.id);
-                        setSelectedIds((prev) => {
-                          const next = new Set(prev);
-                          const allChecked = allIds.every((id) => prev.has(id));
-                          allIds.forEach((id) =>
-                            allChecked ? next.delete(id) : next.add(id)
-                          );
-                          return next;
-                        });
+                        toggleSelection(
+                          thread.allEmails.map((email) => email.id),
+                        );
                       }}
                     >
                       <div className={[
@@ -1594,15 +1602,9 @@ export default function EmailListPanel({
                         }
                         if (selectionMode) {
                           e.preventDefault();
-                          const allIds = thread.allEmails.map((em) => em.id);
-                          setSelectedIds((prev) => {
-                            const next = new Set(prev);
-                            const allChecked = allIds.every((id) => prev.has(id));
-                            allIds.forEach((id) =>
-                              allChecked ? next.delete(id) : next.add(id)
-                            );
-                            return next;
-                          });
+                          toggleSelection(
+                            thread.allEmails.map((email) => email.id),
+                          );
                           return;
                         }
                         if (longPressActive.current) {

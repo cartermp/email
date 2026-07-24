@@ -94,8 +94,11 @@ test("replaces search with selection actions without shifting conversations", as
   );
   expect(selectedTop).toBe(beforeTop);
 
-  await page.getByRole("button", { name: "Cancel selection" }).click();
+  await page
+    .getByRole("button", { name: "Deselect conversation from GitHub" })
+    .click();
   await expect(page.getByRole("searchbox", { name: "Search all mail" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel selection" })).toHaveCount(0);
   const restoredTop = await conversation.evaluate(
     (element) => element.getBoundingClientRect().top,
   );
