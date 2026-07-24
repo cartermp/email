@@ -1044,6 +1044,58 @@ export default function EmailListPanel({
   const actionBtnCls =
     "flex h-10 w-10 items-center justify-center rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 transition-colors shrink-0";
 
+  const selectionActions = (
+    <>
+      <button onClick={clearSelection} className={actionBtnCls} title="Cancel selection" aria-label="Cancel selection">
+        <IconX />
+      </button>
+      <button
+        onClick={() => {
+          const allSelected = visibleEmails.every((e) => selectedIds.has(e.id));
+          setSelectedIds(allSelected ? new Set() : new Set(visibleEmails.map((e) => e.id)));
+        }}
+        className="flex-1 truncate rounded-md px-1.5 py-1 text-left text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:text-blue-300 dark:hover:bg-blue-900/60"
+      >
+        {selectedIds.size} selected
+      </button>
+      {view === "spam" && (
+        <button
+          onClick={handleBulkNotSpam}
+          className="mr-1 shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/60"
+          title="Not Spam"
+        >
+          Not Spam
+        </button>
+      )}
+      <button onClick={handleBulkMarkRead} className={actionBtnCls} title="Mark as read" aria-label="Mark selected messages as read">
+        <IconCheck />
+      </button>
+      <button onClick={handleBulkMarkUnread} className={actionBtnCls} title="Mark as unread" aria-label="Mark selected messages as unread">
+        <IconDot />
+      </button>
+      {view === "inbox" && (
+        <button
+          onClick={handleBulkPin}
+          className={actionBtnCls}
+          title={allSelectedPinned ? "Unpin" : "Pin"}
+          aria-label={allSelectedPinned ? "Unpin selected messages" : "Pin selected messages"}
+        >
+          {allSelectedPinned ? <IconUnpin /> : <IconPin />}
+        </button>
+      )}
+      {view === "inbox" && archiveMailboxId && (
+        <button onClick={() => handleBulkMove(archiveMailboxId)} className={actionBtnCls} title="Archive" aria-label="Archive selected messages">
+          <IconArchive />
+        </button>
+      )}
+      {trashMailboxId && (
+        <button onClick={() => handleBulkMove(trashMailboxId)} className={actionBtnCls} title="Delete" aria-label="Move selected messages to trash">
+          <IconTrash />
+        </button>
+      )}
+    </>
+  );
+
   // -------------------------------------------------------------------------
   // Render
   // -------------------------------------------------------------------------
@@ -1112,7 +1164,20 @@ export default function EmailListPanel({
 
       {/* Search (inbox only) */}
       {view === "inbox" && (
-        <div className="relative px-3 py-2 border-b border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-900 shrink-0">
+        <div
+          className={[
+            "relative flex min-h-[57px] shrink-0 items-center border-b py-2",
+            selectionMode
+              ? "border-blue-200 bg-blue-50 px-2 dark:border-blue-800 dark:bg-blue-950/40"
+              : "border-stone-200 bg-stone-50 px-3 dark:border-stone-700 dark:bg-stone-900",
+          ].join(" ")}
+        >
+          {selectionMode ? (
+            <div className="flex h-10 min-w-0 flex-1 items-center gap-0.5">
+              {selectionActions}
+            </div>
+          ) : (
+            <>
           <MailIcon
             name="search"
             className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400 dark:text-stone-500"
@@ -1194,6 +1259,8 @@ export default function EmailListPanel({
               </div>
             </div>
           )}
+            </>
+          )}
         </div>
       )}
 
@@ -1259,55 +1326,9 @@ export default function EmailListPanel({
       )}
 
       {/* Bulk action bar */}
-      {(view === "inbox" || view === "spam") && selectionMode && (
+      {view === "spam" && selectionMode && (
         <div className="flex items-center gap-0.5 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 shrink-0">
-          <button onClick={clearSelection} className={actionBtnCls} title="Cancel selection" aria-label="Cancel selection">
-            <IconX />
-          </button>
-          <button
-            onClick={() => {
-              const allSelected = visibleEmails.every((e) => selectedIds.has(e.id));
-              setSelectedIds(allSelected ? new Set() : new Set(visibleEmails.map((e) => e.id)));
-            }}
-            className="text-sm font-medium text-blue-700 dark:text-blue-300 flex-1 text-left px-1.5 py-1 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors truncate"
-          >
-            {selectedIds.size} selected
-          </button>
-          {view === "spam" && (
-            <button
-              onClick={handleBulkNotSpam}
-              className="text-xs font-semibold px-2.5 py-1.5 rounded-md text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors shrink-0 mr-1"
-              title="Not Spam"
-            >
-              Not Spam
-            </button>
-          )}
-          <button onClick={handleBulkMarkRead} className={actionBtnCls} title="Mark as read" aria-label="Mark selected messages as read">
-            <IconCheck />
-          </button>
-          <button onClick={handleBulkMarkUnread} className={actionBtnCls} title="Mark as unread" aria-label="Mark selected messages as unread">
-            <IconDot />
-          </button>
-          {view === "inbox" && (
-            <button
-              onClick={handleBulkPin}
-              className={actionBtnCls}
-              title={allSelectedPinned ? "Unpin" : "Pin"}
-              aria-label={allSelectedPinned ? "Unpin selected messages" : "Pin selected messages"}
-            >
-              {allSelectedPinned ? <IconUnpin /> : <IconPin />}
-            </button>
-          )}
-          {view === "inbox" && archiveMailboxId && (
-            <button onClick={() => handleBulkMove(archiveMailboxId)} className={actionBtnCls} title="Archive" aria-label="Archive selected messages">
-              <IconArchive />
-            </button>
-          )}
-          {trashMailboxId && (
-            <button onClick={() => handleBulkMove(trashMailboxId)} className={actionBtnCls} title="Delete" aria-label="Move selected messages to trash">
-              <IconTrash />
-            </button>
-          )}
+          {selectionActions}
         </div>
       )}
 

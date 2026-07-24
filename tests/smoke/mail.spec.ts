@@ -71,6 +71,37 @@ test("opens a conversation from a desktop click", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("replaces search with selection actions without shifting conversations", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests");
+
+  const conversation = page.locator(
+    'a[href="/smoke-tests/thread/thread-maya"]',
+  );
+  const beforeTop = await conversation.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+
+  await page
+    .getByRole("button", { name: "Select conversation from GitHub" })
+    .click();
+
+  await expect(page.getByRole("searchbox", { name: "Search all mail" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Cancel selection" })).toBeVisible();
+  const selectedTop = await conversation.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  expect(selectedTop).toBe(beforeTop);
+
+  await page.getByRole("button", { name: "Cancel selection" }).click();
+  await expect(page.getByRole("searchbox", { name: "Search all mail" })).toBeVisible();
+  const restoredTop = await conversation.evaluate(
+    (element) => element.getBoundingClientRect().top,
+  );
+  expect(restoredTop).toBe(beforeTop);
+});
+
 test("fetches new mail in the background and pauses while offline", async ({
   page,
 }) => {

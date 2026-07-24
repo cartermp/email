@@ -148,6 +148,7 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             archiveMailboxId="mailbox-archive"
             trashMailboxId="mailbox-trash"
             threadHrefPrefix="/smoke-tests/thread"
+            autoSyncIntervalMs={0}
           />
         )}
 
