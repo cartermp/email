@@ -1,7 +1,7 @@
 /**
- * Defaults used only when a message does not provide its own colours or
- * typography. Email backgrounds remain transparent so the reader surface
- * shows through; sender-authored backgrounds and artwork are left untouched.
+ * Defaults used when a message does not provide usable colours or typography.
+ * Dark mode also maps neutral, near-white canvases to the reader surface while
+ * leaving image-backed and strongly coloured artwork untouched.
  */
 export interface EmailRenderTheme {
   fontFamily: string;

@@ -11,6 +11,7 @@ const smokePanels = new Set<SmokePanel>([
   "attachments",
   "target",
   "auto-sync",
+  "dark-rendering",
 ]);
 
 export default async function SmokePage({ searchParams }: Props) {

@@ -136,7 +136,7 @@ const STRIP_QUOTES_JS = `(function(){
 
 export type EmailColorMode = "system" | "light" | "dark";
 
-function darkTextAdaptationScript(
+function darkThemeAdaptationScript(
   theme: EmailRenderTheme,
   colorMode: EmailColorMode,
 ): string {
@@ -195,6 +195,12 @@ function darkTextAdaptationScript(
       ?backgrounds.get(parent)
       :parseRgb(${fallbackBackground});
   }
+  function isAdaptableCanvasBackground(colour){
+    if(!colour||colour.a<0.99)return false;
+    var spread=Math.max(colour.r,colour.g,colour.b)-
+      Math.min(colour.r,colour.g,colour.b);
+    return spread<=24&&luminance(colour)>0.72;
+  }
   function needsAdaptation(foreground,background){
     if(!foreground||!background)return false;
     var spread=Math.max(foreground.r,foreground.g,foreground.b)-
@@ -202,19 +208,20 @@ function darkTextAdaptationScript(
     if(spread>56||luminance(foreground)>0.18)return false;
     return contrastRatio(foreground,background)<4.5;
   }
-  var darkTextAdapted=false;
-  function adaptDarkText(){
-    darkTextAdapted=true;
+  var darkThemeAdapted=false;
+  function adaptDarkTheme(){
+    darkThemeAdapted=true;
     var marked=document.querySelectorAll(
-      '[data-email-client-adapted-text],[data-email-client-adapted-marker]'
+      '[data-email-client-adapted-background],[data-email-client-adapted-text],[data-email-client-adapted-marker]'
     );
     for(var i=0;i<marked.length;i++){
+      marked[i].removeAttribute('data-email-client-adapted-background');
       marked[i].removeAttribute('data-email-client-adapted-text');
       marked[i].removeAttribute('data-email-client-adapted-marker');
     }
     if(!darkMode||!darkMode.matches||!document.body)return;
 
-    var elements=[document.body];
+    var elements=[document.documentElement,document.body];
     var descendants=document.body.getElementsByTagName('*');
     for(var j=0;j<descendants.length;j++)elements.push(descendants[j]);
     var backgrounds=new WeakMap();
@@ -223,6 +230,15 @@ function darkTextAdaptationScript(
       var element=elements[k];
       var computed=window.getComputedStyle(element);
       var background=effectiveBackground(element,computed,backgrounds);
+      var ownBackground=parseRgb(computed.backgroundColor);
+      if(
+        background&&
+        (!computed.backgroundImage||computed.backgroundImage==='none')&&
+        isAdaptableCanvasBackground(ownBackground)
+      ){
+        element.setAttribute('data-email-client-adapted-background','true');
+        background=parseRgb(${fallbackBackground});
+      }
       backgrounds.set(element,background);
       if(computed.display==='none'||computed.visibility==='hidden')continue;
       if(!background)continue;
@@ -243,13 +259,13 @@ function darkTextAdaptationScript(
       }
     }
   }
-  function safelyAdaptDarkText(force){
-    if(darkTextAdapted&&!force)return;
-    try{adaptDarkText();}catch(_adaptationError){}
+  function safelyAdaptDarkTheme(force){
+    if(darkThemeAdapted&&!force)return;
+    try{adaptDarkTheme();}catch(_adaptationError){}
   }
   function handleDarkModeChange(){
-    darkTextAdapted=false;
-    safelyAdaptDarkText();
+    darkThemeAdapted=false;
+    safelyAdaptDarkTheme();
   }
   if(darkMode){
     if(darkMode.addEventListener)darkMode.addEventListener('change',handleDarkModeChange);
@@ -264,7 +280,7 @@ function resizeScript(
 ): string {
   return `<script>(function(){
   var lastH=0,lastW=0,raf=0,forceMeasure=false;
-  ${adaptiveTheme ? darkTextAdaptationScript(adaptiveTheme, colorMode) : ""}
+  ${adaptiveTheme ? darkThemeAdaptationScript(adaptiveTheme, colorMode) : ""}
   function repairOneSidedCenteredWrappers(){
     if(!document.body)return;
     var rows=document.querySelectorAll(
@@ -332,7 +348,7 @@ function resizeScript(
       media[j].addEventListener('loadedmetadata',schedule);
     }
     schedule();
-    ${adaptiveTheme ? "safelyAdaptDarkText();" : ""}
+    ${adaptiveTheme ? "safelyAdaptDarkTheme();" : ""}
   }
   window.addEventListener('message',function(e){
     if(
@@ -347,7 +363,7 @@ function resizeScript(
   document.addEventListener('DOMContentLoaded',function(){
     repairOneSidedCenteredWrappers();
     schedule();
-    ${adaptiveTheme ? "safelyAdaptDarkText();" : ""}
+    ${adaptiveTheme ? "safelyAdaptDarkTheme();" : ""}
   });
   if(window.ResizeObserver){
     new ResizeObserver(schedule).observe(document.documentElement);
@@ -388,6 +404,7 @@ export function prepareHtml(
       html:not([bgcolor]):not([background]){background:${theme.surfaceDarkColor}}
       body:not([text]){color:${theme.textDarkColor}}
       body:not([link]) a{color:${theme.linkDarkColor}}
+      [data-email-client-adapted-background]{background-color:${theme.surfaceDarkColor}!important}
       [data-email-client-adapted-text]{color:${theme.textDarkColor}!important}
       li[data-email-client-adapted-marker]::marker{color:${theme.textDarkColor}!important}`;
   const darkModeRules =

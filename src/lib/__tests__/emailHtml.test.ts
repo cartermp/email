@@ -121,7 +121,7 @@ describe("prepareHtml", () => {
     assert.ok(!result.includes("@media(prefers-color-scheme:dark)"));
   });
 
-  it("allows sender-authored body backgrounds and text colours to win", () => {
+  it("preserves sender-authored colour declarations in the source HTML", () => {
     const original =
       '<html><head><style>body{background:#fff;color:#111}</style></head><body bgcolor="#ffffff" text="#111111"><p>Designed message</p></body></html>';
     const result = prepareHtml(original);
@@ -131,7 +131,7 @@ describe("prepareHtml", () => {
     assert.ok(!result.includes("filter:invert"));
   });
 
-  it("adapts only low-contrast neutral text and list markers in dark mode", () => {
+  it("adapts neutral canvases, low-contrast text, and list markers in dark mode", () => {
     const result = prepareHtml(
       documentWith(
         '<p style="color:#000">Black text</p><ul style="color:#000"><li><span style="color:#000">Nested item</span></li></ul><p style="color:#c026d3">Brand text</p><div style="background-image:url(card.png)">Image-backed text</div>',
@@ -144,6 +144,13 @@ describe("prepareHtml", () => {
         "li[data-email-client-adapted-marker]::marker{color:#e2e8f0!important}",
       ),
     );
+    assert.ok(
+      result.includes(
+        "[data-email-client-adapted-background]{background-color:#0f172a!important}",
+      ),
+    );
+    assert.ok(result.includes("isAdaptableCanvasBackground"));
+    assert.ok(result.includes("spread<=24&&luminance(colour)>0.72"));
     assert.ok(result.includes("getComputedStyle(element,'::marker')"));
     assert.ok(result.includes("catch(_markerStyleError){}"));
     assert.ok(result.includes("contrastRatio(foreground,background)<4.5"));
@@ -156,6 +163,60 @@ describe("prepareHtml", () => {
     assert.ok(result.includes('style="color:#000"'));
     assert.ok(result.includes('style="color:#c026d3"'));
     assert.ok(!result.includes("filter:invert"));
+  });
+
+  it("darkens near-white canvases without changing image-backed or coloured sections", async () => {
+    const dom = new JSDOM(
+      prepareHtml(
+        documentWith(
+          [
+            '<main id="canvas" style="background:#fff">',
+            '<p id="light-copy" style="color:#d6d6d6">Light copy</p>',
+            '<p id="dark-copy" style="color:#111">Dark copy</p>',
+            "</main>",
+            '<section id="image-panel" style="background-color:#fff;background-image:url(hero.png);color:#eee">Image copy</section>',
+            '<section id="brand-panel" style="background:#fff3cc;color:#222">Brand panel</section>',
+          ].join(""),
+        ),
+        { colorMode: "dark" },
+      ),
+      { runScripts: "dangerously", pretendToBeVisual: true },
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const canvas = dom.window.document.querySelector("#canvas");
+    const lightCopy = dom.window.document.querySelector("#light-copy");
+    const darkCopy = dom.window.document.querySelector("#dark-copy");
+    const imagePanel = dom.window.document.querySelector("#image-panel");
+    const brandPanel = dom.window.document.querySelector("#brand-panel");
+
+    assert.equal(
+      canvas?.getAttribute("data-email-client-adapted-background"),
+      "true",
+    );
+    assert.equal(
+      lightCopy?.hasAttribute("data-email-client-adapted-text"),
+      false,
+    );
+    assert.equal(
+      darkCopy?.getAttribute("data-email-client-adapted-text"),
+      "true",
+    );
+    assert.equal(
+      imagePanel?.hasAttribute("data-email-client-adapted-background"),
+      false,
+    );
+    assert.equal(
+      imagePanel?.hasAttribute("data-email-client-adapted-text"),
+      false,
+    );
+    assert.equal(
+      brandPanel?.hasAttribute("data-email-client-adapted-background"),
+      false,
+    );
+
+    dom.window.close();
   });
 
   it("never lets theme adaptation block iframe sizing", async () => {

@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import Composer from "@/components/Composer";
 import EmailListPanel from "@/components/EmailListPanel";
+import { prepareHtml } from "@/lib/emailHtml";
 import type { Email, EmailBodyPart } from "@/lib/types";
 
 export type SmokePanel =
@@ -12,7 +13,8 @@ export type SmokePanel =
   | "reply"
   | "attachments"
   | "target"
-  | "auto-sync";
+  | "auto-sync"
+  | "dark-rendering";
 
 const fixtureEmails: Email[] = [
   {
@@ -88,6 +90,23 @@ const incomingEmail: Email = {
   receivedAt: "2026-07-24T19:00:00.000Z",
   preview: "This conversation appeared without a manual refresh.",
 };
+
+const darkRenderingDocument = prepareHtml(
+  `<main style="margin:0 auto;max-width:720px;background:#fff;padding:40px">
+    <section id="neutral-canvas" style="background:#fff;padding:32px;color:#d6d6d6">
+      <h1 style="margin:0 0 18px;color:#a8dce8">Theme-aware email</h1>
+      <p style="font-size:18px;line-height:1.5">Light sender text remains readable after the neutral canvas adopts the client theme.</p>
+      <p id="dark-copy" style="color:#222">Dark neutral text is raised to accessible contrast.</p>
+    </section>
+    <section id="image-panel" style="margin-top:20px;padding:30px;background-color:#fff;background-image:linear-gradient(135deg,#f8fafc,#fff);color:#f8fafc">
+      Image-backed artwork remains sender-authored.
+    </section>
+    <section id="brand-panel" style="margin-top:20px;padding:24px;background:#fff3cc;color:#3f2d00">
+      A deliberately coloured brand panel is preserved.
+    </section>
+  </main>`,
+  { colorMode: "dark" },
+);
 
 const navItems: Array<{ panel: SmokePanel; label: string }> = [
   { panel: "inbox", label: "Inbox" },
@@ -199,6 +218,17 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
               The explicit spreadsheet attachment should remain visible.
             </p>
             <AttachmentList attachments={fixtureAttachments} />
+          </section>
+        )}
+
+        {panel === "dark-rendering" && (
+          <section className="h-full overflow-auto bg-stone-900 p-6">
+            <iframe
+              srcDoc={darkRenderingDocument}
+              className="h-[560px] w-full border-0"
+              sandbox="allow-scripts"
+              title="Dark email rendering fixture"
+            />
           </section>
         )}
 

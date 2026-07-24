@@ -118,6 +118,32 @@ test("fetches new mail in the background and pauses while offline", async ({
   await expect(page.getByText("New mail arrived")).toBeVisible();
 });
 
+test("darkens neutral email canvases while preserving image artwork", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests?panel=dark-rendering");
+
+  const email = page.frameLocator('iframe[title="Dark email rendering fixture"]');
+  const neutralCanvas = email.locator("#neutral-canvas");
+  await expect(neutralCanvas).toHaveAttribute(
+    "data-email-client-adapted-background",
+    "true",
+  );
+  await expect(neutralCanvas).toHaveCSS("background-color", "rgb(15, 23, 42)");
+  await expect(email.locator("#dark-copy")).toHaveAttribute(
+    "data-email-client-adapted-text",
+    "true",
+  );
+  await expect(email.locator("#image-panel")).not.toHaveAttribute(
+    "data-email-client-adapted-background",
+    "true",
+  );
+  await expect(email.locator("#brand-panel")).not.toHaveAttribute(
+    "data-email-client-adapted-background",
+    "true",
+  );
+});
+
 test("moves through conversations with the keyboard", async ({ page }) => {
   await page.goto("/smoke-tests");
 
