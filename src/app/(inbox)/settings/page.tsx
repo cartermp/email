@@ -1,12 +1,10 @@
-import { getSession, getAccountId, getIdentities } from "@/lib/jmap";
+import { getIdentities } from "@/lib/jmap";
 import SignatureForm from "./SignatureForm";
 import MobileBackButton from "@/components/MobileBackButton";
-
-export const dynamic = "force-dynamic";
+import { getJmapContext } from "@/lib/jmapServer";
 
 export default async function SettingsPage() {
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await getJmapContext();
   const identities = await getIdentities(session.apiUrl, accountId);
   const identity = identities.find((i) => i.mayDelete === false) ?? identities[0];
 

@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -310,6 +310,73 @@ describe("listInboxEmails", () => {
     const calls = (capturedBodies[0] as any).methodCalls;
     assert.equal(calls[0][1].position, 0);
     assert.equal(calls[2][1].position, 0);
+  });
+});
+
+describe("loadMailPanelData", () => {
+  it("keeps secondary panel queries off the visible inbox critical path", () => {
+    const primaryCalls = buildMailPanelMethodCalls(
+      "acct1",
+      { inbox: "inbox" },
+      false,
+    );
+    const deferredCalls = buildMailPanelMethodCalls("acct1", {
+      drafts: "drafts",
+      sent: "sent",
+      spam: "spam",
+    });
+
+    assert.equal(primaryCalls.length, 4);
+    assert.equal(deferredCalls.length, 10);
+    assert.ok(
+      primaryCalls.every(([, , callId]) => callId !== "pq" && callId !== "pg"),
+    );
+  });
+
+  it("loads all persistent mail-panel views in one JMAP request", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/query", { total: 2 }, "iuq"],
+        ["Email/get", { list: [makeEmailResponse("unread", false)] }, "iug"],
+        ["Email/query", { total: 7 }, "irq"],
+        ["Email/get", { list: [makeEmailResponse("read", true)] }, "irg"],
+        ["Email/query", { total: 1 }, "dq"],
+        ["Email/get", { list: [makeEmailResponse("draft", true)] }, "dg"],
+        ["Email/query", { total: 1 }, "pq"],
+        ["Email/get", { list: [makeEmailResponse("pinned", true)] }, "pg"],
+        ["Email/query", { total: 9 }, "sq"],
+        ["Email/get", { list: [makeEmailResponse("sent", true)] }, "sg"],
+        ["Email/query", { total: 3 }, "suq"],
+        ["Email/get", { list: [makeEmailResponse("spam-unread", false)] }, "sug"],
+        ["Email/query", { total: 4 }, "srq"],
+        ["Email/get", { list: [makeEmailResponse("spam-read", true)] }, "srg"],
+      ]),
+    ];
+
+    const result = await loadMailPanelData(
+      "https://api.example.com/jmap",
+      "acct1",
+      {
+        inbox: "inbox",
+        drafts: "drafts",
+        sent: "sent",
+        spam: "spam",
+      },
+    );
+
+    assert.equal(capturedBodies.length, 1);
+    assert.equal(
+      (capturedBodies[0] as { methodCalls: unknown[] }).methodCalls.length,
+      14,
+    );
+    assert.equal(result.inbox.unreadTotal, 2);
+    assert.equal(result.inbox.readTotal, 7);
+    assert.equal(result.drafts[0].id, "draft");
+    assert.equal(result.pinned[0].id, "pinned");
+    assert.equal(result.sent.total, 9);
+    assert.equal(result.spam.unreadTotal, 3);
+    assert.equal(result.spam.readTotal, 4);
   });
 });
 

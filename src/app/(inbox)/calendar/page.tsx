@@ -5,9 +5,8 @@ import CalendarEventLink from "@/components/CalendarEventLink";
 import MobileCalendarAgenda from "@/components/MobileCalendarAgenda";
 import { resolveCalendarEvent } from "@/lib/calendarDetect";
 import { addMonths, buildCalendarEntries, buildMonthDays, filterEventsForMonth, monthTitle, normalizeMonthKey } from "@/lib/calendarView";
-import { getAccountId, getMailboxes, getSession, listRecentCalendarCandidateEmails } from "@/lib/jmap";
-
-export const dynamic = "force-dynamic";
+import { listRecentCalendarCandidateEmails } from "@/lib/jmap";
+import { getJmapMailboxContext } from "@/lib/jmapServer";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -19,9 +18,7 @@ export default async function CalendarPage({ searchParams }: Props) {
   const { month } = await searchParams;
   const monthKey = normalizeMonthKey(month);
 
-  const session = await getSession();
-  const accountId = getAccountId(session);
-  const mailboxes = await getMailboxes(session.apiUrl, accountId);
+  const { session, accountId, mailboxes } = await getJmapMailboxContext();
 
   const excludedMailboxIds = new Set(
     mailboxes

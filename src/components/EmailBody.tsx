@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import useBodyClass from "@/components/useBodyClass";
 import { lockEmailContentWidth } from "@/lib/emailFrameLayout";
 import { prepareHtml, prepareTextBody } from "@/lib/emailHtml";
 import type { EmailBodyPart } from "@/lib/types";
+
+const EMPTY_EMBEDDED_PARTS: EmailBodyPart[] = [];
 
 interface Props {
   body: string;
@@ -17,7 +19,7 @@ export default function EmailBody({
   body,
   type,
   stripQuotes,
-  embeddedParts = [],
+  embeddedParts = EMPTY_EMBEDDED_PARTS,
 }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -123,10 +125,13 @@ export default function EmailBody({
     };
   }, [syncIframeLayout]);
 
-  const srcDoc =
-    type === "html"
-      ? prepareHtml(body, { stripQuotes, embeddedParts })
-      : prepareTextBody(body, { stripQuotes });
+  const srcDoc = useMemo(
+    () =>
+      type === "html"
+        ? prepareHtml(body, { stripQuotes, embeddedParts })
+        : prepareTextBody(body, { stripQuotes }),
+    [body, embeddedParts, stripQuotes, type],
+  );
 
   return (
     <div

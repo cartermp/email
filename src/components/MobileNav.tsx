@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useUnreadCount } from "@/components/UnreadCountProvider";
+import { useMailboxCounts } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
 
 function InboxIcon() {
@@ -68,16 +68,11 @@ function SpamIcon() {
   );
 }
 
-interface Props {
-  draftTotal?: number;
-  spamTotal?: number;
-}
-
-export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
+export default function MobileNav() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const from = searchParams.get("from");
-  const unreadTotal = useUnreadCount();
+  const counts = useMailboxCounts();
 
   const tabs = [
     {
@@ -91,14 +86,14 @@ export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
         pathname.startsWith("/attachment/")) &&
         from !== "spam" &&
         from !== "sent",
-      badge: unreadTotal,
+      badge: counts.inbox,
     },
     {
       href: "/drafts",
       label: "Drafts",
       icon: <DraftsIcon />,
       active: pathname.startsWith("/drafts"),
-      badge: draftTotal,
+      badge: counts.drafts,
     },
     {
       href: "/sent",
@@ -112,7 +107,7 @@ export default function MobileNav({ draftTotal = 0, spamTotal = 0 }: Props) {
       label: "Spam",
       icon: <SpamIcon />,
       active: pathname.startsWith("/spam") || from === "spam",
-      badge: spamTotal,
+      badge: counts.spam,
     },
     {
       href: "/calendar",

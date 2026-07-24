@@ -1,10 +1,9 @@
-import { getSession, getAccountId, getThreadEmails } from "@/lib/jmap";
+import { getThreadEmails } from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import PrintControls from "@/components/PrintControls";
 import { resolvePrintBody } from "@/lib/printHtml";
-
-export const dynamic = "force-dynamic";
+import { getJmapContext } from "@/lib/jmapServer";
 
 interface Props {
   params: Promise<{ threadId: string }>;
@@ -12,8 +11,7 @@ interface Props {
 
 export default async function PrintThreadPage({ params }: Props) {
   const { threadId } = await params;
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await getJmapContext();
   const emails = await getThreadEmails(session.apiUrl, accountId, threadId);
   if (!emails.length) return notFound();
 

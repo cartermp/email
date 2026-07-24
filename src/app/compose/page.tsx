@@ -1,4 +1,4 @@
-import { getSession, getAccountId, getIdentities, getEmail } from "@/lib/jmap";
+import { getIdentities, getEmail } from "@/lib/jmap";
 import { formatAddressRFC, formatFullDate } from "@/lib/format";
 import {
   reSubject,
@@ -11,8 +11,7 @@ import {
 } from "@/lib/compose";
 import Composer from "@/components/Composer";
 import MobileBackButton from "@/components/MobileBackButton";
-
-export const dynamic = "force-dynamic";
+import { getJmapContext } from "@/lib/jmapServer";
 
 interface Props {
   searchParams: Promise<{ mode?: string; id?: string; draftId?: string }>;
@@ -21,9 +20,18 @@ interface Props {
 export default async function ComposePage({ searchParams }: Props) {
   const { mode, id, draftId } = await searchParams;
 
-  const session = await getSession();
-  const accountId = getAccountId(session);
-  const identities = await getIdentities(session.apiUrl, accountId);
+  const { session, accountId } = await getJmapContext();
+  const sourceEmailId =
+    draftId ??
+    (id && (mode === "reply" || mode === "reply-all" || mode === "forward")
+      ? id
+      : undefined);
+  const [identities, sourceEmail] = await Promise.all([
+    getIdentities(session.apiUrl, accountId),
+    sourceEmailId
+      ? getEmail(session.apiUrl, accountId, sourceEmailId)
+      : Promise.resolve(null),
+  ]);
 
   const sorted = identities.sort((a, b) => {
     if (a.mayDelete === false && b.mayDelete !== false) return -1;
@@ -60,7 +68,7 @@ export default async function ComposePage({ searchParams }: Props) {
 
   // Resume a saved draft
   if (draftId) {
-    const draft = await getEmail(session.apiUrl, accountId, draftId);
+    const draft = sourceEmail;
     if (draft) {
       initialDraftId = draftId;
       initialTo = draft.to?.map(formatAddressRFC).join(", ") ?? "";
@@ -83,7 +91,7 @@ export default async function ComposePage({ searchParams }: Props) {
       }
     }
   } else if (id && (mode === "reply" || mode === "reply-all" || mode === "forward")) {
-    const email = await getEmail(session.apiUrl, accountId, id);
+    const email = sourceEmail;
 
     if (email) {
       let bodyText = "";

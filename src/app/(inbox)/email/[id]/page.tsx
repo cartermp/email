@@ -1,9 +1,8 @@
-import { getSession, getAccountId, getEmail } from "@/lib/jmap";
+import { getEmail } from "@/lib/jmap";
 import { notFound } from "next/navigation";
 import EmailDetailView from "@/components/EmailDetailView";
 import MobileBackButton from "@/components/MobileBackButton";
-
-export const dynamic = "force-dynamic";
+import { getJmapContext } from "@/lib/jmapServer";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -16,8 +15,7 @@ export default async function EmailPage({ params, searchParams }: Props) {
   const from = resolvedSearchParams.from;
   const backLabel = from === "spam" ? "Spam" : from === "sent" ? "Sent" : "Inbox";
 
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await getJmapContext();
   const email = await getEmail(session.apiUrl, accountId, id);
 
   if (!email) return notFound();

@@ -1,4 +1,4 @@
-import { getSession, getAccountId, getThreadEmails, getMailboxes } from "@/lib/jmap";
+import { getThreadEmails } from "@/lib/jmap";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import MobileBackButton from "@/components/MobileBackButton";
@@ -6,8 +6,10 @@ import EmailDetailView from "@/components/EmailDetailView";
 import ThreadCountBadge from "@/components/ThreadCountBadge";
 import ThreadView from "@/components/ThreadView";
 import { resolveCalendarEvent } from "@/lib/calendarDetect";
-
-export const dynamic = "force-dynamic";
+import {
+  getJmapContext,
+  getJmapMailboxContext,
+} from "@/lib/jmapServer";
 
 interface Props {
   params: Promise<{ threadId: string }>;
@@ -20,8 +22,7 @@ export default async function ThreadPage({ params, searchParams }: Props) {
   const from = resolvedSearchParams.from;
   const backLabel = from === "spam" ? "Spam" : from === "sent" ? "Sent" : "Inbox";
 
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await getJmapContext();
   const emails = await getThreadEmails(session.apiUrl, accountId, threadId);
 
   if (!emails.length) return notFound();
@@ -46,13 +47,16 @@ export default async function ThreadPage({ params, searchParams }: Props) {
 
   const subject = emails[emails.length - 1].subject ?? "(no subject)";
 
-  const mailboxes = await getMailboxes(session.apiUrl, accountId);
+  const [{ mailboxes }, calendarEvents] = await Promise.all([
+    getJmapMailboxContext(),
+    Promise.all(
+      emails.map((email) =>
+        resolveCalendarEvent(email, session.downloadUrl, accountId),
+      ),
+    ),
+  ]);
   const spamMailbox = mailboxes.find((m) => m.role === "junk" || m.name.toLowerCase() === "spam" || m.name.toLowerCase() === "junk");
   const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
-
-  const calendarEvents = await Promise.all(
-    emails.map((e) => resolveCalendarEvent(e, session.downloadUrl, accountId))
-  );
 
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">

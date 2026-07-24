@@ -1,10 +1,9 @@
-import { getSession, getAccountId, getEmail } from "@/lib/jmap";
+import { getEmail } from "@/lib/jmap";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { notFound } from "next/navigation";
 import PrintControls from "@/components/PrintControls";
 import { resolvePrintBody } from "@/lib/printHtml";
-
-export const dynamic = "force-dynamic";
+import { getJmapContext } from "@/lib/jmapServer";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -12,8 +11,7 @@ interface Props {
 
 export default async function PrintPage({ params }: Props) {
   const { id } = await params;
-  const session = await getSession();
-  const accountId = getAccountId(session);
+  const { session, accountId } = await getJmapContext();
   const email = await getEmail(session.apiUrl, accountId, id);
   if (!email) return notFound();
 

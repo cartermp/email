@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { unstable_rethrow } from "next/navigation";
+import { Suspense } from "react";
 import { auth, signOut } from "@/auth";
 import LiveUnreadCountBadge from "@/components/LiveUnreadCountBadge";
 import MobileNav from "@/components/MobileNav";
-import UnreadCountBadge from "@/components/UnreadCountBadge";
-import UnreadCountProvider from "@/components/UnreadCountProvider";
-import { getAccountId, getMailboxes, getSession as getJmapSession } from "@/lib/jmap";
+import UnreadCountProvider, {
+  MailboxCountSync,
+} from "@/components/UnreadCountProvider";
+import { getJmapMailboxContext } from "@/lib/jmapServer";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,32 +16,49 @@ export const metadata: Metadata = {
   description: "Personal email client",
 };
 
+async function MailboxCountsLoader() {
+  try {
+    const { mailboxes } = await getJmapMailboxContext();
+    const inbox = mailboxes.find((mailbox) => mailbox.role === "inbox");
+    const drafts = mailboxes.find((mailbox) => mailbox.role === "drafts");
+    const spam = mailboxes.find(
+      (mailbox) =>
+        mailbox.role === "junk" ||
+        mailbox.name.toLowerCase() === "spam" ||
+        mailbox.name.toLowerCase() === "junk",
+    );
+
+    return (
+      <MailboxCountSync
+        counts={{
+          inbox: inbox?.unreadEmails ?? 0,
+          drafts: drafts?.totalEmails ?? 0,
+          spam: spam?.unreadEmails ?? 0,
+        }}
+      />
+    );
+  } catch (error) {
+    unstable_rethrow(error);
+    return null;
+  }
+}
+
 export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const session = await auth();
-  let unreadTotal = 0;
-  let draftTotal = 0;
-  let spamUnreadTotal = 0;
-
-  if (session) {
-    const jmapSession = await getJmapSession();
-    const accountId = getAccountId(jmapSession);
-    const mailboxes = await getMailboxes(jmapSession.apiUrl, accountId);
-    const inboxMailbox = mailboxes.find((mailbox) => mailbox.role === "inbox");
-    const draftsMailbox = mailboxes.find((mailbox) => mailbox.role === "drafts");
-    const spamMailbox = mailboxes.find((mailbox) => mailbox.role === "junk" || mailbox.name.toLowerCase() === "spam" || mailbox.name.toLowerCase() === "junk");
-    unreadTotal = inboxMailbox?.unreadEmails ?? 0;
-    draftTotal = draftsMailbox?.totalEmails ?? 0;
-    spamUnreadTotal = spamMailbox?.unreadEmails ?? 0;
-  }
 
   return (
     <html lang="en" className="h-full">
       <body className="h-full flex flex-col bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
-        <UnreadCountProvider initialCount={unreadTotal}>
+        <UnreadCountProvider>
+          {session && (
+            <Suspense fallback={null}>
+              <MailboxCountsLoader />
+            </Suspense>
+          )}
           {/* Row: desktop sidebar + main content */}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             {/* Sidebar — desktop only */}
@@ -60,7 +80,7 @@ export default async function RootLayout({
                   className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
                   <span>Drafts</span>
-                  <UnreadCountBadge count={draftTotal} className="shrink-0" />
+                  <LiveUnreadCountBadge mailbox="drafts" className="shrink-0" />
                 </Link>
                  <Link
                   href="/sent"
@@ -73,7 +93,7 @@ export default async function RootLayout({
                   className="flex items-center justify-between gap-2 rounded-md text-sm text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-2 transition-colors"
                 >
                   <span>Spam</span>
-                  <UnreadCountBadge count={spamUnreadTotal} className="shrink-0" />
+                  <LiveUnreadCountBadge mailbox="spam" className="shrink-0" />
                 </Link>
                 <Link
                   href="/calendar"
@@ -113,7 +133,7 @@ export default async function RootLayout({
           </div>
 
           {/* Mobile bottom nav — hidden on desktop */}
-          <div className="print:hidden"><MobileNav draftTotal={draftTotal} spamTotal={spamUnreadTotal} /></div>
+          <div className="print:hidden"><MobileNav /></div>
         </UnreadCountProvider>
       </body>
     </html>

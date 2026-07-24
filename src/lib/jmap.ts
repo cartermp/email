@@ -95,6 +95,195 @@ const EMAIL_LIST_PROPERTIES = [
   "size",
 ];
 
+export interface MailPanelMailboxIds {
+  inbox?: string;
+  drafts?: string;
+  sent?: string;
+  spam?: string;
+}
+
+export interface MailPanelData {
+  inbox: {
+    unreads: Email[];
+    unreadTotal: number;
+    reads: Email[];
+    readTotal: number;
+  };
+  drafts: Email[];
+  pinned: Email[];
+  sent: { emails: Email[]; total: number };
+  spam: {
+    unreads: Email[];
+    unreadTotal: number;
+    reads: Email[];
+    readTotal: number;
+  };
+}
+
+function mailboxQuery(
+  accountId: string,
+  mailboxId: string,
+  callId: string,
+  filter: Record<string, unknown>,
+  limit = 50,
+): MethodCall[] {
+  const queryId = `${callId}q`;
+  const getId = `${callId}g`;
+  return [
+    [
+      "Email/query",
+      {
+        accountId,
+        filter: { inMailbox: mailboxId, ...filter },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        calculateTotal: true,
+        limit,
+        position: 0,
+      },
+      queryId,
+    ],
+    [
+      "Email/get",
+      {
+        accountId,
+        "#ids": {
+          resultOf: queryId,
+          name: "Email/query",
+          path: "/ids",
+        },
+        properties: EMAIL_LIST_PROPERTIES,
+      },
+      getId,
+    ],
+  ];
+}
+
+export function buildMailPanelMethodCalls(
+  accountId: string,
+  mailboxIds: MailPanelMailboxIds,
+  includePinned = true,
+): MethodCall[] {
+  const calls: MethodCall[] = [];
+
+  if (mailboxIds.inbox) {
+    calls.push(
+      ...mailboxQuery(accountId, mailboxIds.inbox, "iu", {
+        notKeyword: "$seen",
+      }),
+      ...mailboxQuery(accountId, mailboxIds.inbox, "ir", {
+        hasKeyword: "$seen",
+      }),
+    );
+  }
+  if (mailboxIds.drafts) {
+    calls.push(
+      ...mailboxQuery(accountId, mailboxIds.drafts, "d", {}),
+    );
+  }
+
+  if (includePinned) {
+    calls.push(
+      [
+        "Email/query",
+        {
+          accountId,
+          filter: { hasKeyword: "$flagged" },
+          sort: [{ property: "receivedAt", isAscending: false }],
+          limit: 100,
+          position: 0,
+        },
+        "pq",
+      ],
+      [
+        "Email/get",
+        {
+          accountId,
+          "#ids": {
+            resultOf: "pq",
+            name: "Email/query",
+            path: "/ids",
+          },
+          properties: EMAIL_LIST_PROPERTIES,
+        },
+        "pg",
+      ],
+    );
+  }
+
+  if (mailboxIds.sent) {
+    calls.push(...mailboxQuery(accountId, mailboxIds.sent, "s", {}));
+  }
+  if (mailboxIds.spam) {
+    calls.push(
+      ...mailboxQuery(accountId, mailboxIds.spam, "su", {
+        notKeyword: "$seen",
+      }),
+      ...mailboxQuery(accountId, mailboxIds.spam, "sr", {
+        hasKeyword: "$seen",
+      }),
+    );
+  }
+
+  return calls;
+}
+
+/**
+ * Load the requested persistent-panel buckets in one JMAP request. JMAP
+ * back-references keep each query/get pair server-side. Callers can omit
+ * pinned mail to keep the visible inbox request on the critical path small.
+ */
+export async function loadMailPanelData(
+  apiUrl: string,
+  accountId: string,
+  mailboxIds: MailPanelMailboxIds,
+  includePinned = true,
+): Promise<MailPanelData> {
+  const startedAt = Date.now();
+  const methodCalls = buildMailPanelMethodCalls(
+    accountId,
+    mailboxIds,
+    includePinned,
+  );
+  const data = await jmapCall(apiUrl, methodCalls);
+  const byCallId = new Map(
+    data.methodResponses.map(([, result, callId]) => [callId, result]),
+  );
+  const list = (callId: string) =>
+    (byCallId.get(callId)?.list as Email[] | undefined) ?? [];
+  const total = (callId: string) =>
+    (byCallId.get(callId)?.total as number | undefined) ?? 0;
+
+  const result: MailPanelData = {
+    inbox: {
+      unreads: list("iug"),
+      unreadTotal: total("iuq"),
+      reads: list("irg"),
+      readTotal: total("irq"),
+    },
+    drafts: list("dg"),
+    pinned: list("pg"),
+    sent: {
+      emails: list("sg"),
+      total: total("sq"),
+    },
+    spam: {
+      unreads: list("sug"),
+      unreadTotal: total("suq"),
+      reads: list("srg"),
+      readTotal: total("srq"),
+    },
+  };
+
+  log.info(
+    {
+      method_count: methodCalls.length,
+      duration_ms: Date.now() - startedAt,
+    },
+    "jmap.mail_panel",
+  );
+  return result;
+}
+
 // HTML is usually compact because image payloads are separate MIME parts, but
 // complex newsletters can exceed the previous 1 MB cap and were silently
 // returned as truncated bodyValues. Keep a generous bounded cap so full

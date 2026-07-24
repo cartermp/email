@@ -1,31 +1,70 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { applyUnreadCountChange, unreadCountEvents } from "@/lib/unreadCount";
 
-const UnreadCountContext = createContext(0);
+export interface MailboxCounts {
+  inbox: number;
+  drafts: number;
+  spam: number;
+}
+
+interface MailboxCountContextValue {
+  counts: MailboxCounts;
+  syncCounts: (counts: MailboxCounts) => void;
+}
+
+const EMPTY_COUNTS: MailboxCounts = { inbox: 0, drafts: 0, spam: 0 };
+const MailboxCountContext = createContext<MailboxCountContextValue>({
+  counts: EMPTY_COUNTS,
+  syncCounts: () => undefined,
+});
 
 interface Props {
-  initialCount: number;
+  initialCounts?: MailboxCounts;
   children: React.ReactNode;
 }
 
-export default function UnreadCountProvider({ initialCount, children }: Props) {
-  const [count, setCount] = useState(initialCount);
+export default function UnreadCountProvider({
+  initialCounts = EMPTY_COUNTS,
+  children,
+}: Props) {
+  const [counts, setCounts] = useState(initialCounts);
 
   useEffect(() => {
-    setCount(initialCount);
-  }, [initialCount]);
+    setCounts(initialCounts);
+  }, [initialCounts]);
 
   useEffect(() => {
     function onMarkRead(event: Event) {
       const detail = (event as CustomEvent<{ ids?: string[] }>).detail;
-      setCount((current) => applyUnreadCountChange(current, "read", detail?.ids ?? []));
+      setCounts((current) => ({
+        ...current,
+        inbox: applyUnreadCountChange(
+          current.inbox,
+          "read",
+          detail?.ids ?? [],
+        ),
+      }));
     }
 
     function onMarkUnread(event: Event) {
       const detail = (event as CustomEvent<{ ids?: string[] }>).detail;
-      setCount((current) => applyUnreadCountChange(current, "unread", detail?.ids ?? []));
+      setCounts((current) => ({
+        ...current,
+        inbox: applyUnreadCountChange(
+          current.inbox,
+          "unread",
+          detail?.ids ?? [],
+        ),
+      }));
     }
 
     window.addEventListener(unreadCountEvents.markRead, onMarkRead);
@@ -37,15 +76,35 @@ export default function UnreadCountProvider({ initialCount, children }: Props) {
     };
   }, []);
 
-  const value = useMemo(() => count, [count]);
+  const syncCounts = useCallback((nextCounts: MailboxCounts) => {
+    setCounts(nextCounts);
+  }, []);
+  const value = useMemo(
+    () => ({ counts, syncCounts }),
+    [counts, syncCounts],
+  );
 
   return (
-    <UnreadCountContext.Provider value={value}>
+    <MailboxCountContext.Provider value={value}>
       {children}
-    </UnreadCountContext.Provider>
+    </MailboxCountContext.Provider>
   );
 }
 
 export function useUnreadCount(): number {
-  return useContext(UnreadCountContext);
+  return useContext(MailboxCountContext).counts.inbox;
+}
+
+export function useMailboxCounts(): MailboxCounts {
+  return useContext(MailboxCountContext).counts;
+}
+
+export function MailboxCountSync({ counts }: { counts: MailboxCounts }) {
+  const { syncCounts } = useContext(MailboxCountContext);
+
+  useEffect(() => {
+    syncCounts(counts);
+  }, [counts, syncCounts]);
+
+  return null;
 }

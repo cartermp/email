@@ -7,8 +7,8 @@ import CalendarEventCard from "@/components/CalendarEventCard";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
 import AttachmentList from "@/components/AttachmentList";
 import { resolveCalendarEvent } from "@/lib/calendarDetect";
-import { getSession, getMailboxes } from "@/lib/jmap";
 import NotSpamButton from "@/components/NotSpamButton";
+import { getJmapMailboxContext } from "@/lib/jmapServer";
 
 interface Props {
   email: Email;
@@ -37,11 +37,12 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
   }
 
   // ── Detect calendar invite ────────────────────────────────────
-  const calendarEvent = await resolveCalendarEvent(email, downloadUrl, accountId);
+  const [calendarEvent, { mailboxes }] = await Promise.all([
+    resolveCalendarEvent(email, downloadUrl, accountId),
+    getJmapMailboxContext(),
+  ]);
 
   // ── Detect spam/junk mailbox ────────────────────────────────────
-  const jmapSession = await getSession();
-  const mailboxes = await getMailboxes(jmapSession.apiUrl, accountId);
   const spamMailbox = mailboxes.find(
     (m) =>
       m.role === "junk" ||

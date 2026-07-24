@@ -1,28 +1,42 @@
-/* eslint-disable react-hooks/purity */
 import { Suspense } from "react";
-import { getSession, getAccountId, getMailboxes, listInboxEmails, listDrafts, listPinnedEmails, listSentEmails } from "@/lib/jmap";
+import { unstable_rethrow } from "next/navigation";
+import { loadMailPanelData } from "@/lib/jmap";
 import { log } from "@/lib/logger";
-import EmailListPanel from "@/components/EmailListPanel";
+import EmailListPanel, {
+  DeferredMailPanelSync,
+  type DeferredMailPanelData,
+} from "@/components/EmailListPanel";
 import InboxPanelLayout from "@/components/InboxPanelLayout";
+import { MailListLoadingSkeleton } from "@/components/LoadingSkeletons";
+import { getJmapMailboxContext } from "@/lib/jmapServer";
 
-export const dynamic = "force-dynamic";
+const EMPTY_DEFERRED_DATA: DeferredMailPanelData = {
+  drafts: [],
+  sentEmails: [],
+  pinnedEmails: [],
+  spamUnreads: [],
+  spamUnreadTotal: 0,
+  spamReads: [],
+  spamReadTotal: 0,
+};
 
-export default async function InboxLayout({
-  children,
+async function DeferredPanelData({
+  result,
 }: {
-  children: React.ReactNode;
+  result: Promise<DeferredMailPanelData>;
 }) {
-  const t = Date.now();
+  return <DeferredMailPanelSync data={await result} />;
+}
 
-  let session, accountId, mailboxes;
+async function MailPanelData() {
+  let context: Awaited<ReturnType<typeof getJmapMailboxContext>>;
   try {
-    session = await getSession();
-    accountId = getAccountId(session);
-    mailboxes = await getMailboxes(session.apiUrl, accountId);
+    context = await getJmapMailboxContext();
   } catch (err) {
-    log.error({ err, duration_ms: Date.now() - t }, "layout.inbox.session_error");
+    unstable_rethrow(err);
+    log.error({ err }, "layout.inbox.session_error");
     return (
-      <div className="flex items-center justify-center h-screen bg-stone-50 dark:bg-stone-900">
+      <div className="flex h-full items-center justify-center bg-stone-50 dark:bg-stone-900">
         <div className="text-center space-y-2">
           <p className="text-sm font-medium text-stone-700 dark:text-stone-300">
             Unable to connect to mail server
@@ -34,6 +48,7 @@ export default async function InboxLayout({
       </div>
     );
   }
+  const { session, accountId, mailboxes } = context;
 
   const inbox = mailboxes.find((m) => m.role === "inbox");
   const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
@@ -42,75 +57,101 @@ export default async function InboxLayout({
   const trashMailbox = mailboxes.find((m) => m.role === "trash");
   const spamMailbox = mailboxes.find((m) => m.role === "junk" || m.name.toLowerCase() === "spam" || m.name.toLowerCase() === "junk");
 
-  let inbox_emails = { unreads: [] as Awaited<ReturnType<typeof listInboxEmails>>["unreads"], unreadTotal: 0, reads: [] as Awaited<ReturnType<typeof listInboxEmails>>["reads"], readTotal: 0 };
-  let drafts: Awaited<ReturnType<typeof listDrafts>> = [];
-  let pinned: Awaited<ReturnType<typeof listPinnedEmails>> = [];
-  let sentResult: Awaited<ReturnType<typeof listSentEmails>> = { emails: [], total: 0 };
-  let spam_emails = { unreads: [] as Awaited<ReturnType<typeof listInboxEmails>>["unreads"], unreadTotal: 0, reads: [] as Awaited<ReturnType<typeof listInboxEmails>>["reads"], readTotal: 0 };
+  const primaryResult = loadMailPanelData(
+    session.apiUrl,
+    accountId,
+    { inbox: inbox?.id },
+    false,
+  );
+  const deferredResult = primaryResult
+    .then(() =>
+      loadMailPanelData(
+        session.apiUrl,
+        accountId,
+        {
+          drafts: draftsMailbox?.id,
+          sent: sentMailbox?.id,
+          spam: spamMailbox?.id,
+        },
+        true,
+      ),
+    )
+    .then(
+      (data): DeferredMailPanelData => ({
+        drafts: data.drafts,
+        sentEmails: data.sent.emails,
+        pinnedEmails: data.pinned,
+        spamUnreads: data.spam.unreads,
+        spamUnreadTotal: data.spam.unreadTotal,
+        spamReads: data.spam.reads,
+        spamReadTotal: data.spam.readTotal,
+      }),
+    )
+    .catch((err) => {
+      unstable_rethrow(err);
+      log.error({ err }, "layout.inbox.deferred_error");
+      return EMPTY_DEFERRED_DATA;
+    });
+
+  let panelData: Awaited<ReturnType<typeof loadMailPanelData>>;
 
   try {
-    [inbox_emails, drafts, pinned, sentResult, spam_emails] = await Promise.all([
-      inbox
-        ? listInboxEmails(session.apiUrl, accountId, inbox.id)
-        : Promise.resolve({ unreads: [], unreadTotal: 0, reads: [], readTotal: 0 }),
-      draftsMailbox
-        ? listDrafts(session.apiUrl, accountId, draftsMailbox.id)
-        : Promise.resolve([]),
-      listPinnedEmails(session.apiUrl, accountId),
-      sentMailbox
-        ? listSentEmails(session.apiUrl, accountId, sentMailbox.id)
-        : Promise.resolve({ emails: [], total: 0 }),
-      spamMailbox
-        ? listInboxEmails(session.apiUrl, accountId, spamMailbox.id)
-        : Promise.resolve({ unreads: [], unreadTotal: 0, reads: [], readTotal: 0 }),
-    ]);
+    panelData = await primaryResult;
   } catch (err) {
-    log.error({ err, duration_ms: Date.now() - t }, "layout.inbox.fetch_error");
-    // Fall through with empty data — the panel will render with a refresh prompt
+    unstable_rethrow(err);
+    log.error({ err }, "layout.inbox.fetch_error");
+    panelData = {
+      inbox: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+      drafts: [],
+      pinned: [],
+      sent: { emails: [], total: 0 },
+      spam: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+    };
   }
 
-  const { unreads, unreadTotal, reads, readTotal } = inbox_emails;
+  const { unreads, unreadTotal, reads, readTotal } = panelData.inbox;
 
   log.info({
     unread_count: unreads.length,
     unread_total: unreadTotal,
     read_count: reads.length,
     read_total: readTotal,
-    draft_count: drafts.length,
-    pinned_count: pinned.length,
-    sent_count: sentResult.emails.length,
-    sent_total: sentResult.total,
-    spam_unread_count: spam_emails.unreads.length,
-    spam_unread_total: spam_emails.unreadTotal,
-    spam_read_count: spam_emails.reads.length,
-    spam_read_total: spam_emails.readTotal,
+    pinned_count: panelData.pinned.length,
     has_drafts_mailbox: !!draftsMailbox,
     has_sent_mailbox: !!sentMailbox,
     has_spam_mailbox: !!spamMailbox,
-    duration_ms: Date.now() - t,
   }, "layout.inbox.load");
 
   return (
+    <EmailListPanel
+      unreads={unreads}
+      unreadTotal={unreadTotal}
+      reads={reads}
+      readTotal={readTotal}
+      inboxId={inbox?.id ?? ""}
+      pinnedEmails={panelData.pinned}
+      archiveMailboxId={archiveMailbox?.id}
+      trashMailboxId={trashMailbox?.id}
+      spamMailboxId={spamMailbox?.id}
+      deferredContent={
+        <Suspense fallback={null}>
+          <DeferredPanelData result={deferredResult} />
+        </Suspense>
+      }
+    />
+  );
+}
+
+export default function InboxLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
     <InboxPanelLayout
       list={
-        <Suspense>
-          <EmailListPanel
-            unreads={unreads}
-            unreadTotal={unreadTotal}
-            reads={reads}
-            readTotal={readTotal}
-            inboxId={inbox?.id ?? ""}
-            drafts={drafts}
-            sentEmails={sentResult.emails}
-            pinnedEmails={pinned}
-            archiveMailboxId={archiveMailbox?.id}
-            trashMailboxId={trashMailbox?.id}
-            spamUnreads={spam_emails.unreads}
-            spamUnreadTotal={spam_emails.unreadTotal}
-            spamReads={spam_emails.reads}
-            spamReadTotal={spam_emails.readTotal}
-            spamMailboxId={spamMailbox?.id}
-          />
+        <Suspense fallback={<MailListLoadingSkeleton />}>
+          <MailPanelData />
         </Suspense>
       }
     >

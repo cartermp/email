@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "tsx --test 'src/lib/__tests__/*.test.ts'",
+    "benchmark": "tsx scripts/benchmark-rendering.ts",
     "fetch-fixtures": "tsx scripts/fetch-fixtures.ts"
   },
   "dependencies": {

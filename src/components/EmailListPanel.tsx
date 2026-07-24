@@ -1,8 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ReactNode,
+} from "react";
 import SenderAvatar from "@/components/SenderAvatar";
+import { MailRowsLoadingSkeleton } from "@/components/LoadingSkeletons";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
 import ThreadCountBadge from "@/components/ThreadCountBadge";
@@ -30,9 +41,36 @@ interface Props {
   spamReads?: Email[];
   spamReadTotal?: number;
   spamMailboxId?: string;
+  deferredContent?: ReactNode;
 }
 
 type View = "inbox" | "drafts" | "sent" | "spam";
+
+export interface DeferredMailPanelData {
+  drafts: Email[];
+  sentEmails: Email[];
+  pinnedEmails: Email[];
+  spamUnreads: Email[];
+  spamUnreadTotal: number;
+  spamReads: Email[];
+  spamReadTotal: number;
+}
+
+const DeferredMailPanelContext = createContext<
+  ((data: DeferredMailPanelData) => void) | null
+>(null);
+
+export function DeferredMailPanelSync({
+  data,
+}: {
+  data: DeferredMailPanelData;
+}) {
+  const sync = useContext(DeferredMailPanelContext);
+  useEffect(() => {
+    sync?.(data);
+  }, [data, sync]);
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Inline SVG icons
@@ -121,16 +159,17 @@ export default function EmailListPanel({
   reads,
   readTotal,
   inboxId,
-  drafts = [],
-  sentEmails = [],
+  drafts: initialDrafts = [],
+  sentEmails: initialSentEmails = [],
   pinnedEmails = [],
   archiveMailboxId,
   trashMailboxId,
-  spamUnreads = [],
-  spamUnreadTotal = 0,
-  spamReads = [],
-  spamReadTotal = 0,
+  spamUnreads: initialSpamUnreads = [],
+  spamUnreadTotal: initialSpamUnreadTotal = 0,
+  spamReads: initialSpamReads = [],
+  spamReadTotal: initialSpamReadTotal = 0,
   spamMailboxId,
+  deferredContent,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -191,11 +230,36 @@ export default function EmailListPanel({
   const [extraUnreads, setExtraUnreads] = useState<Email[]>([]);
   const [extraReads, setExtraReads] = useState<Email[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [draftsList, setDraftsList] = useState<Email[]>(initialDrafts);
+  const [pinnedList, setPinnedList] = useState(pinnedEmails);
 
-  const currentUnreads = view === "spam" ? spamUnreads : unreads;
-  const currentUnreadTotal = view === "spam" ? spamUnreadTotal : unreadTotal;
-  const currentReads = view === "spam" ? spamReads : reads;
-  const currentReadTotal = view === "spam" ? spamReadTotal : readTotal;
+  const [deferredPending, setDeferredPending] = useState(!!deferredContent);
+  const [sentList, setSentList] = useState(initialSentEmails);
+  const [spamData, setSpamData] = useState({
+    unreads: initialSpamUnreads,
+    unreadTotal: initialSpamUnreadTotal,
+    reads: initialSpamReads,
+    readTotal: initialSpamReadTotal,
+  });
+
+  const syncDeferredData = useCallback((data: DeferredMailPanelData) => {
+    setDraftsList(data.drafts);
+    setSentList(data.sentEmails);
+    setPinnedList(data.pinnedEmails);
+    setSpamData({
+      unreads: data.spamUnreads,
+      unreadTotal: data.spamUnreadTotal,
+      reads: data.spamReads,
+      readTotal: data.spamReadTotal,
+    });
+    setDeferredPending(false);
+  }, []);
+
+  const currentUnreads = view === "spam" ? spamData.unreads : unreads;
+  const currentUnreadTotal =
+    view === "spam" ? spamData.unreadTotal : unreadTotal;
+  const currentReads = view === "spam" ? spamData.reads : reads;
+  const currentReadTotal = view === "spam" ? spamData.readTotal : readTotal;
   const currentMailboxId = view === "spam" ? spamMailboxId ?? "" : inboxId;
 
   useEffect(() => {
@@ -204,18 +268,12 @@ export default function EmailListPanel({
   }, [view]);
 
   useEffect(() => {
-    const fresh = [...currentUnreads, ...currentReads, ...pinnedEmails];
+    const fresh = [...currentUnreads, ...currentReads, ...pinnedList];
     setExtraUnreads((prev) => mergeEmailUpdates(prev, fresh));
     setExtraReads((prev) => mergeEmailUpdates(prev, fresh));
     // Server state is authoritative after a refresh; clear optimistic removals
     setArchivedIds(new Set());
-  }, [currentUnreads, currentReads, pinnedEmails]);
-
-  // -------------------------------------------------------------------------
-  // Drafts — local copy for optimistic deletion
-  // -------------------------------------------------------------------------
-  const [draftsList, setDraftsList] = useState<Email[]>(drafts);
-  useEffect(() => { setDraftsList(drafts); }, [drafts]);
+  }, [currentUnreads, currentReads, pinnedList]);
 
   // -------------------------------------------------------------------------
   // Selection state
@@ -295,17 +353,17 @@ export default function EmailListPanel({
 
   // Display order: pinned → unread (not pinned) → read (not pinned), deduped
   const allInboxEmails = useMemo(() => {
-    const pinnedIds = new Set(pinnedEmails.map((e) => e.id));
+    const pinnedIds = new Set(pinnedList.map((e) => e.id));
     const seenIds = new Set<string>();
     const result: Email[] = [];
     const add = (e: Email) => { if (!seenIds.has(e.id)) { seenIds.add(e.id); result.push(e); } };
     if (view === "inbox") {
-      pinnedEmails.forEach(add);
+      pinnedList.forEach(add);
     }
     allUnreads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
     allReads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
     return result;
-  }, [pinnedEmails, allUnreads, allReads, view]);
+  }, [pinnedList, allUnreads, allReads, view]);
 
   const visibleEmails = useMemo(() => {
     const base = isInSearchMode ? searchResults : allInboxEmails;
@@ -507,7 +565,9 @@ export default function EmailListPanel({
   // Render
   // -------------------------------------------------------------------------
   return (
-    <div className="flex flex-col h-full overflow-hidden w-full">
+    <DeferredMailPanelContext.Provider value={syncDeferredData}>
+      {deferredContent}
+      <div className="flex flex-col h-full overflow-hidden w-full">
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-stone-200 dark:border-stone-700 shrink-0">
@@ -686,15 +746,21 @@ export default function EmailListPanel({
           )}
 
           <div className="absolute inset-0 overflow-y-auto">
-          {isSearching && (
+          {view === "spam" && deferredPending && (
+            <MailRowsLoadingSkeleton />
+          )}
+          {(!deferredPending || view !== "spam") && isSearching && (
             <p className="p-4 text-sm text-stone-400 dark:text-stone-500">Searching…</p>
           )}
-          {!isSearching && visibleEmails.length === 0 && (
+          {(!deferredPending || view !== "spam") &&
+            !isSearching &&
+            visibleEmails.length === 0 && (
             <p className="p-6 text-sm text-stone-400 dark:text-stone-500">
               {isInSearchMode ? "No results." : "No emails."}
             </p>
           )}
-          {!isSearching &&
+          {(!deferredPending || view !== "spam") &&
+            !isSearching &&
             visibleThreads.map((thread, idx) => {
               const { latestEmail, senders } = thread;
               const threadHref = view === "spam" ? `/thread/${thread.threadId}?from=spam` : `/thread/${thread.threadId}`;
@@ -881,7 +947,7 @@ export default function EmailListPanel({
               );
             })}
 
-          {hasMore && (
+          {(!deferredPending || view !== "spam") && hasMore && (
             <button
               onClick={handleLoadMore}
               disabled={loadingMore}
@@ -901,7 +967,9 @@ export default function EmailListPanel({
       {/* Drafts list */}
       {view === "drafts" && (
         <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
-          {draftsList.length === 0 ? (
+          {deferredPending ? (
+            <MailRowsLoadingSkeleton />
+          ) : draftsList.length === 0 ? (
             <p className="p-6 text-sm text-stone-400 dark:text-stone-500">No drafts.</p>
           ) : (
             draftsList.map((draft) => (
@@ -947,10 +1015,12 @@ export default function EmailListPanel({
       {/* Sent list */}
       {view === "sent" && (
         <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
-          {sentEmails.length === 0 ? (
+          {deferredPending ? (
+            <MailRowsLoadingSkeleton />
+          ) : sentList.length === 0 ? (
             <p className="p-6 text-sm text-stone-400 dark:text-stone-500">No sent emails.</p>
           ) : (
-            sentEmails.map((email) => (
+            sentList.map((email) => (
               <Link
                 key={email.id}
                 href={`/email/${email.id}?from=sent`}
@@ -985,6 +1055,7 @@ export default function EmailListPanel({
 
       {/* Unread badge (hidden, kept for potential use) */}
       <span className="sr-only">{unreadCount} unread</span>
-    </div>
+      </div>
+    </DeferredMailPanelContext.Provider>
   );
 }

@@ -2,8 +2,6 @@ import MobileBackButton from "@/components/MobileBackButton";
 import SpreadsheetViewer from "@/components/SpreadsheetViewer";
 import { notFound } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
 interface Props {
   searchParams: Promise<{
     blobId?: string;

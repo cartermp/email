@@ -177,14 +177,14 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
     }
     return false;
   }
-  function effectiveBackground(element){
-    for(var current=element;current;current=current.parentElement){
-      var style=window.getComputedStyle(current);
-      if(style.backgroundImage&&style.backgroundImage!=='none')return null;
-      var colour=parseRgb(style.backgroundColor);
-      if(colour&&colour.a>0.01)return colour;
-    }
-    return parseRgb(${fallbackBackground});
+  function effectiveBackground(element,style,backgrounds){
+    if(style.backgroundImage&&style.backgroundImage!=='none')return null;
+    var colour=parseRgb(style.backgroundColor);
+    if(colour&&colour.a>0.01)return colour;
+    var parent=element.parentElement;
+    return parent&&backgrounds.has(parent)
+      ?backgrounds.get(parent)
+      :parseRgb(${fallbackBackground});
   }
   function needsAdaptation(foreground,background){
     if(!foreground||!background)return false;
@@ -193,7 +193,9 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
     if(spread>56||luminance(foreground)>0.18)return false;
     return contrastRatio(foreground,background)<4.5;
   }
+  var darkTextAdapted=false;
   function adaptDarkText(){
+    darkTextAdapted=true;
     var marked=document.querySelectorAll(
       '[data-email-client-adapted-text],[data-email-client-adapted-marker]'
     );
@@ -206,12 +208,14 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
     var elements=[document.body];
     var descendants=document.body.getElementsByTagName('*');
     for(var j=0;j<descendants.length;j++)elements.push(descendants[j]);
+    var backgrounds=new WeakMap();
 
     for(var k=0;k<elements.length;k++){
       var element=elements[k];
       var computed=window.getComputedStyle(element);
+      var background=effectiveBackground(element,computed,backgrounds);
+      backgrounds.set(element,background);
       if(computed.display==='none'||computed.visibility==='hidden')continue;
-      var background=effectiveBackground(element);
       if(!background)continue;
 
       if(element.tagName==='LI'&&String(element.textContent||'').trim()){
@@ -230,12 +234,17 @@ function darkTextAdaptationScript(theme: EmailRenderTheme): string {
       }
     }
   }
-  function safelyAdaptDarkText(){
+  function safelyAdaptDarkText(force){
+    if(darkTextAdapted&&!force)return;
     try{adaptDarkText();}catch(_adaptationError){}
   }
+  function handleDarkModeChange(){
+    darkTextAdapted=false;
+    safelyAdaptDarkText();
+  }
   if(darkMode){
-    if(darkMode.addEventListener)darkMode.addEventListener('change',safelyAdaptDarkText);
-    else if(darkMode.addListener)darkMode.addListener(safelyAdaptDarkText);
+    if(darkMode.addEventListener)darkMode.addEventListener('change',handleDarkModeChange);
+    else if(darkMode.addListener)darkMode.addListener(handleDarkModeChange);
   }`;
 }
 
