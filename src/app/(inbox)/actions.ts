@@ -1,10 +1,11 @@
 "use server";
 
 import { auth } from "@/auth";
-import { getSession, getAccountId, getMailboxes, listEmails, loadMoreEmailsFiltered, searchEmails, setPin, setKeywordsOnMany, moveEmailsToMailbox } from "@/lib/jmap";
+import { getSession, getAccountId, getMailboxes, listEmails, loadMoreEmailsFiltered, searchEmails, setPin, setKeywordsOnMany, moveEmailsToMailbox, getInboxSnapshot } from "@/lib/jmap";
 import { parseSearchQuery, buildJmapFilter } from "@/lib/search";
 import { log } from "@/lib/logger";
 import { Email } from "@/lib/types";
+import type { InboxSnapshot } from "@/lib/mailAutoSync";
 
 async function requireAuthedJmap() {
   const sessionData = await auth();
@@ -22,6 +23,14 @@ export async function loadMoreEmails(
   const result = await listEmails(session.apiUrl, accountId, inboxId, 50, position);
   log.info({ mailbox_id: inboxId, position, limit: 50, returned: result.emails.length, total: result.total, duration_ms: Date.now() - t }, "action.load_more");
   return result;
+}
+
+export async function checkInboxForNewMail(
+  inboxId: string,
+): Promise<InboxSnapshot> {
+  if (!inboxId) return { latestEmailId: null, total: 0 };
+  const { session, accountId } = await requireAuthedJmap();
+  return getInboxSnapshot(session.apiUrl, accountId, inboxId);
 }
 
 export async function loadMoreUnreads(

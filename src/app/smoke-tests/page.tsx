@@ -10,6 +10,7 @@ const smokePanels = new Set<SmokePanel>([
   "reply",
   "attachments",
   "target",
+  "auto-sync",
 ]);
 
 export default async function SmokePage({ searchParams }: Props) {

@@ -34,9 +34,17 @@ import {
   shouldCaptureConversationPointer,
 } from "@/lib/mailInteraction";
 import { formatDate } from "@/lib/format";
-import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox } from "@/app/(inbox)/actions";
+import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox, checkInboxForNewMail } from "@/app/(inbox)/actions";
 import { deleteDraftAction } from "@/app/compose/actions";
 import { dispatchUnreadCountEvent, getReadEmailIds, getUnreadEmailIds, isEmailUnread } from "@/lib/unreadCount";
+import {
+  MAIL_AUTO_SYNC_INTERVAL_MS,
+  canRunImmediateMailSync,
+  getInboxSnapshot,
+  getMailAutoSyncDelay,
+  inboxSnapshotKey,
+  type InboxSnapshot,
+} from "@/lib/mailAutoSync";
 
 interface Props {
   unreads: Email[];
@@ -56,6 +64,8 @@ interface Props {
   spamMailboxId?: string;
   deferredContent?: ReactNode;
   threadHrefPrefix?: string;
+  autoSyncIntervalMs?: number;
+  autoSyncCheck?: (inboxId: string) => Promise<InboxSnapshot>;
 }
 
 type View = "inbox" | "drafts" | "sent" | "spam";
@@ -186,6 +196,8 @@ export default function EmailListPanel({
   spamMailboxId,
   deferredContent,
   threadHrefPrefix = "/thread",
+  autoSyncIntervalMs = MAIL_AUTO_SYNC_INTERVAL_MS,
+  autoSyncCheck = checkInboxForNewMail,
 }: Props) {
   const pathname = usePathname();
   const router = useRouter();
@@ -324,6 +336,115 @@ export default function EmailListPanel({
   const [isPending, startTransition] = useTransition();
   const refreshTimer1 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const refreshTimer2 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const transitionPendingRef = useRef(isPending);
+  transitionPendingRef.current = isPending;
+  const initialInboxSnapshot = useMemo(
+    () => getInboxSnapshot(unreads, unreadTotal, reads, readTotal),
+    [unreads, unreadTotal, reads, readTotal],
+  );
+  const inboxSnapshotKeyValue = inboxSnapshotKey(initialInboxSnapshot);
+  const knownInboxSnapshotRef = useRef(inboxSnapshotKeyValue);
+  const [syncAnnouncement, setSyncAnnouncement] = useState("");
+
+  useEffect(() => {
+    knownInboxSnapshotRef.current = inboxSnapshotKeyValue;
+  }, [inboxSnapshotKeyValue]);
+
+  useEffect(() => {
+    if (!inboxId || autoSyncIntervalMs <= 0) return;
+
+    let stopped = false;
+    let inFlight = false;
+    let consecutiveFailures = 0;
+    let lastCheckAt = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const canSync = () =>
+      document.visibilityState === "visible" && navigator.onLine !== false;
+
+    const clearScheduledCheck = () => {
+      clearTimeout(timer);
+      timer = undefined;
+    };
+
+    const scheduleNextCheck = () => {
+      clearScheduledCheck();
+      if (stopped || !canSync()) return;
+      timer = setTimeout(
+        () => void checkForUpdates(false),
+        getMailAutoSyncDelay(consecutiveFailures, autoSyncIntervalMs),
+      );
+    };
+
+    const checkForUpdates = async (immediate: boolean) => {
+      if (
+        stopped ||
+        inFlight ||
+        transitionPendingRef.current ||
+        !canSync()
+      ) {
+        scheduleNextCheck();
+        return;
+      }
+
+      const now = Date.now();
+      if (immediate && !canRunImmediateMailSync(lastCheckAt, now)) {
+        scheduleNextCheck();
+        return;
+      }
+
+      inFlight = true;
+      lastCheckAt = now;
+      try {
+        const snapshot = await autoSyncCheck(inboxId);
+        if (stopped || !canSync()) return;
+
+        consecutiveFailures = 0;
+        const nextSnapshotKey = inboxSnapshotKey(snapshot);
+        if (nextSnapshotKey !== knownInboxSnapshotRef.current) {
+          knownInboxSnapshotRef.current = nextSnapshotKey;
+          setSyncAnnouncement(`Inbox updated at ${new Date().toLocaleTimeString()}`);
+          startTransition(() => router.refresh());
+        }
+      } catch {
+        consecutiveFailures += 1;
+      } finally {
+        inFlight = false;
+        scheduleNextCheck();
+      }
+    };
+
+    const resumeSync = () => {
+      if (!canSync()) {
+        clearScheduledCheck();
+        return;
+      }
+      void checkForUpdates(true);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        resumeSync();
+      } else {
+        clearScheduledCheck();
+      }
+    };
+
+    scheduleNextCheck();
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", resumeSync);
+    window.addEventListener("online", resumeSync);
+    window.addEventListener("offline", clearScheduledCheck);
+
+    return () => {
+      stopped = true;
+      clearScheduledCheck();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", resumeSync);
+      window.removeEventListener("online", resumeSync);
+      window.removeEventListener("offline", clearScheduledCheck);
+    };
+  }, [autoSyncCheck, autoSyncIntervalMs, inboxId, router, startTransition]);
 
   function clearSelection() {
     setSelectedIds(new Set());
@@ -934,6 +1055,9 @@ export default function EmailListPanel({
           {keyboardThreadAnnouncement
             ? `Selected conversation: ${keyboardThreadAnnouncement}`
             : ""}
+        </div>
+        <div className="sr-only" role="status">
+          {syncAnnouncement}
         </div>
 
       {/* Header */}

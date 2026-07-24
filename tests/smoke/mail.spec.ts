@@ -5,7 +5,7 @@ const testAvatarSvg =
 
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/avatar?*", (route) =>
-    route.fulfill({ status: 404 }),
+    route.fulfill({ status: 204 }),
   );
 });
 
@@ -21,6 +21,12 @@ test("serves the themed favicon without an auth redirect", async ({
 test("loads sender artwork and falls back cleanly when it is unavailable", async ({
   page,
 }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+
   await page.unroute("**/api/avatar?*");
   await page.route("**/api/avatar?*", (route) => {
     const domain = new URL(route.request().url()).searchParams.get("domain");
@@ -30,7 +36,7 @@ test("loads sender artwork and falls back cleanly when it is unavailable", async
           contentType: "image/svg+xml",
           body: testAvatarSvg,
         })
-      : route.fulfill({ status: 404 });
+      : route.fulfill({ status: 204 });
   });
 
   await page.goto("/smoke-tests");
@@ -45,6 +51,7 @@ test("loads sender artwork and falls back cleanly when it is unavailable", async
   await expect(fallbackAvatar).toHaveAttribute("data-avatar-state", "failed");
   await expect(fallbackAvatar).toContainText("NW");
   await expect(fallbackAvatar.locator("img")).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
 });
 
 test("opens a conversation from a desktop click", async ({ page }) => {
@@ -62,6 +69,19 @@ test("opens a conversation from a desktop click", async ({ page }) => {
       name: "Opened conversation thread-maya",
     }),
   ).toBeVisible();
+});
+
+test("fetches new mail in the background and pauses while offline", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests?panel=auto-sync");
+  await page.context().setOffline(true);
+
+  await page.waitForTimeout(900);
+  await expect(page.getByText("New mail arrived")).toHaveCount(0);
+
+  await page.context().setOffline(false);
+  await expect(page.getByText("New mail arrived")).toBeVisible();
 });
 
 test("moves through conversations with the keyboard", async ({ page }) => {

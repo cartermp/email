@@ -27,6 +27,17 @@ function emptyResponse(status: number) {
   });
 }
 
+function missingAvatarResponse() {
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Cache-Control": "private, max-age=3600",
+      "X-Avatar-Missing": "true",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 interface AvatarSource {
   image: ArrayBuffer;
   source: "high-resolution" | "favicon";
@@ -127,5 +138,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return emptyResponse(404);
+  // Missing artwork is a normal result. A 204 still triggers the image
+  // element's fallback without reporting a failed HTTP resource in DevTools.
+  return missingAvatarResponse();
 }

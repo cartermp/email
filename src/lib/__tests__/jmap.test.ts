@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getInboxSnapshot, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -463,6 +463,30 @@ describe("getUnreadInboxTotal", () => {
     const call = (capturedBodies[0] as any).methodCalls[0];
     assert.equal(call[1].calculateTotal, true);
     assert.equal(result, 4);
+  });
+});
+
+describe("getInboxSnapshot", () => {
+  it("uses one minimal query and returns the newest id with the inbox total", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/query", { ids: ["newest"], total: 83 }, "inbox-snapshot"],
+      ]),
+    ];
+
+    const result = await getInboxSnapshot(
+      "https://api.example.com/jmap",
+      "acct1",
+      "mbox1",
+    );
+    const calls = (capturedBodies[0] as any).methodCalls;
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0][1].filter, { inMailbox: "mbox1" });
+    assert.equal(calls[0][1].limit, 1);
+    assert.equal(calls[0][1].calculateTotal, true);
+    assert.deepEqual(result, { latestEmailId: "newest", total: 83 });
   });
 });
 

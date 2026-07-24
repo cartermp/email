@@ -29,7 +29,8 @@ export async function getSession(): Promise<JMAPSession> {
 
 export async function jmapCall(
   apiUrl: string,
-  methodCalls: MethodCall[]
+  methodCalls: MethodCall[],
+  options: { logSuccess?: boolean } = {},
 ): Promise<{ methodResponses: [string, Record<string, unknown>, string][] }> {
   const t = Date.now();
   const methods = methodCalls.map(([name]) => name);
@@ -52,10 +53,12 @@ export async function jmapCall(
   }
 
   const data: { methodResponses: [string, Record<string, unknown>, string][] } = await res.json();
-  log.info(
-    { methods, method_count: methodCalls.length, account_id: accountId, response_count: data.methodResponses.length, duration_ms: Date.now() - t },
-    "jmap.call"
-  );
+  if (options.logSuccess !== false) {
+    log.info(
+      { methods, method_count: methodCalls.length, account_id: accountId, response_count: data.methodResponses.length, duration_ms: Date.now() - t },
+      "jmap.call"
+    );
+  }
   return data;
 }
 
@@ -421,6 +424,42 @@ export async function getUnreadInboxTotal(
     "jmap.unread_total"
   );
   return unreadTotal;
+}
+
+/**
+ * Fetch the smallest useful inbox fingerprint for background synchronization.
+ * A changed newest id or total means the visible inbox needs a full refresh.
+ */
+export async function getInboxSnapshot(
+  apiUrl: string,
+  accountId: string,
+  mailboxId: string,
+): Promise<{ latestEmailId: string | null; total: number }> {
+  const data = await jmapCall(
+    apiUrl,
+    [[
+      "Email/query",
+      {
+        accountId,
+        filter: { inMailbox: mailboxId },
+        sort: [{ property: "receivedAt", isAscending: false }],
+        calculateTotal: true,
+        limit: 1,
+        position: 0,
+      },
+      "inbox-snapshot",
+    ]],
+    { logSuccess: false },
+  );
+  const [methodName, result] = data.methodResponses[0] ?? [];
+  if (methodName !== "Email/query") {
+    throw new Error("Unable to check for new inbox mail");
+  }
+
+  return {
+    latestEmailId: ((result.ids as string[] | undefined) ?? [])[0] ?? null,
+    total: (result.total as number | undefined) ?? 0,
+  };
 }
 
 export async function loadMoreEmailsFiltered(

@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useCallback, useState } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import Composer from "@/components/Composer";
 import EmailListPanel from "@/components/EmailListPanel";
 import type { Email, EmailBodyPart } from "@/lib/types";
 
-export type SmokePanel = "inbox" | "reply" | "attachments" | "target";
+export type SmokePanel =
+  | "inbox"
+  | "reply"
+  | "attachments"
+  | "target"
+  | "auto-sync";
 
 const fixtureEmails: Email[] = [
   {
@@ -72,6 +78,17 @@ const fixtureAttachments: EmailBodyPart[] = [
   },
 ];
 
+const incomingEmail: Email = {
+  ...fixtureEmails[0],
+  id: "email-new-arrival",
+  messageId: ["message-new-arrival@example.test"],
+  threadId: "thread-new-arrival",
+  subject: "New mail arrived",
+  from: [{ name: "Maya Chen", email: "maya@example.test" }],
+  receivedAt: "2026-07-24T19:00:00.000Z",
+  preview: "This conversation appeared without a manual refresh.",
+};
+
 const navItems: Array<{ panel: SmokePanel; label: string }> = [
   { panel: "inbox", label: "Inbox" },
   { panel: "reply", label: "Reply" },
@@ -79,6 +96,19 @@ const navItems: Array<{ panel: SmokePanel; label: string }> = [
 ];
 
 export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
+  const [autoSyncEmails, setAutoSyncEmails] = useState(fixtureEmails);
+  const runAutoSyncCheck = useCallback(async () => {
+    setAutoSyncEmails((current) =>
+      current.some((email) => email.id === incomingEmail.id)
+        ? current
+        : [incomingEmail, ...current],
+    );
+    return {
+      latestEmailId: incomingEmail.id,
+      total: fixtureEmails.length + 1,
+    };
+  }, []);
+
   return (
     <div
       data-testid="mail-smoke-harness"
@@ -118,6 +148,25 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             archiveMailboxId="mailbox-archive"
             trashMailboxId="mailbox-trash"
             threadHrefPrefix="/smoke-tests/thread"
+          />
+        )}
+
+        {panel === "auto-sync" && (
+          <EmailListPanel
+            unreads={autoSyncEmails.filter(
+              (email) => !email.keywords["$seen"],
+            )}
+            unreadTotal={
+              autoSyncEmails.filter((email) => !email.keywords["$seen"]).length
+            }
+            reads={autoSyncEmails.filter((email) => email.keywords["$seen"])}
+            readTotal={
+              autoSyncEmails.filter((email) => email.keywords["$seen"]).length
+            }
+            inboxId="mailbox-inbox"
+            threadHrefPrefix="/smoke-tests/thread"
+            autoSyncIntervalMs={700}
+            autoSyncCheck={runAutoSyncCheck}
           />
         )}
 

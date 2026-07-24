@@ -147,7 +147,7 @@ describe("SenderAvatar", () => {
     assert.equal(first, second);
     assert.match(first, />GO</);
     assert.match(first, /<img/);
-    assert.match(first, /src="\/api\/avatar\?domain=github\.com&amp;v=2"/);
+    assert.match(first, /src="\/api\/avatar\?domain=github\.com&amp;v=3"/);
     assert.ok(!first.includes("http://"));
     assert.ok(!first.includes("https://"));
   });
