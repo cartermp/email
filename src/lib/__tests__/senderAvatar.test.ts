@@ -3,7 +3,15 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import SenderAvatar from "../../components/SenderAvatar";
-import { colorFor, initialsFor, PALETTE } from "../senderAvatar";
+import {
+  avatarDomainCandidates,
+  colorFor,
+  initialsFor,
+  normalizeAvatarDomain,
+  PALETTE,
+  senderAvatarDomain,
+  senderAvatarUrl,
+} from "../senderAvatar";
 import { EmailAddress } from "../types";
 
 function addr(email: string, name?: string): EmailAddress {
@@ -92,8 +100,42 @@ describe("initialsFor", () => {
   });
 });
 
+describe("sender artwork", () => {
+  it("extracts a normalized sender domain", () => {
+    assert.equal(
+      senderAvatarDomain("updates@MAIL.GitHub.com"),
+      "mail.github.com",
+    );
+  });
+
+  it("does not use mailbox-provider branding for a person", () => {
+    assert.equal(senderAvatarDomain("person@gmail.com"), null);
+    assert.equal(senderAvatarDomain("person@fastmail.com"), null);
+    assert.equal(senderAvatarUrl([addr("person@yahoo.com")]), null);
+  });
+
+  it("rejects malformed, private, and reserved domains", () => {
+    assert.equal(normalizeAvatarDomain("localhost"), null);
+    assert.equal(normalizeAvatarDomain("127.0.0.1"), null);
+    assert.equal(normalizeAvatarDomain("mail.example.test"), null);
+    assert.equal(normalizeAvatarDomain("bad_domain.com"), null);
+  });
+
+  it("tries a sender subdomain before its organization domain", () => {
+    assert.deepEqual(avatarDomainCandidates("tracking.usps.com"), [
+      "tracking.usps.com",
+      "usps.com",
+    ]);
+    assert.deepEqual(avatarDomainCandidates("alerts.company.co.uk"), [
+      "alerts.company.co.uk",
+      "company.co.uk",
+    ]);
+    assert.deepEqual(avatarDomainCandidates("github.com"), ["github.com"]);
+  });
+});
+
 describe("SenderAvatar", () => {
-  it("renders deterministic initials without external image requests", () => {
+  it("renders initials beneath a same-origin sender image", () => {
     const from = [addr("octocat@github.com", "GitHub Octocat")];
     const first = renderToStaticMarkup(
       createElement(SenderAvatar, { from, size: 36 }),
@@ -104,8 +146,22 @@ describe("SenderAvatar", () => {
 
     assert.equal(first, second);
     assert.match(first, />GO</);
-    assert.ok(!first.includes("<img"));
+    assert.match(first, /<img/);
+    assert.match(first, /src="\/api\/avatar\?domain=github\.com"/);
     assert.ok(!first.includes("http://"));
     assert.ok(!first.includes("https://"));
+  });
+
+  it("renders only initials when a sender has no representative artwork", () => {
+    const markup = renderToStaticMarkup(
+      createElement(SenderAvatar, {
+        from: [addr("phillip@gmail.com", "Phillip Carter")],
+        size: 36,
+      }),
+    );
+
+    assert.match(markup, />PC</);
+    assert.ok(!markup.includes("<img"));
+    assert.match(markup, /data-avatar-state="failed"/);
   });
 });

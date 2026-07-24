@@ -1,5 +1,14 @@
 import { expect, test } from "@playwright/test";
 
+const testAvatarSvg =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><circle cx="16" cy="16" r="16" fill="#24292f"/></svg>';
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/avatar?*", (route) =>
+    route.fulfill({ status: 404 }),
+  );
+});
+
 test("serves the themed favicon without an auth redirect", async ({
   request,
 }) => {
@@ -7,6 +16,35 @@ test("serves the themed favicon without an auth redirect", async ({
 
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toContain("image/svg+xml");
+});
+
+test("loads sender artwork and falls back cleanly when it is unavailable", async ({
+  page,
+}) => {
+  await page.unroute("**/api/avatar?*");
+  await page.route("**/api/avatar?*", (route) => {
+    const domain = new URL(route.request().url()).searchParams.get("domain");
+    return domain === "github.com"
+      ? route.fulfill({
+          status: 200,
+          contentType: "image/svg+xml",
+          body: testAvatarSvg,
+        })
+      : route.fulfill({ status: 404 });
+  });
+
+  await page.goto("/smoke-tests");
+
+  const brandedAvatar = page.locator('[data-avatar-domain="github.com"]');
+  await expect(brandedAvatar).toHaveAttribute("data-avatar-state", "loaded");
+  await expect(brandedAvatar.locator("img")).toHaveCSS("opacity", "1");
+
+  const fallbackAvatar = page.locator(
+    '[data-avatar-domain="missing-brand.com"]',
+  );
+  await expect(fallbackAvatar).toHaveAttribute("data-avatar-state", "failed");
+  await expect(fallbackAvatar).toContainText("NW");
+  await expect(fallbackAvatar.locator("img")).toHaveCount(0);
 });
 
 test("opens a conversation from a desktop click", async ({ page }) => {
