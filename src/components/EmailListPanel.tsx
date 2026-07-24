@@ -1267,6 +1267,8 @@ export default function EmailListPanel({
                 thread.allEmails.some((email) =>
                   isEmailUnread(email, clientReadIds, clientUnreadIds)
                 ) && !isRouteSelected;
+              const swipeOffset = swipeOffsets[thread.threadId] ?? 0;
+              const isSwipeActionVisible = swipeOffset !== 0;
 
               const showPinnedDivider =
                 !isInSearchMode && view === "inbox" && pinnedThreadCount > 0 && idx === 0;
@@ -1302,7 +1304,11 @@ export default function EmailListPanel({
                     className="relative overflow-hidden border-b border-stone-100 dark:border-stone-800"
                   >
                     <div
-                      className="pointer-events-none absolute inset-0 flex items-stretch justify-between text-xs font-semibold text-white"
+                      className={[
+                        "pointer-events-none absolute inset-0 flex items-stretch justify-between text-xs font-semibold text-white transition-opacity duration-75",
+                        isSwipeActionVisible ? "opacity-100" : "opacity-0",
+                      ].join(" ")}
+                      data-swipe-actions={thread.threadId}
                       aria-hidden="true"
                     >
                       <div
@@ -1338,9 +1344,9 @@ export default function EmailListPanel({
                             : "bg-stone-50 hover:bg-stone-100 dark:bg-stone-900 dark:hover:bg-stone-950",
                       ].join(" ")}
                       style={{
-                        transform: `translateX(${swipeOffsets[thread.threadId] ?? 0}px)`,
+                        transform: `translateX(${swipeOffset}px)`,
                         transition:
-                          (swipeOffsets[thread.threadId] ?? 0) === 0
+                          swipeOffset === 0
                             ? "transform 160ms ease-out"
                             : "none",
                       }}

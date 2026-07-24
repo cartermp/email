@@ -32,11 +32,17 @@ test("moves through conversations with the keyboard", async ({ page }) => {
   const announcement = page.locator(
     '[aria-live="polite"][aria-atomic="true"]',
   );
+  const firstRowSwipeActions = page.locator(
+    '[data-swipe-actions="thread-maya"]',
+  );
+
+  await expect(firstRowSwipeActions).toHaveCSS("opacity", "0");
 
   await page.keyboard.press("j");
   await expect(announcement).toHaveText(
     "Selected conversation: Quarterly plan",
   );
+  await expect(firstRowSwipeActions).toHaveCSS("opacity", "0");
 
   await page.keyboard.press("j");
   await expect(announcement).toHaveText(
