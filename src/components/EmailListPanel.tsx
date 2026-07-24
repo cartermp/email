@@ -29,6 +29,10 @@ import {
   groupIntoThreads,
   type ThreadSummary,
 } from "@/lib/emailList";
+import {
+  nextConversationIndex,
+  shouldCaptureConversationPointer,
+} from "@/lib/mailInteraction";
 import { formatDate } from "@/lib/format";
 import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox } from "@/app/(inbox)/actions";
 import { deleteDraftAction } from "@/app/compose/actions";
@@ -295,6 +299,7 @@ export default function EmailListPanel({
   const [archivedIds, setArchivedIds] = useState(new Set<string>());
   const [keyboardThreadId, setKeyboardThreadId] = useState<string | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
+  const shortcutHelpCloseRef = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -355,7 +360,7 @@ export default function EmailListPanel({
     // Pointer capture is only needed for touch/pen swipe gestures. Capturing a
     // mouse pointer can retarget the completed click to this wrapper instead
     // of the nested conversation link, leaving desktop rows unopenable.
-    if (event.pointerType === "mouse") {
+    if (!shouldCaptureConversationPointer(event.pointerType)) {
       cancelLongPress();
       swipeGesture.current = null;
       return;
@@ -772,10 +777,26 @@ export default function EmailListPanel({
 
   useEffect(() => {
     if (!keyboardThreadId) return;
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)")
+      .matches
+      ? "auto"
+      : "smooth";
     rowRefs.current
       .get(keyboardThreadId)
-      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      ?.scrollIntoView({ block: "nearest", behavior });
   }, [keyboardThreadId]);
+
+  useEffect(() => {
+    if (!shortcutHelpOpen) return;
+    const previousFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    shortcutHelpCloseRef.current?.focus();
+    return () => {
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [shortcutHelpOpen]);
 
   useEffect(() => {
     function onKeyboardShortcut(event: KeyboardEvent) {
@@ -791,6 +812,11 @@ export default function EmailListPanel({
         setShortcutHelpOpen(false);
         return;
       }
+      if (event.key === "Escape" && selectionMode) {
+        event.preventDefault();
+        clearSelection();
+        return;
+      }
       if (isEditing || event.metaKey || event.ctrlKey || event.altKey) return;
 
       if (event.key === "/" && view === "inbox") {
@@ -800,6 +826,7 @@ export default function EmailListPanel({
       }
       if (event.key.toLowerCase() === "c") {
         event.preventDefault();
+        if (!confirmNavigation()) return;
         router.push("/compose");
         return;
       }
@@ -824,11 +851,10 @@ export default function EmailListPanel({
       if (event.key.toLowerCase() === "j" || event.key.toLowerCase() === "k") {
         event.preventDefault();
         const direction = event.key.toLowerCase() === "j" ? 1 : -1;
-        const startingIndex =
-          currentIndex >= 0 ? currentIndex : direction > 0 ? -1 : 1;
-        const nextIndex = Math.max(
-          0,
-          Math.min(visibleThreads.length - 1, startingIndex + direction),
+        const nextIndex = nextConversationIndex(
+          currentIndex,
+          visibleThreads.length,
+          direction,
         );
         setKeyboardThreadId(visibleThreads[nextIndex].threadId);
         return;
@@ -841,6 +867,7 @@ export default function EmailListPanel({
 
       if (event.key === "Enter") {
         event.preventDefault();
+        if (!confirmNavigation()) return;
         router.push(
           view === "spam"
             ? `/thread/${activeThread.threadId}?from=spam`
@@ -861,6 +888,7 @@ export default function EmailListPanel({
         void toggleThreadReadState(activeThread, unread);
       } else if (event.key.toLowerCase() === "r") {
         event.preventDefault();
+        if (!confirmNavigation()) return;
         router.push(`/compose?mode=reply&id=${activeThread.latestEmail.id}`);
       }
     }
@@ -873,14 +901,21 @@ export default function EmailListPanel({
     archiveMailboxId,
     clientReadIds,
     clientUnreadIds,
+    confirmNavigation,
     keyboardThreadId,
     router,
     selectedEmailId,
     selectedThreadId,
+    selectionMode,
     shortcutHelpOpen,
     view,
     visibleThreads,
   ]);
+
+  const keyboardThreadAnnouncement = keyboardThreadId
+    ? visibleThreads.find((thread) => thread.threadId === keyboardThreadId)
+        ?.latestEmail.subject || "(no subject)"
+    : "";
 
   const actionBtnCls =
     "flex h-10 w-10 items-center justify-center rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 transition-colors shrink-0";
@@ -892,6 +927,11 @@ export default function EmailListPanel({
     <DeferredMailPanelContext.Provider value={syncDeferredData}>
       {deferredContent}
       <div className="flex flex-col h-full overflow-hidden w-full">
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {keyboardThreadAnnouncement
+            ? `Selected conversation: ${keyboardThreadAnnouncement}`
+            : ""}
+        </div>
 
       {/* Header */}
       <div className="flex min-h-[52px] items-center justify-between border-b border-stone-200 px-4 dark:border-stone-700 shrink-0">
@@ -1035,6 +1075,7 @@ export default function EmailListPanel({
           <button
             type="button"
             className="absolute inset-0"
+            tabIndex={-1}
             onClick={() => setShortcutHelpOpen(false)}
             aria-label="Close keyboard shortcuts"
           />
@@ -1043,6 +1084,11 @@ export default function EmailListPanel({
             aria-modal="true"
             aria-labelledby="shortcut-help-title"
             className="relative w-full max-w-sm rounded-xl border border-stone-200 bg-white p-5 shadow-xl dark:border-stone-700 dark:bg-stone-900"
+            onKeyDown={(event) => {
+              if (event.key !== "Tab") return;
+              event.preventDefault();
+              shortcutHelpCloseRef.current?.focus();
+            }}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2
@@ -1052,6 +1098,7 @@ export default function EmailListPanel({
                 Keyboard shortcuts
               </h2>
               <button
+                ref={shortcutHelpCloseRef}
                 type="button"
                 onClick={() => setShortcutHelpOpen(false)}
                 className="flex h-10 w-10 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
@@ -1339,9 +1386,14 @@ export default function EmailListPanel({
                     </div>
 
                     {/* Avatar — morphs to checkbox on hover / in selection mode */}
-                    <div
+                    <button
+                      type="button"
                       className="relative w-9 h-9 shrink-0 rounded-full cursor-pointer"
                       data-thread-selection-control
+                      aria-pressed={isChecked}
+                      aria-label={`${
+                        isChecked ? "Deselect" : "Select"
+                      } conversation from ${senderLabel}`}
                       onClick={() => {
                         if (!selectionMode) setSelectionMode(true);
                         // Toggle all emails in this thread
@@ -1371,11 +1423,12 @@ export default function EmailListPanel({
                       ].join(" ")}>
                         {isChecked && <IconCheck />}
                       </div>
-                    </div>
+                    </button>
 
                     {/* Text content */}
                     <Link
                       href={threadHref}
+                      aria-current={isRouteSelected ? "page" : undefined}
                       onClick={(e) => {
                         if (suppressLinkClick.current === thread.threadId) {
                           e.preventDefault();
