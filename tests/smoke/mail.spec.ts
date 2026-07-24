@@ -18,6 +18,31 @@ test("serves the themed favicon without an auth redirect", async ({
   expect(response.headers()["content-type"]).toContain("image/svg+xml");
 });
 
+test("keeps the browser tab in sync with live unread mail", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests?panel=tab-indicator");
+
+  const favicon = page.locator('link[data-mail-unread-favicon="true"]');
+  await expect(page).toHaveTitle("Mail");
+  await expect(favicon).toHaveAttribute("href", /\/icon\.svg$/);
+  await expect(favicon).toHaveAttribute("data-unread-count", "");
+
+  await page.getByRole("button", { name: "Set 1 unread" }).click();
+  await expect(page).toHaveTitle("(1) Mail");
+  await expect(favicon).toHaveAttribute("href", /^data:image\/svg\+xml,/);
+  await expect(favicon).toHaveAttribute("data-unread-count", "1");
+
+  await page.getByRole("button", { name: "Set 99 unread" }).click();
+  await expect(page).toHaveTitle("(99+) Mail");
+  await expect(favicon).toHaveAttribute("data-unread-count", "99+");
+
+  await page.getByRole("button", { name: "Clear unread" }).click();
+  await expect(page).toHaveTitle("Mail");
+  await expect(favicon).toHaveAttribute("href", /\/icon\.svg$/);
+  await expect(favicon).toHaveAttribute("data-unread-count", "");
+});
+
 test("loads sender artwork and falls back cleanly when it is unavailable", async ({
   page,
 }) => {

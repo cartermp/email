@@ -5,7 +5,14 @@ import { useCallback, useState } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import Composer from "@/components/Composer";
 import EmailListPanel from "@/components/EmailListPanel";
+import { useUnreadCount } from "@/components/UnreadCountProvider";
+import {
+  DEFAULT_FAVICON_HREF,
+  getBrowserTabTitle,
+  getUnreadFaviconDataUrl,
+} from "@/lib/browserTabIndicator";
 import { prepareHtml } from "@/lib/emailHtml";
+import { dispatchUnreadCountEvent } from "@/lib/unreadCount";
 import type { Email, EmailBodyPart } from "@/lib/types";
 
 export type SmokePanel =
@@ -14,7 +21,8 @@ export type SmokePanel =
   | "attachments"
   | "target"
   | "auto-sync"
-  | "dark-rendering";
+  | "dark-rendering"
+  | "tab-indicator";
 
 const fixtureEmails: Email[] = [
   {
@@ -113,6 +121,81 @@ const navItems: Array<{ panel: SmokePanel; label: string }> = [
   { panel: "reply", label: "Reply" },
   { panel: "attachments", label: "Attachments" },
 ];
+
+function TabIndicatorSmokePanel() {
+  const unreadCount = useUnreadCount();
+
+  function setUnreadCount(targetCount: number) {
+    const difference = targetCount - unreadCount;
+    if (difference === 0) return;
+
+    dispatchUnreadCountEvent(
+      difference > 0 ? "unread" : "read",
+      Array.from(
+        { length: Math.abs(difference) },
+        (_, index) => `tab-indicator-${targetCount}-${index}`,
+      ),
+    );
+  }
+
+  return (
+    <section className="flex h-full items-center justify-center overflow-auto p-6">
+      <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-6 shadow-sm dark:border-stone-800 dark:bg-stone-950">
+        <div className="flex items-center gap-4">
+          <div
+            role="img"
+            aria-label="Current browser tab icon"
+            data-testid="favicon-preview"
+            className="h-16 w-16 rounded-2xl bg-contain bg-center bg-no-repeat"
+            style={{
+              backgroundImage: `url("${
+                unreadCount > 0
+                  ? getUnreadFaviconDataUrl(unreadCount)
+                  : DEFAULT_FAVICON_HREF
+              }")`,
+            }}
+          />
+          <div>
+            <p className="text-sm font-medium text-stone-900 dark:text-stone-100">
+              {getBrowserTabTitle(unreadCount)}
+            </p>
+            <p
+              data-testid="tab-unread-count"
+              className="mt-1 text-sm text-stone-500 dark:text-stone-400"
+            >
+              {unreadCount === 0
+                ? "No unread email"
+                : `${unreadCount} unread ${unreadCount === 1 ? "email" : "emails"}`}
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setUnreadCount(1)}
+            className="rounded-lg bg-stone-900 px-3 py-2 text-sm text-white dark:bg-stone-100 dark:text-stone-900"
+          >
+            Set 1 unread
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnreadCount(99)}
+            className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-700 dark:border-stone-700 dark:text-stone-200"
+          >
+            Set 99 unread
+          </button>
+          <button
+            type="button"
+            onClick={() => setUnreadCount(0)}
+            className="rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-700 dark:border-stone-700 dark:text-stone-200"
+          >
+            Clear unread
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
   const [autoSyncEmails, setAutoSyncEmails] = useState(fixtureEmails);
@@ -231,6 +314,8 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             />
           </section>
         )}
+
+        {panel === "tab-indicator" && <TabIndicatorSmokePanel />}
 
         {panel === "target" && (
           <div className="flex h-full items-center justify-center p-6">

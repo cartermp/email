@@ -4,6 +4,7 @@ import Script from "next/script";
 import { Suspense } from "react";
 import { auth, signOut } from "@/auth";
 import AppearanceProvider from "@/components/AppearanceProvider";
+import BrowserTabIndicator from "@/components/BrowserTabIndicator";
 import DesktopNav from "@/components/DesktopNav";
 import MobileNav from "@/components/MobileNav";
 import NavigationGuardProvider from "@/components/NavigationGuardProvider";
@@ -63,6 +64,7 @@ export default async function RootLayout({
         <AppearanceProvider>
           <NavigationGuardProvider>
             <UnreadCountProvider>
+              <BrowserTabIndicator />
               <ToastProvider>
                 {session && (
                   <Suspense fallback={null}>
