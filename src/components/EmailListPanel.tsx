@@ -743,9 +743,6 @@ export default function EmailListPanel({
     dispatchUnreadCountEvent("read", ids);
     try {
       await bulkMarkAsRead(ids);
-      showToast({
-        message: ids.length === 1 ? "Marked as read" : `${ids.length} messages marked as read`,
-      });
       router.refresh();
     } catch {
       showToast({ message: "Could not mark those messages as read.", tone: "error" });
@@ -762,9 +759,6 @@ export default function EmailListPanel({
     dispatchUnreadCountEvent("unread", ids);
     try {
       await bulkMarkAsUnread(ids);
-      showToast({
-        message: ids.length === 1 ? "Marked as unread" : `${ids.length} messages marked as unread`,
-      });
       router.refresh();
     } catch {
       showToast({ message: "Could not mark those messages as unread.", tone: "error" });
@@ -884,7 +878,6 @@ export default function EmailListPanel({
       if (view === "inbox") dispatchUnreadCountEvent("read", ids);
       try {
         await bulkMarkAsRead(ids);
-        showToast({ message: "Marked as read" });
       } catch {
         showToast({ message: "Could not mark that thread as read.", tone: "error" });
       }
@@ -898,7 +891,6 @@ export default function EmailListPanel({
       if (view === "inbox") dispatchUnreadCountEvent("unread", ids);
       try {
         await bulkMarkAsUnread(ids);
-        showToast({ message: "Marked as unread" });
       } catch {
         showToast({ message: "Could not mark that thread as unread.", tone: "error" });
       }

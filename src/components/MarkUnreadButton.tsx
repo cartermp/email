@@ -22,7 +22,6 @@ export default function MarkUnreadButton({ emailId }: Props) {
         // Signal EmailListPanel to remove this email from its optimistic-read set
         window.dispatchEvent(new CustomEvent("email-mark-unread", { detail: emailId }));
         dispatchUnreadCountEvent("unread", [emailId]);
-        showToast({ message: "Marked as unread" });
         router.push("/");
       } catch {
         showToast({
