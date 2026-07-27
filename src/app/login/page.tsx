@@ -2,7 +2,7 @@ import { signIn } from "@/auth";
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 px-5 dark:bg-stone-950">
+    <div className="flex h-full min-h-0 items-center justify-center bg-stone-50 px-5 dark:bg-stone-950">
       <div className="w-full max-w-sm rounded-2xl border border-stone-200 bg-white p-7 shadow-sm dark:border-stone-800 dark:bg-stone-900">
         <div className="mb-7 flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-stone-900 text-white dark:bg-stone-100 dark:text-stone-900">

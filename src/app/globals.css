@@ -51,12 +51,26 @@
 }
 
 html {
+  height: 100%;
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Keep the application attached to Safari's current visible viewport. A
+ * percentage height can retain the old layout viewport after an iOS tab is
+ * restored, leaving the normal-flow mobile navigation above the bottom edge.
+ */
+.app-viewport {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 button,
@@ -128,6 +142,6 @@ html[data-reader-width="wide"] .mail-reader-container {
 }
 
 @media print {
-  html, body { height: auto !important; overflow: visible !important; }
+  html, body, .app-viewport { height: auto !important; overflow: visible !important; }
   body > div, main { height: auto !important; overflow: visible !important; }
 }

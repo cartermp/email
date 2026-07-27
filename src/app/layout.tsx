@@ -56,8 +56,12 @@ export default async function RootLayout({
   const session = await auth();
 
   return (
-    <html lang="en" className="h-full" suppressHydrationWarning>
-      <body className="h-full flex flex-col bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
+    <html
+      lang="en"
+      className="h-full overflow-hidden"
+      suppressHydrationWarning
+    >
+      <body className="app-viewport flex flex-col bg-stone-50 dark:bg-stone-900 text-stone-900 dark:text-stone-100 antialiased">
         <Script id="appearance-bootstrap" strategy="beforeInteractive">
           {APPEARANCE_BOOTSTRAP_SCRIPT}
         </Script>
@@ -128,7 +132,7 @@ export default async function RootLayout({
 
                 {/* Mobile bottom nav — hidden on desktop */}
                 {session && (
-                  <div className="print:hidden">
+                  <div className="shrink-0 print:hidden">
                     <MobileNav />
                   </div>
                 )}

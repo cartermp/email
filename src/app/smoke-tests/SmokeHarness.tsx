@@ -6,6 +6,7 @@ import AttachmentList from "@/components/AttachmentList";
 import Composer from "@/components/Composer";
 import EmailListPanel from "@/components/EmailListPanel";
 import MessageActionBar from "@/components/MessageActionBar";
+import MobileNav from "@/components/MobileNav";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import {
   DEFAULT_FAVICON_HREF,
@@ -24,7 +25,8 @@ export type SmokePanel =
   | "auto-sync"
   | "dark-rendering"
   | "tab-indicator"
-  | "message-actions";
+  | "message-actions"
+  | "mobile-viewport";
 
 const fixtureEmails: Email[] = [
   {
@@ -340,6 +342,20 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
                 className="border-t border-stone-100 dark:border-stone-700/70"
               />
             </div>
+          </section>
+        )}
+
+        {panel === "mobile-viewport" && (
+          <section
+            data-testid="mobile-viewport-fixture"
+            className="flex h-full min-h-0 flex-col bg-stone-50 dark:bg-stone-900"
+          >
+            <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+              <p className="max-w-xs text-center text-sm text-stone-500 dark:text-stone-400">
+                The navigation stays attached to the live mobile viewport.
+              </p>
+            </div>
+            <MobileNav />
           </section>
         )}
 

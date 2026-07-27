@@ -232,6 +232,37 @@ test("aligns message actions at the iPhone 15 Pro viewport", async ({
   ).toBe(true);
 });
 
+test("keeps the mobile navigation attached after viewport height changes", async ({
+  page,
+}) => {
+  async function expectNavigationAtViewportBottom(expectedHeight: number) {
+    const geometry = await page
+      .getByRole("navigation", { name: "Primary navigation" })
+      .evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return {
+          bottom: rect.bottom,
+          bodyHeight: document.body.getBoundingClientRect().height,
+          scrollY: window.scrollY,
+        };
+      });
+
+    expect(geometry.bottom).toBeCloseTo(expectedHeight, 0);
+    expect(geometry.bodyHeight).toBeCloseTo(expectedHeight, 0);
+    expect(geometry.scrollY).toBe(0);
+  }
+
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto("/smoke-tests?panel=mobile-viewport");
+  await expectNavigationAtViewportBottom(852);
+
+  await page.setViewportSize({ width: 393, height: 690 });
+  await expectNavigationAtViewportBottom(690);
+
+  await page.setViewportSize({ width: 393, height: 852 });
+  await expectNavigationAtViewportBottom(852);
+});
+
 test("moves through conversations with the keyboard", async ({ page }) => {
   await page.goto("/smoke-tests");
 
