@@ -1,19 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import SenderAvatar from "@/components/SenderAvatar";
 import EmailBody from "@/components/EmailBody";
-import PinButton from "@/components/PinButton";
 import CalendarEventCard, { CalendarEventData, CalendarResponse } from "@/components/CalendarEventCard";
 import AttachmentList from "@/components/AttachmentList";
-import MailIcon from "@/components/MailIcon";
-import MarkUnreadButton from "@/components/MarkUnreadButton";
+import MessageActionBar from "@/components/MessageActionBar";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
-import NotSpamButton from "@/components/NotSpamButton";
 import { visibleAttachments } from "@/lib/attachments";
-import Popover from "@/components/Popover";
 
 // ---------------------------------------------------------------------------
 // Body resolution (mirrors email/[id]/page.tsx logic)
@@ -167,61 +162,15 @@ function EmailStackItem({
           </div>
 
           {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-4 py-3 dark:border-stone-700/50">
-            <Link
-              href={`/compose?mode=${hasMultipleRecipients ? "reply-all" : "reply"}&id=${email.id}`}
-              className="inline-flex min-h-10 items-center gap-2 rounded-md bg-stone-900 px-4 text-sm font-medium text-white transition-colors hover:bg-stone-700 dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-stone-300"
-            >
-              <MailIcon name="reply" className="h-4 w-4" />
-              {hasMultipleRecipients ? "Reply all" : "Reply"}
-            </Link>
-            {hasMultipleRecipients && (
-              <Link
-                href={`/compose?mode=reply&id=${email.id}`}
-                className="inline-flex min-h-10 items-center rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
-              >
-                Reply
-              </Link>
-            )}
-            {isSpam && inboxMailboxId && (
-              <NotSpamButton
-                emailId={email.id}
-                mailboxIds={email.mailboxIds}
-                inboxMailboxId={inboxMailboxId}
-              />
-            )}
-            <PinButton emailId={email.id} initiallyPinned={!!email.keywords?.["$flagged"]} />
-            <MarkUnreadButton emailId={email.id} />
-            <span className="ml-auto">
-              <Popover
-                label="More message actions"
-                trigger={
-                  <>
-                    More
-                    <MailIcon name="chevronDown" className="h-3.5 w-3.5" />
-                  </>
-                }
-                triggerClassName="flex min-h-10 items-center gap-1 rounded-md border border-stone-200 px-3 text-xs text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-900 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-700 dark:hover:text-stone-100"
-                contentClassName="min-w-36 overflow-hidden rounded-lg border border-stone-200 bg-white py-1 text-sm shadow-lg dark:border-stone-700 dark:bg-stone-900"
-              >
-                <Link
-                  href={`/compose?mode=forward&id=${email.id}`}
-                  role="menuitem"
-                  className="block px-3 py-2.5 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
-                >
-                  Forward
-                </Link>
-                <Link
-                  href={`/print/${email.id}`}
-                  target="_blank"
-                  role="menuitem"
-                  className="block px-3 py-2.5 text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800"
-                >
-                  Print
-                </Link>
-              </Popover>
-            </span>
-          </div>
+          <MessageActionBar
+            emailId={email.id}
+            hasMultipleRecipients={hasMultipleRecipients}
+            initiallyPinned={!!email.keywords?.["$flagged"]}
+            isSpam={isSpam}
+            mailboxIds={email.mailboxIds}
+            inboxMailboxId={inboxMailboxId}
+            className="border-b border-stone-100 dark:border-stone-700/50"
+          />
 
           {/* Calendar invite */}
           {calendarEvent && (

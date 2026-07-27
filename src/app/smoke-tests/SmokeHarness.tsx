@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import Composer from "@/components/Composer";
 import EmailListPanel from "@/components/EmailListPanel";
+import MessageActionBar from "@/components/MessageActionBar";
 import { useUnreadCount } from "@/components/UnreadCountProvider";
 import {
   DEFAULT_FAVICON_HREF,
@@ -22,7 +23,8 @@ export type SmokePanel =
   | "target"
   | "auto-sync"
   | "dark-rendering"
-  | "tab-indicator";
+  | "tab-indicator"
+  | "message-actions";
 
 const fixtureEmails: Email[] = [
   {
@@ -316,6 +318,30 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
         )}
 
         {panel === "tab-indicator" && <TabIndicatorSmokePanel />}
+
+        {panel === "message-actions" && (
+          <section className="flex h-full items-start justify-center overflow-auto bg-stone-50 p-4 pt-12 dark:bg-stone-900">
+            <div className="w-full max-w-xl overflow-hidden rounded-xl border border-stone-200 bg-white shadow-sm dark:border-stone-700 dark:bg-stone-800/50">
+              <div className="px-4 py-4">
+                <p className="text-sm font-semibold text-stone-900 dark:text-stone-100">
+                  Mobile action alignment
+                </p>
+                <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
+                  A message with multiple recipients
+                </p>
+              </div>
+              <MessageActionBar
+                emailId="email-mobile-actions"
+                hasMultipleRecipients
+                initiallyPinned={false}
+                isSpam={false}
+                mailboxIds={{ "mailbox-inbox": true }}
+                inboxMailboxId="mailbox-inbox"
+                className="border-t border-stone-100 dark:border-stone-700/70"
+              />
+            </div>
+          </section>
+        )}
 
         {panel === "target" && (
           <div className="flex h-full items-center justify-center p-6">

@@ -186,6 +186,52 @@ test("darkens neutral email canvases while preserving image artwork", async ({
   );
 });
 
+test("aligns message actions at the iPhone 15 Pro viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 393, height: 852 });
+  await page.goto("/smoke-tests?panel=message-actions");
+
+  const actionBar = page.locator("[data-message-action-bar]");
+  await expect(actionBar).toBeVisible();
+  const actions = await actionBar
+    .locator("[data-message-action]")
+    .evaluateAll((elements) =>
+      Object.fromEntries(
+        elements.map((element) => {
+          const rect = element.getBoundingClientRect();
+          return [
+            element.getAttribute("data-message-action"),
+            {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+              right: rect.right,
+            },
+          ];
+        }),
+      ),
+    );
+
+  const primaryReply = actions["reply-primary"];
+  const reply = actions.reply;
+  const pin = actions.pin;
+  const markUnread = actions["mark-unread"];
+  const more = actions.more;
+
+  expect(primaryReply.y).toBeCloseTo(reply.y, 0);
+  expect(pin.y).toBeCloseTo(markUnread.y, 0);
+  expect(markUnread.y).toBeCloseTo(more.y, 0);
+  expect(primaryReply.x).toBeCloseTo(pin.x, 0);
+  expect(reply.right).toBeCloseTo(more.right, 0);
+  expect(
+    [primaryReply, reply, pin, markUnread, more].every(
+      (action) => action.height >= 44,
+    ),
+  ).toBe(true);
+});
+
 test("moves through conversations with the keyboard", async ({ page }) => {
   await page.goto("/smoke-tests");
 

@@ -13,6 +13,7 @@ const smokePanels = new Set<SmokePanel>([
   "auto-sync",
   "dark-rendering",
   "tab-indicator",
+  "message-actions",
 ]);
 
 export default async function SmokePage({ searchParams }: Props) {
