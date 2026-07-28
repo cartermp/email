@@ -113,6 +113,46 @@ test("opens a conversation from a desktop click", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("mail quick actions overlay text instead of reserving row space", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests");
+
+  const conversation = page.locator(
+    'a[href="/smoke-tests/thread/thread-maya"]',
+  );
+  const row = conversation.locator("xpath=..");
+  const quickActions = row.locator(
+    '[data-thread-quick-actions="thread-maya"]',
+  );
+
+  const defaultLayout = await conversation.evaluate((element) => {
+    const rowElement = element.parentElement;
+    const linkRect = element.getBoundingClientRect();
+    const rowRect = rowElement?.getBoundingClientRect();
+    return {
+      linkRight: linkRect.right,
+      rowRight: rowRect?.right ?? 0,
+    };
+  });
+
+  expect(defaultLayout.rowRight - defaultLayout.linkRight).toBeLessThan(20);
+
+  await row.hover();
+  await expect(
+    quickActions.getByRole("button", { name: "Archive thread" }),
+  ).toBeVisible();
+
+  const overlayColors = await quickActions.evaluate((element) => {
+    const rowElement = element.parentElement;
+    return {
+      actions: getComputedStyle(element).backgroundColor,
+      row: rowElement ? getComputedStyle(rowElement).backgroundColor : "",
+    };
+  });
+  expect(overlayColors.actions).toBe(overlayColors.row);
+});
+
 test("replaces search with selection actions without shifting conversations", async ({
   page,
 }) => {

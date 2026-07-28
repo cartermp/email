@@ -1815,129 +1815,150 @@ export default function EmailListPanel({
                       )}
                     </Link>
 
-                    {/* Quiet quick actions, visible on hover/focus. */}
+                    {/* Quick actions overlay the row so hidden controls do not
+                        reserve space that the message text could use. */}
                     {!selectionMode && (
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <div className="hidden items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 lg:flex">
-                          {view === "inbox" && archiveMailboxId && (
+                      <>
+                        <div
+                          className={[
+                            "pointer-events-none absolute inset-y-0 z-10 hidden items-center bg-transparent pl-2 group-hover:pointer-events-auto group-hover:bg-inherit group-focus-within:pointer-events-auto group-focus-within:bg-inherit lg:flex",
+                            pinnableEmails.length > 0 ? "right-11" : "right-3",
+                          ].join(" ")}
+                          data-thread-quick-actions={thread.threadId}
+                        >
+                          <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                            {view === "inbox" && archiveMailboxId && (
+                              <button
+                                type="button"
+                                title="Archive"
+                                aria-label="Archive thread"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  moveThread(thread, archiveMailboxId);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                              >
+                                <MailIcon name="archive" className="h-4 w-4" />
+                              </button>
+                            )}
+                            {(view === "archive" || view === "trash") && (
+                              <button
+                                type="button"
+                                title="Restore to Inbox"
+                                aria-label="Restore thread to Inbox"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void moveMessages(
+                                    thread.allEmails,
+                                    inboxId,
+                                    thread.allEmails.length === 1
+                                      ? "Restored to Inbox"
+                                      : `${thread.allEmails.length} messages restored to Inbox`,
+                                  );
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                              >
+                                <MailIcon name="inbox" className="h-4 w-4" />
+                              </button>
+                            )}
+                            {view === "archive" && trashMailboxId && (
+                              <button
+                                type="button"
+                                title="Move to Trash"
+                                aria-label="Move thread to Trash"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  moveThread(thread, trashMailboxId);
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-red-600 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-red-400"
+                              >
+                                <MailIcon name="trash" className="h-4 w-4" />
+                              </button>
+                            )}
+                            {view === "trash" && trashMailboxId && (
+                              <button
+                                type="button"
+                                title="Delete forever"
+                                aria-label="Permanently delete thread"
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  void deleteMessagesPermanently(
+                                    thread.allEmails.map((email) => email.id),
+                                  );
+                                }}
+                                className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-red-50 hover:text-red-600 dark:text-stone-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                              >
+                                <MailIcon name="trash" className="h-4 w-4" />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              title="Archive"
-                              aria-label="Archive thread"
+                              title={isUnread ? "Mark as read" : "Mark as unread"}
+                              aria-label={isUnread ? "Mark thread as read" : "Mark thread as unread"}
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
-                                moveThread(thread, archiveMailboxId);
+                                void toggleThreadReadState(thread, isUnread);
                               }}
                               className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
                             >
-                              <MailIcon name="archive" className="h-4 w-4" />
+                              <MailIcon
+                                name={isUnread ? "check" : "unread"}
+                                className="h-4 w-4"
+                              />
                             </button>
-                          )}
-                          {(view === "archive" || view === "trash") && (
-                            <button
-                              type="button"
-                              title="Restore to Inbox"
-                              aria-label="Restore thread to Inbox"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void moveMessages(
-                                  thread.allEmails,
-                                  inboxId,
-                                  thread.allEmails.length === 1
-                                    ? "Restored to Inbox"
-                                    : `${thread.allEmails.length} messages restored to Inbox`,
-                                );
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
-                            >
-                              <MailIcon name="inbox" className="h-4 w-4" />
-                            </button>
-                          )}
-                          {view === "archive" && trashMailboxId && (
-                            <button
-                              type="button"
-                              title="Move to Trash"
-                              aria-label="Move thread to Trash"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                moveThread(thread, trashMailboxId);
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-red-600 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-red-400"
-                            >
-                              <MailIcon name="trash" className="h-4 w-4" />
-                            </button>
-                          )}
-                          {view === "trash" && trashMailboxId && (
-                            <button
-                              type="button"
-                              title="Delete forever"
-                              aria-label="Permanently delete thread"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                void deleteMessagesPermanently(
-                                  thread.allEmails.map((email) => email.id),
-                                );
-                              }}
-                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-red-50 hover:text-red-600 dark:text-stone-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
-                            >
-                              <MailIcon name="trash" className="h-4 w-4" />
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            title={isUnread ? "Mark as read" : "Mark as unread"}
-                            aria-label={isUnread ? "Mark thread as read" : "Mark thread as unread"}
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              void toggleThreadReadState(thread, isUnread);
-                            }}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
-                          >
-                            <MailIcon
-                              name={isUnread ? "check" : "unread"}
-                              className="h-4 w-4"
-                            />
-                          </button>
+                          </div>
                         </div>
                         {view === "inbox" && pinnableEmails.length > 0 && (
-                          <button
-                            type="button"
-                            title={threadIsPinned ? "Unpin" : "Pin"}
-                            aria-label={threadIsPinned ? "Unpin thread" : "Pin thread"}
-                            onClick={async (event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              const ids = pinnableEmails.map((email) => email.id);
-                              const next = !threadIsPinned;
-                              ids.forEach((id) =>
-                                window.dispatchEvent(
-                                  new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
-                                )
-                              );
-                              try {
-                                await bulkSetPin(ids, next);
-                                showToast({ message: next ? "Pinned" : "Unpinned" });
-                                router.refresh();
-                              } catch {
-                                showToast({ message: "Could not update pinning.", tone: "error" });
-                              }
-                            }}
-                            className={[
-                              "flex h-8 w-8 items-center justify-center rounded-md transition-all",
-                              threadIsPinned
-                                ? "text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-                                : "text-stone-300 opacity-0 hover:bg-stone-200 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-stone-600 dark:hover:bg-stone-800 dark:hover:text-amber-400",
-                            ].join(" ")}
-                          >
-                            <IconPin />
-                          </button>
+                          <>
+                            <span
+                              className={[
+                                "pointer-events-none absolute inset-y-0 right-3 z-10 w-8",
+                                threadIsPinned
+                                  ? "bg-inherit"
+                                  : "bg-transparent group-hover:bg-inherit group-focus-within:bg-inherit",
+                              ].join(" ")}
+                              data-pinned={threadIsPinned ? "true" : "false"}
+                              aria-hidden="true"
+                            />
+                            <button
+                              type="button"
+                              title={threadIsPinned ? "Unpin" : "Pin"}
+                              aria-label={threadIsPinned ? "Unpin thread" : "Pin thread"}
+                              onClick={async (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                const ids = pinnableEmails.map((email) => email.id);
+                                const next = !threadIsPinned;
+                                ids.forEach((id) =>
+                                  window.dispatchEvent(
+                                    new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
+                                  )
+                                );
+                                try {
+                                  await bulkSetPin(ids, next);
+                                  showToast({ message: next ? "Pinned" : "Unpinned" });
+                                  router.refresh();
+                                } catch {
+                                  showToast({ message: "Could not update pinning.", tone: "error" });
+                                }
+                              }}
+                              className={[
+                                "absolute right-3 top-1/2 z-20 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md transition-all",
+                                threadIsPinned
+                                  ? "text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                                  : "pointer-events-none text-stone-300 opacity-0 hover:bg-stone-200 hover:text-amber-500 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 dark:text-stone-600 dark:hover:bg-stone-800 dark:hover:text-amber-400",
+                              ].join(" ")}
+                            >
+                              <IconPin />
+                            </button>
+                          </>
                         )}
-                      </div>
+                      </>
                     )}
                     </div>
                   </div>
