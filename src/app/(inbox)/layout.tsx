@@ -18,6 +18,14 @@ const EMPTY_DEFERRED_DATA: DeferredMailPanelData = {
   spamUnreadTotal: 0,
   spamReads: [],
   spamReadTotal: 0,
+  archiveUnreads: [],
+  archiveUnreadTotal: 0,
+  archiveReads: [],
+  archiveReadTotal: 0,
+  trashUnreads: [],
+  trashUnreadTotal: 0,
+  trashReads: [],
+  trashReadTotal: 0,
 };
 
 async function DeferredPanelData({
@@ -72,6 +80,8 @@ async function MailPanelData() {
           drafts: draftsMailbox?.id,
           sent: sentMailbox?.id,
           spam: spamMailbox?.id,
+          archive: archiveMailbox?.id,
+          trash: trashMailbox?.id,
         },
         true,
       ),
@@ -85,6 +95,14 @@ async function MailPanelData() {
         spamUnreadTotal: data.spam.unreadTotal,
         spamReads: data.spam.reads,
         spamReadTotal: data.spam.readTotal,
+        archiveUnreads: data.archive.unreads,
+        archiveUnreadTotal: data.archive.unreadTotal,
+        archiveReads: data.archive.reads,
+        archiveReadTotal: data.archive.readTotal,
+        trashUnreads: data.trash.unreads,
+        trashUnreadTotal: data.trash.unreadTotal,
+        trashReads: data.trash.reads,
+        trashReadTotal: data.trash.readTotal,
       }),
     )
     .catch((err) => {
@@ -106,6 +124,8 @@ async function MailPanelData() {
       pinned: [],
       sent: { emails: [], total: 0 },
       spam: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+      archive: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+      trash: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
     };
   }
 
@@ -133,6 +153,14 @@ async function MailPanelData() {
       archiveMailboxId={archiveMailbox?.id}
       trashMailboxId={trashMailbox?.id}
       spamMailboxId={spamMailbox?.id}
+      archiveUnreads={[]}
+      archiveUnreadTotal={0}
+      archiveReads={[]}
+      archiveReadTotal={0}
+      trashUnreads={[]}
+      trashUnreadTotal={0}
+      trashReads={[]}
+      trashReadTotal={0}
       deferredContent={
         <Suspense fallback={null}>
           <DeferredPanelData result={deferredResult} />

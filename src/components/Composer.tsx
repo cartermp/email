@@ -7,6 +7,7 @@ import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 import { useToast } from "@/components/ToastProvider";
 import { useNavigationGuard } from "@/components/NavigationGuardProvider";
 import {
+  appendForwardedHtml,
   markQuotedReplyHtml,
   wrapComposePreviewHtml,
   wrapEmailHtml,
@@ -197,6 +198,9 @@ interface Props {
   replyThreadId?: string;
   initialDraftId?: string;
   forwardedHtml?: string;
+  initialIdentityId?: string;
+  initialInlineImages?: InlineImage[];
+  initialAttachments?: Attachment[];
 }
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -223,6 +227,8 @@ function draftFingerprint({
   bcc,
   subject,
   markdown,
+  inlineImages,
+  attachments,
 }: {
   identityId: string;
   to: string;
@@ -230,8 +236,19 @@ function draftFingerprint({
   bcc: string;
   subject: string;
   markdown: string;
+  inlineImages: Pick<InlineImage, "id" | "blobId" | "type">[];
+  attachments: Pick<Attachment, "blobId" | "name" | "type">[];
 }) {
-  return JSON.stringify([identityId, to, cc, bcc, subject, markdown]);
+  return JSON.stringify([
+    identityId,
+    to,
+    cc,
+    bcc,
+    subject,
+    markdown,
+    inlineImages.map(({ id, blobId, type }) => [id, blobId, type]),
+    attachments.map(({ blobId, name, type }) => [blobId, name, type]),
+  ]);
 }
 
 export default function Composer({
@@ -245,10 +262,17 @@ export default function Composer({
   replyThreadId,
   initialDraftId,
   forwardedHtml,
+  initialIdentityId,
+  initialInlineImages = [],
+  initialAttachments = [],
 }: Props) {
   const router = useRouter();
   const showToast = useToast();
-  const [identityId, setIdentityId] = useState(identities[0]?.id ?? "");
+  const startingIdentityId =
+    identities.some((identity) => identity.id === initialIdentityId)
+      ? initialIdentityId!
+      : identities[0]?.id ?? "";
+  const [identityId, setIdentityId] = useState(startingIdentityId);
   const [to, setTo] = useState(initialTo);
   const [cc, setCc] = useState(initialCc);
   const [bcc, setBcc] = useState(initialBcc);
@@ -262,8 +286,10 @@ export default function Composer({
   const [dragActive, setDragActive] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [inlineImages, setInlineImages] = useState<InlineImage[]>([]);
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [inlineImages, setInlineImages] =
+    useState<InlineImage[]>(initialInlineImages);
+  const [attachments, setAttachments] =
+    useState<Attachment[]>(initialAttachments);
   const [uploading, setUploading] = useState(0);
 
   // Draft state
@@ -272,12 +298,14 @@ export default function Composer({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [savedFingerprint, setSavedFingerprint] = useState(() =>
     draftFingerprint({
-      identityId: identities[0]?.id ?? "",
+      identityId: startingIdentityId,
       to: initialTo,
       cc: initialCc,
       bcc: initialBcc,
       subject: initialSubject,
       markdown: initialBody,
+      inlineImages: initialInlineImages,
+      attachments: initialAttachments,
     }),
   );
   const draftIdRef = useRef<string | null>(initialDraftId ?? null);
@@ -305,12 +333,11 @@ export default function Composer({
     bcc: showBcc ? bcc : "",
     subject,
     markdown,
+    inlineImages,
+    attachments,
   });
   const hasUnsavedDraftChanges =
-    currentFingerprint !== savedFingerprint ||
-    attachments.length > 0 ||
-    inlineImages.length > 0 ||
-    uploading > 0;
+    currentFingerprint !== savedFingerprint || uploading > 0;
   useNavigationGuard(
     hasUnsavedDraftChanges && !sending,
     "Leave this message? Recent changes may not be saved.",
@@ -367,9 +394,15 @@ export default function Composer({
       isInitialRender.current = false;
       return;
     }
-    if (sending || suppressDraftSideEffectsRef.current) return;
+    if (sending || uploading > 0 || suppressDraftSideEffectsRef.current) return;
     // Nothing worth saving yet
-    if (!to && !subject && !markdown) return;
+    if (
+      !to &&
+      !subject &&
+      !markdown &&
+      attachments.length === 0 &&
+      inlineImages.length === 0
+    ) return;
 
     const timer = setTimeout(async () => {
       if (savingRef.current || suppressDraftSideEffectsRef.current) return;
@@ -380,15 +413,36 @@ export default function Composer({
       const existingDraftId = draftIdRef.current;
       const isFirstSave = !existingDraftId;
       try {
+        const rawHtml = await marked.parse(normalizeComposeMarkdown(markdown));
+        const htmlWithCids = replacePlaceholders(
+          rawHtml,
+          (id) => `cid:${id}@mail`,
+        );
+        const renderedBody = forwardedHtml
+          ? htmlWithCids + appendForwardedHtml(forwardedHtml)
+          : htmlWithCids;
+        const composedBody = inReplyToId
+          ? markQuotedReplyHtml(renderedBody)
+          : renderedBody;
         const result = await saveDraftAction({
           draftId: existingDraftId,
-          fromName: identity?.name ?? "",
-          fromEmail: identity?.email ?? "",
+          identityId: identity?.id ?? "",
           to,
           cc: showCc ? cc : "",
           bcc: showBcc ? bcc : "",
           subject,
           body: markdown,
+          htmlBody: wrapEmailHtml(composedBody),
+          inlineImages: inlineImages.map(({ id, blobId, type }) => ({
+            id,
+            blobId,
+            type,
+          })),
+          attachments: attachments.map(({ blobId, name, type }) => ({
+            blobId,
+            name,
+            type,
+          })),
           inReplyToId,
         });
 
@@ -422,6 +476,8 @@ export default function Composer({
             bcc: showBcc ? bcc : "",
             subject,
             markdown,
+            inlineImages,
+            attachments,
           }),
         );
         setLastSaved(new Date());
@@ -434,7 +490,7 @@ export default function Composer({
     }, 2000);
 
     return () => clearTimeout(timer);
-  }, [to, cc, bcc, showCc, showBcc, subject, markdown, identityId, inReplyToId, sending]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [to, cc, bcc, showCc, showBcc, subject, markdown, identityId, inReplyToId, sending, uploading, inlineImages, attachments, forwardedHtml]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePaste = useCallback(
     async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -525,7 +581,8 @@ export default function Composer({
       !!bcc.trim() ||
       !!subject.trim() ||
       !!markdown.trim() ||
-      attachmentsRef.current.length > 0;
+      attachmentsRef.current.length > 0 ||
+      inlineImagesRef.current.length > 0;
     if (hasContent && !window.confirm("Discard this draft?")) return;
     suppressDraftSideEffectsRef.current = true;
     cleanupPendingDraftsRef.current = true;
@@ -1012,24 +1069,4 @@ export default function Composer({
       </div>
     </div>
   );
-}
-
-// Extract the <body> content from a full HTML document, or return the input
-// as-is if no <body> tag is found (e.g. HTML fragments).
-function extractBodyContent(html: string): string {
-  const m = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-  if (m) return m[1];
-  // Strip doctype / html / head wrappers and return the rest
-  return html
-    .replace(/<!DOCTYPE[^>]*>/gi, "")
-    .replace(/<\/?html[^>]*>/gi, "")
-    .replace(/<head[\s\S]*?<\/head>/gi, "")
-    .trim();
-}
-
-// Returns an HTML snippet to append after the composed content when forwarding.
-// The original email is rendered in a visually separated block.
-function appendForwardedHtml(originalHtml: string): string {
-  const content = extractBodyContent(originalHtml);
-  return `<div data-forwarded-email="true" style="margin-top:24px;padding-top:16px;border-top:1px solid #e4e4e7;font-size:14px;">${content}</div>`;
 }

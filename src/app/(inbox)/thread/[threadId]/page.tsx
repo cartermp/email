@@ -10,6 +10,7 @@ import {
   getJmapContext,
   getJmapMailboxContext,
 } from "@/lib/jmapServer";
+import { sanitizeReaderHtml } from "@/lib/printHtml";
 
 interface Props {
   params: Promise<{ threadId: string }>;
@@ -20,10 +21,32 @@ export default async function ThreadPage({ params, searchParams }: Props) {
   const { threadId } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const from = resolvedSearchParams.from;
-  const backLabel = from === "spam" ? "Spam" : from === "sent" ? "Sent" : "Inbox";
+  const backLabel =
+    from === "spam"
+      ? "Spam"
+      : from === "sent"
+        ? "Sent"
+        : from === "archive"
+          ? "Archive"
+          : from === "trash"
+            ? "Trash"
+            : "Inbox";
 
   const { session, accountId } = await getJmapContext();
-  const emails = await getThreadEmails(session.apiUrl, accountId, threadId);
+  const emails = (await getThreadEmails(session.apiUrl, accountId, threadId)).map(
+    (email) => {
+      const bodyValues = { ...email.bodyValues };
+      for (const part of email.htmlBody ?? []) {
+        if (part.partId && bodyValues[part.partId]) {
+          bodyValues[part.partId] = {
+            ...bodyValues[part.partId],
+            value: sanitizeReaderHtml(bodyValues[part.partId].value),
+          };
+        }
+      }
+      return { ...email, bodyValues };
+    },
+  );
 
   if (!emails.length) return notFound();
 
@@ -57,6 +80,8 @@ export default async function ThreadPage({ params, searchParams }: Props) {
   ]);
   const spamMailbox = mailboxes.find((m) => m.role === "junk" || m.name.toLowerCase() === "spam" || m.name.toLowerCase() === "junk");
   const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
+  const archiveMailbox = mailboxes.find((m) => m.role === "archive");
+  const trashMailbox = mailboxes.find((m) => m.role === "trash");
 
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
@@ -82,6 +107,8 @@ export default async function ThreadPage({ params, searchParams }: Props) {
           calendarEvents={calendarEvents}
           spamMailboxId={spamMailbox?.id}
           inboxMailboxId={inboxMailbox?.id}
+          archiveMailboxId={archiveMailbox?.id}
+          trashMailboxId={trashMailbox?.id}
         />
       </div>
     </div>

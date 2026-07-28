@@ -186,6 +186,37 @@ test("darkens neutral email canvases while preserving image artwork", async ({
   );
 });
 
+test("blocks remote email images until the reader explicitly allows them", async ({
+  page,
+}) => {
+  let remoteRequests = 0;
+  await page.route(
+    "https://images.example.test/tracking-pixel.png",
+    async (route) => {
+      remoteRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: Buffer.from(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+          "base64",
+        ),
+      });
+    },
+  );
+
+  await page.goto("/smoke-tests?panel=reader-privacy");
+  await expect(
+    page.getByText("Remote images are blocked for privacy."),
+  ).toBeVisible();
+  await page.waitForTimeout(200);
+  expect(remoteRequests).toBe(0);
+
+  await page.getByRole("button", { name: "Load images" }).click();
+  await expect.poll(() => remoteRequests).toBe(1);
+  await expect(page.getByRole("button", { name: "Load images" })).toHaveCount(0);
+});
+
 test("aligns message actions at the iPhone 15 Pro viewport", async ({
   page,
 }) => {

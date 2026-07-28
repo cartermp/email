@@ -48,6 +48,8 @@ interface ItemProps {
   onToggle: () => void;
   spamMailboxId?: string;
   inboxMailboxId?: string;
+  archiveMailboxId?: string;
+  trashMailboxId?: string;
 }
 
 function EmailStackItem({
@@ -59,6 +61,8 @@ function EmailStackItem({
   onToggle,
   spamMailboxId,
   inboxMailboxId,
+  archiveMailboxId,
+  trashMailboxId,
 }: ItemProps) {
   const isUnread = !email.keywords?.["$seen"];
   const resolved = resolveBody(email);
@@ -169,6 +173,8 @@ function EmailStackItem({
             isSpam={isSpam}
             mailboxIds={email.mailboxIds}
             inboxMailboxId={inboxMailboxId}
+            archiveMailboxId={archiveMailboxId}
+            trashMailboxId={trashMailboxId}
             className="border-b border-stone-100 dark:border-stone-700/50"
           />
 
@@ -218,9 +224,18 @@ interface Props {
   calendarEvents: (CalendarEventData | null)[];
   spamMailboxId?: string;
   inboxMailboxId?: string;
+  archiveMailboxId?: string;
+  trashMailboxId?: string;
 }
 
-export default function ThreadView({ emails, calendarEvents, spamMailboxId, inboxMailboxId }: Props) {
+export default function ThreadView({
+  emails,
+  calendarEvents,
+  spamMailboxId,
+  inboxMailboxId,
+  archiveMailboxId,
+  trashMailboxId,
+}: Props) {
   // Start with the most recent email expanded
   const lastId = emails[emails.length - 1]?.id;
   const [expandedIds, setExpandedIds] = useState<Set<string>>(
@@ -256,6 +271,8 @@ export default function ThreadView({ emails, calendarEvents, spamMailboxId, inbo
           onToggle={() => toggle(email.id)}
           spamMailboxId={spamMailboxId}
           inboxMailboxId={inboxMailboxId}
+          archiveMailboxId={archiveMailboxId}
+          trashMailboxId={trashMailboxId}
         />
       ))}
     </div>

@@ -27,11 +27,19 @@ function destinationActive(
         pathname.startsWith("/thread/") ||
         pathname.startsWith("/attachment/")) &&
       from !== "spam" &&
-      from !== "sent"
+      from !== "sent" &&
+      from !== "archive" &&
+      from !== "trash"
     );
   }
   if (href === "/sent") return pathname.startsWith("/sent") || from === "sent";
   if (href === "/spam") return pathname.startsWith("/spam") || from === "spam";
+  if (href === "/archive") {
+    return pathname.startsWith("/archive") || from === "archive";
+  }
+  if (href === "/trash") {
+    return pathname.startsWith("/trash") || from === "trash";
+  }
   return pathname.startsWith(href);
 }
 
@@ -121,6 +129,8 @@ export default function MobileNav() {
   const secondary: Destination[] = [
     { href: "/drafts", label: "Drafts", icon: "drafts", badge: counts.drafts },
     { href: "/sent", label: "Sent", icon: "sent" },
+    { href: "/archive", label: "Archive", icon: "archive" },
+    { href: "/trash", label: "Trash", icon: "trash" },
     { href: "/spam", label: "Spam", icon: "spam", badge: counts.spam },
     { href: "/settings", label: "Settings", icon: "settings" },
   ];

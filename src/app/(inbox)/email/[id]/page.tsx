@@ -13,7 +13,16 @@ export default async function EmailPage({ params, searchParams }: Props) {
   const { id } = await params;
   const resolvedSearchParams = searchParams ? await searchParams : {};
   const from = resolvedSearchParams.from;
-  const backLabel = from === "spam" ? "Spam" : from === "sent" ? "Sent" : "Inbox";
+  const backLabel =
+    from === "spam"
+      ? "Spam"
+      : from === "sent"
+        ? "Sent"
+        : from === "archive"
+          ? "Archive"
+          : from === "trash"
+            ? "Trash"
+            : "Inbox";
 
   const { session, accountId } = await getJmapContext();
   const email = await getEmail(session.apiUrl, accountId, id);

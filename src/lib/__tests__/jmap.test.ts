@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, getAccountId, getContactsAccountId, getInboxSnapshot, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, getAccountId, getContactsAccountId, getInboxSnapshot, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -324,10 +324,12 @@ describe("loadMailPanelData", () => {
       drafts: "drafts",
       sent: "sent",
       spam: "spam",
+      archive: "archive",
+      trash: "trash",
     });
 
     assert.equal(primaryCalls.length, 4);
-    assert.equal(deferredCalls.length, 10);
+    assert.equal(deferredCalls.length, 18);
     assert.ok(
       primaryCalls.every(([, , callId]) => callId !== "pq" && callId !== "pg"),
     );
@@ -351,6 +353,14 @@ describe("loadMailPanelData", () => {
         ["Email/get", { list: [makeEmailResponse("spam-unread", false)] }, "sug"],
         ["Email/query", { total: 4 }, "srq"],
         ["Email/get", { list: [makeEmailResponse("spam-read", true)] }, "srg"],
+        ["Email/query", { total: 5 }, "auq"],
+        ["Email/get", { list: [makeEmailResponse("archive-unread", false)] }, "aug"],
+        ["Email/query", { total: 6 }, "arq"],
+        ["Email/get", { list: [makeEmailResponse("archive-read", true)] }, "arg"],
+        ["Email/query", { total: 7 }, "tuq"],
+        ["Email/get", { list: [makeEmailResponse("trash-unread", false)] }, "tug"],
+        ["Email/query", { total: 8 }, "trq"],
+        ["Email/get", { list: [makeEmailResponse("trash-read", true)] }, "trg"],
       ]),
     ];
 
@@ -362,13 +372,15 @@ describe("loadMailPanelData", () => {
         drafts: "drafts",
         sent: "sent",
         spam: "spam",
+        archive: "archive",
+        trash: "trash",
       },
     );
 
     assert.equal(capturedBodies.length, 1);
     assert.equal(
       (capturedBodies[0] as { methodCalls: unknown[] }).methodCalls.length,
-      14,
+      22,
     );
     assert.equal(result.inbox.unreadTotal, 2);
     assert.equal(result.inbox.readTotal, 7);
@@ -377,6 +389,10 @@ describe("loadMailPanelData", () => {
     assert.equal(result.sent.total, 9);
     assert.equal(result.spam.unreadTotal, 3);
     assert.equal(result.spam.readTotal, 4);
+    assert.equal(result.archive.unreadTotal, 5);
+    assert.equal(result.archive.readTotal, 6);
+    assert.equal(result.trash.unreadTotal, 7);
+    assert.equal(result.trash.readTotal, 8);
   });
 });
 
@@ -626,6 +642,53 @@ describe("moveEmailsToMailbox", () => {
       { id: "e1", mailboxIds: {} },
     ], "trash");
     assert.equal(lastCall()[1].accountId, "my-account");
+  });
+});
+
+describe("permanent deletion", () => {
+  it("destroys the requested messages in one Email/set call", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/set", { destroyed: ["e1", "e2"] }, "0"],
+      ]),
+    ];
+
+    await destroyEmails(
+      "https://api.example.com/jmap",
+      "acct1",
+      ["e1", "e2"],
+    );
+    const call = (capturedBodies[0] as any).methodCalls[0];
+    assert.equal(call[0], "Email/set");
+    assert.deepEqual(call[1].destroy, ["e1", "e2"]);
+  });
+
+  it("empties a mailbox in bounded batches until its query is empty", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/query", { ids: ["e1", "e2"] }, "0"],
+      ]),
+      makeJmapResponse([
+        ["Email/set", { destroyed: ["e1", "e2"] }, "0"],
+      ]),
+      makeJmapResponse([
+        ["Email/query", { ids: [] }, "0"],
+      ]),
+    ];
+
+    const destroyed = await destroyAllEmailsInMailbox(
+      "https://api.example.com/jmap",
+      "acct1",
+      "trash",
+    );
+    assert.equal(destroyed, 2);
+    assert.equal(capturedBodies.length, 3);
+    const firstQuery = (capturedBodies[0] as any).methodCalls[0][1];
+    assert.deepEqual(firstQuery.filter, { inMailbox: "trash" });
+    assert.equal(firstQuery.position, 0);
+    assert.equal(firstQuery.limit, 250);
   });
 });
 
@@ -911,6 +974,63 @@ describe("saveDraft", () => {
     await saveDraft("https://api.example.com/jmap", "acct1", "drafts-mbox", BASE);
     assert.equal(draft().inReplyTo, undefined);
     assert.equal(draft().references, undefined);
+  });
+
+  it("preserves Bcc recipients and both text and HTML bodies", async () => {
+    setupMock();
+    await saveDraft("https://api.example.com/jmap", "acct1", "drafts-mbox", {
+      ...BASE,
+      bcc: [{ name: "Private", email: "private@example.com" }],
+      htmlBody: "<p>Draft body</p>",
+    });
+    assert.deepEqual(draft().bcc, [
+      { name: "Private", email: "private@example.com" },
+    ]);
+    assert.equal(draft().bodyStructure.type, "multipart/alternative");
+    assert.equal(draft().bodyValues.body.value, "Draft body");
+    assert.equal(draft().bodyValues.html.value, "<p>Draft body</p>");
+  });
+
+  it("preserves inline images and attachments in the draft MIME structure", async () => {
+    setupMock();
+    await saveDraft("https://api.example.com/jmap", "acct1", "drafts-mbox", {
+      ...BASE,
+      htmlBody: '<p>Draft</p><img src="cid:image-1@mail">',
+      inlineImages: [
+        { id: "image-1", blobId: "inline-blob", type: "image/png" },
+      ],
+      attachments: [
+        {
+          blobId: "attachment-blob",
+          name: "report.pdf",
+          type: "application/pdf",
+        },
+      ],
+    });
+    const structure = draft().bodyStructure;
+    assert.equal(structure.type, "multipart/mixed");
+    assert.equal(structure.subParts[0].type, "multipart/related");
+    assert.equal(structure.subParts[0].subParts[1].cid, "image-1@mail");
+    assert.equal(
+      structure.subParts[0].subParts[1].disposition,
+      "inline",
+    );
+    assert.equal(structure.subParts[1].name, "report.pdf");
+    assert.equal(structure.subParts[1].disposition, "attachment");
+  });
+
+  it("replaces an existing draft only after creating its successor", async () => {
+    setupMock();
+    await saveDraft(
+      "https://api.example.com/jmap",
+      "acct1",
+      "drafts-mbox",
+      BASE,
+      "old-draft",
+    );
+    const request = (capturedBodies[0] as any).methodCalls[0][1];
+    assert.ok(request.create.draft);
+    assert.deepEqual(request.destroy, ["old-draft"]);
   });
 });
 

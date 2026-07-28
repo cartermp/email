@@ -46,6 +46,76 @@ const URL_RE = /(https?:\/\/[^\s<>"']+)/g;
 const TOKEN_RE =
   /(<script[\s\S]*?<\/script\s*>|<style[\s\S]*?<\/style\s*>|<\/a\s*>|<a[\s>][^>]*>|<[^>]*>)|([^<]*)/gi;
 
+const ACTIVE_CONTENT_TAG_RE =
+  /<(script|iframe|frameset|object|embed|applet|form|button|select|textarea|audio|video)\b[^>]*>[\s\S]*?<\/\1\s*>/gi;
+const ACTIVE_TAG_RE =
+  /<\/?(?:script|iframe|frame|frameset|object|embed|applet|form|input|button|select|textarea|link|base|audio|video|source)\b[^>]*>/gi;
+const DANGEROUS_META_RE =
+  /<meta\b[^>]*http-equiv\s*=\s*(?:"(?:refresh|content-security-policy)"|'(?:refresh|content-security-policy)'|(?:refresh|content-security-policy))[^>]*>/gi;
+const EVENT_HANDLER_RE =
+  /\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+const DANGEROUS_URL_RE =
+  /\s+(href|src|background|poster|xlink:href)\s*=\s*(["']?)\s*(?:javascript|vbscript):[\s\S]*?\2(?=\s|>)/gi;
+const REMOTE_RESOURCE_ATTRIBUTE_RE =
+  /\b(?:src|background|poster)\s*=\s*(?:"\s*(?:https?:)?\/\/|'(?:https?:)?\/\/|(?:https?:)?\/\/)/i;
+const REMOTE_SRCSET_RE =
+  /\bsrcset\s*=\s*(?:"[^"]*(?:https?:)?\/\/[^"]*"|'[^']*(?:https?:)?\/\/[^']*'|[^\s>]*(?:https?:)?\/\/[^\s>]*)/i;
+const REMOTE_CSS_RE =
+  /(?:@import\s+(?:url\s*\()?|url\s*\(\s*['"]?)\s*(?:https?:)?\/\//i;
+const REMOTE_SVG_RESOURCE_RE =
+  /<(?:image|use|feimage)\b[^>]*\s(?:href|xlink:href)\s*=\s*(?:"\s*(?:https?:)?\/\/|'\s*(?:https?:)?\/\/|(?:https?:)?\/\/)/i;
+
+function stripActiveContentFallback(html: string): string {
+  return html
+    .replace(ACTIVE_CONTENT_TAG_RE, "")
+    .replace(ACTIVE_TAG_RE, "")
+    .replace(DANGEROUS_META_RE, "")
+    .replace(EVENT_HANDLER_RE, "")
+    .replace(/\s+(?:srcdoc|ping|nonce)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(DANGEROUS_URL_RE, "");
+}
+
+export function hasRemoteContent(html: string): boolean {
+  return (
+    REMOTE_RESOURCE_ATTRIBUTE_RE.test(html) ||
+    REMOTE_SRCSET_RE.test(html) ||
+    REMOTE_CSS_RE.test(html) ||
+    REMOTE_SVG_RESOURCE_RE.test(html)
+  );
+}
+
+function blockRemoteContent(html: string): string {
+  return html
+    .replace(
+      /\s+(src|background|poster)\s*=\s*(["'])\s*((?:https?:)?\/\/[\s\S]*?)\2/gi,
+      ' data-mail-remote-content="blocked"',
+    )
+    .replace(
+      /\s+(src|background|poster)\s*=\s*((?:https?:)?\/\/[^\s>]*)/gi,
+      ' data-mail-remote-content="blocked"',
+    )
+    .replace(
+      /\s+srcset\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]*)/gi,
+      (srcset) => (/(?:https?:)?\/\//i.test(srcset) ? "" : srcset),
+    )
+    .replace(
+      /<(?:image|use|feimage)\b[^>]*>/gi,
+      (tag) =>
+        tag.replace(
+          /\s+(?:href|xlink:href)\s*=\s*(?:"\s*(?:https?:)?\/\/[^"]*"|'\s*(?:https?:)?\/\/[^']*'|(?:https?:)?\/\/[^\s>]*)/gi,
+          ' data-mail-remote-content="blocked"',
+        ),
+    )
+    .replace(
+      /@import\s+(?:url\s*\()?[\s\S]*?;/gi,
+      "",
+    )
+    .replace(
+      /url\s*\(\s*(['"]?)\s*(?:https?:)?\/\/[\s\S]*?\1\s*\)/gi,
+      "none",
+    );
+}
+
 function linkifyHtmlText(html: string): string {
   let inAnchor = 0;
   return html.replace(
@@ -278,7 +348,7 @@ function resizeScript(
   adaptiveTheme?: EmailRenderTheme,
   colorMode: EmailColorMode = "system",
 ): string {
-  return `<script>(function(){
+  return `<script nonce="mail-reader">(function(){
   var lastH=0,lastW=0,raf=0,forceMeasure=false;
   ${adaptiveTheme ? darkThemeAdaptationScript(adaptiveTheme, colorMode) : ""}
   function repairOneSidedCenteredWrappers(){
@@ -387,11 +457,14 @@ export function prepareHtml(
     theme?: EmailRenderTheme;
     embeddedParts?: EmailBodyPart[];
     colorMode?: EmailColorMode;
+    allowRemoteContent?: boolean;
   },
 ): string {
   const theme = opts?.theme ?? defaultEmailRenderTheme;
   const colorMode = opts?.colorMode ?? "system";
+  html = stripActiveContentFallback(html);
   html = resolveEmbeddedImages(html, opts?.embeddedParts);
+  if (!opts?.allowRemoteContent) html = blockRemoteContent(html);
   html = unwrapGoogleUrlsInHtml(html);
   html = linkifyHtmlText(html);
 
@@ -426,7 +499,9 @@ export function prepareHtml(
     pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
     ${darkModeRules}
   </style>`;
-  const inject = `${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes, theme, colorMode)}`;
+  const contentSecurityPolicy =
+    '<meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; script-src &apos;nonce-mail-reader&apos;; img-src &apos;self&apos; data: http: https:; style-src &apos;unsafe-inline&apos;; font-src &apos;self&apos; data: http: https:; object-src &apos;none&apos;; frame-src &apos;none&apos;; form-action &apos;none&apos;; base-uri &apos;none&apos;">';
+  const inject = `${contentSecurityPolicy}${viewport}${baseStyle}${resizeScript(!!opts?.stripQuotes, theme, colorMode)}`;
 
   if (/<head[\s>]/i.test(html)) {
     return html.replace(/<head([^>]*)>/i, `<head$1>${inject}`);

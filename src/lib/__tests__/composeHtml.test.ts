@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  appendForwardedHtml,
+  extractForwardedHtml,
   markQuotedReplyHtml,
   wrapComposePreviewHtml,
   wrapEmailHtml,
@@ -21,6 +23,20 @@ describe("wrapEmailHtml", () => {
     const result = wrapEmailHtml("<p>Hello</p>");
     assert.ok(result.includes("max-width: 100%; height: auto"));
     assert.ok(result.includes("white-space: pre-wrap"));
+  });
+});
+
+describe("forwarded draft HTML", () => {
+  it("round-trips forwarded HTML through a saved draft", () => {
+    const forwarded = appendForwardedHtml(
+      "<html><head><title>Original</title></head><body><p>Original message</p></body></html>",
+    );
+    const draft = wrapEmailHtml(`<p>My note</p>${forwarded}`);
+    assert.equal(extractForwardedHtml(draft), "<p>Original message</p>");
+  });
+
+  it("returns no forwarded body for an ordinary draft", () => {
+    assert.equal(extractForwardedHtml(wrapEmailHtml("<p>Hello</p>")), undefined);
   });
 });
 

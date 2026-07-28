@@ -1,6 +1,12 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { sanitizeHtml, extractStyles, extractBodyContent, resolvePrintBody } from "../printHtml";
+import {
+  sanitizeHtml,
+  sanitizeReaderHtml,
+  extractStyles,
+  extractBodyContent,
+  resolvePrintBody,
+} from "../printHtml";
 import type { Email } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -84,6 +90,29 @@ describe("sanitizeHtml", () => {
   it("preserves image src with normal URL", () => {
     const input = '<img src="https://example.com/img.png" alt="photo">';
     assert.ok(sanitizeHtml(input).includes('src="https://example.com/img.png"'));
+  });
+});
+
+describe("sanitizeReaderHtml", () => {
+  it("removes executable content while preserving inert email styling and images", () => {
+    const result = sanitizeReaderHtml(
+      '<style>.hero{background:url("https://images.example/hero.jpg")}</style><script>evil()</script><form><input></form><div onclick="evil()"><img src="https://images.example/photo.jpg"></div>',
+    );
+    assert.ok(result.includes("<style>"));
+    assert.ok(result.includes("https://images.example/hero.jpg"));
+    assert.ok(result.includes('src="https://images.example/photo.jpg"'));
+    assert.ok(!result.includes("<script"));
+    assert.ok(!result.includes("<form"));
+    assert.ok(!result.includes("<input"));
+    assert.ok(!result.includes("onclick"));
+  });
+
+  it("removes dangerous URLs and executable CSS", () => {
+    const result = sanitizeReaderHtml(
+      '<a href="javascript:evil()">bad</a><div style="behavior:url(x);background:url(javascript:evil())">content</div>',
+    );
+    assert.ok(!result.includes("javascript:"));
+    assert.ok(!result.includes("behavior:"));
   });
 });
 

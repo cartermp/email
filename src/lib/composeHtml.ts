@@ -50,6 +50,31 @@ const EMAIL_CONTENT_CSS = `
   .mail-content th, .mail-content td { padding: 6px 8px; border: 1px solid #e2e8f0; text-align: left; }
 `;
 
+const FORWARDED_HTML_START = "<!--mail-forward-start-->";
+const FORWARDED_HTML_END = "<!--mail-forward-end-->";
+
+function extractBodyContent(html: string): string {
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (body) return body[1];
+  return html
+    .replace(/<!DOCTYPE[^>]*>/gi, "")
+    .replace(/<\/?html[^>]*>/gi, "")
+    .replace(/<head[\s\S]*?<\/head>/gi, "")
+    .trim();
+}
+
+export function appendForwardedHtml(originalHtml: string): string {
+  const content = extractBodyContent(originalHtml);
+  return `<div data-forwarded-email="true" style="margin-top:24px;padding-top:16px;border-top:1px solid #e4e4e7;font-size:14px;">${FORWARDED_HTML_START}${content}${FORWARDED_HTML_END}</div>`;
+}
+
+export function extractForwardedHtml(draftHtml: string): string | undefined {
+  const start = draftHtml.indexOf(FORWARDED_HTML_START);
+  const end = draftHtml.indexOf(FORWARDED_HTML_END);
+  if (start < 0 || end <= start) return undefined;
+  return draftHtml.slice(start + FORWARDED_HTML_START.length, end);
+}
+
 /**
  * Mark the final Markdown blockquote as the quoted part of a reply.
  * The editor remains pure Markdown; this transport-only annotation lets email

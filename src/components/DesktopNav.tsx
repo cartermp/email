@@ -16,6 +16,8 @@ const mailboxItems: NavItem[] = [
   { href: "/", label: "Inbox", icon: "inbox", badge: "inbox" },
   { href: "/drafts", label: "Drafts", icon: "drafts", badge: "drafts" },
   { href: "/sent", label: "Sent", icon: "sent" },
+  { href: "/archive", label: "Archive", icon: "archive" },
+  { href: "/trash", label: "Trash", icon: "trash" },
   { href: "/spam", label: "Spam", icon: "spam", badge: "spam" },
   { href: "/calendar", label: "Calendar", icon: "calendar" },
 ];
@@ -32,7 +34,9 @@ function isActive(
         pathname.startsWith("/thread/") ||
         pathname.startsWith("/attachment/")) &&
       from !== "spam" &&
-      from !== "sent"
+      from !== "sent" &&
+      from !== "archive" &&
+      from !== "trash"
     );
   }
   if (item.href === "/sent") {
@@ -40,6 +44,12 @@ function isActive(
   }
   if (item.href === "/spam") {
     return pathname.startsWith("/spam") || from === "spam";
+  }
+  if (item.href === "/archive") {
+    return pathname.startsWith("/archive") || from === "archive";
+  }
+  if (item.href === "/trash") {
+    return pathname.startsWith("/trash") || from === "trash";
   }
   return pathname.startsWith(item.href);
 }

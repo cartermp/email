@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { JSDOM, VirtualConsole } from "jsdom";
 import {
+  hasRemoteContent,
   prepareHtml,
   prepareTextBody,
   resolveEmbeddedImages,
@@ -71,6 +72,49 @@ describe("prepareHtml", () => {
         '<meta name="viewport" content="width=device-width, initial-scale=1">',
       ),
     );
+  });
+
+  it("blocks remote resources by default without blocking local or embedded images", () => {
+    const result = prepareHtml(
+      documentWith(
+        '<img src="https://tracker.example/pixel.gif"><img src="/api/download?id=1" srcset="/small.jpg 1x, /large.jpg 2x"><img src="cid:logo"><svg><image href="https://tracker.example/svg.png"></image></svg>',
+        '<style>.hero{background:url("https://tracker.example/hero.jpg")}</style>',
+      ),
+    );
+    assert.ok(!result.includes("https://tracker.example/pixel.gif"));
+    assert.ok(!result.includes("https://tracker.example/hero.jpg"));
+    assert.ok(!result.includes("https://tracker.example/svg.png"));
+    assert.ok(result.includes('data-mail-remote-content="blocked"'));
+    assert.ok(result.includes('src="/api/download?id=1"'));
+    assert.ok(result.includes('srcset="/small.jpg 1x, /large.jpg 2x"'));
+    assert.ok(result.includes('src="cid:logo"'));
+  });
+
+  it("loads remote resources only after explicit permission", () => {
+    const html = documentWith(
+      '<img src="https://images.example/photo.jpg">',
+    );
+    const blocked = prepareHtml(html);
+    const allowed = prepareHtml(html, { allowRemoteContent: true });
+    assert.ok(!blocked.includes("https://images.example/photo.jpg"));
+    assert.ok(allowed.includes('src="https://images.example/photo.jpg"'));
+  });
+
+  it("strips active content and installs a restrictive content policy", () => {
+    const result = prepareHtml(
+      documentWith(
+        '<script nonce="mail-reader">window.evil=true</script><form action="/steal"><input autofocus></form><img src="/safe" onerror="evil()"><a href="javascript:evil()">bad</a>',
+        '<meta http-equiv="refresh" content="0;url=https://evil.example">',
+      ),
+    );
+    assert.ok(!result.includes("window.evil"));
+    assert.ok(!result.includes("<form"));
+    assert.ok(!result.includes("<input"));
+    assert.ok(!result.includes("onerror"));
+    assert.ok(!result.includes("javascript:"));
+    assert.ok(!result.includes("http-equiv=\"refresh\""));
+    assert.ok(result.includes("default-src &apos;none&apos;"));
+    assert.ok(result.includes('script nonce="mail-reader"'));
   });
 
   it("does not rewrite table, cell, or responsive helper-class geometry", () => {
@@ -415,6 +459,36 @@ describe("prepareHtml", () => {
       assert.ok(!full.includes(".gmail_quote"));
       assert.ok(!full.includes("#divRplyFwdMsg"));
     });
+  });
+});
+
+describe("hasRemoteContent", () => {
+  it("detects remote image, srcset, and CSS resources", () => {
+    assert.equal(
+      hasRemoteContent('<img src="https://example.com/pixel.gif">'),
+      true,
+    );
+    assert.equal(
+      hasRemoteContent('<img srcset="/small.jpg 1x, //example.com/large.jpg 2x">'),
+      true,
+    );
+    assert.equal(
+      hasRemoteContent('<style>.hero{background:url(https://example.com/a.jpg)}</style>'),
+      true,
+    );
+    assert.equal(
+      hasRemoteContent('<svg><image href="https://example.com/a.svg"></image></svg>'),
+      true,
+    );
+  });
+
+  it("ignores local, cid, and data resources", () => {
+    assert.equal(
+      hasRemoteContent(
+        '<img src="/api/download"><img src="cid:logo"><img src="data:image/png;base64,AAAA">',
+      ),
+      false,
+    );
   });
 });
 

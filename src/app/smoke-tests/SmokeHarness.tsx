@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import AttachmentList from "@/components/AttachmentList";
 import Composer from "@/components/Composer";
+import EmailBody from "@/components/EmailBody";
 import EmailListPanel from "@/components/EmailListPanel";
 import MessageActionBar from "@/components/MessageActionBar";
 import MobileNav from "@/components/MobileNav";
@@ -26,7 +27,8 @@ export type SmokePanel =
   | "dark-rendering"
   | "tab-indicator"
   | "message-actions"
-  | "mobile-viewport";
+  | "mobile-viewport"
+  | "reader-privacy";
 
 const fixtureEmails: Email[] = [
   {
@@ -275,6 +277,15 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             autoSyncIntervalMs={700}
             autoSyncCheck={runAutoSyncCheck}
           />
+        )}
+
+        {panel === "reader-privacy" && (
+          <section className="mx-auto w-full max-w-3xl overflow-auto p-6">
+            <EmailBody
+              type="html"
+              body='<p>Remote content fixture</p><img id="remote-pixel" src="https://images.example.test/tracking-pixel.png" alt="">'
+            />
+          </section>
         )}
 
         {panel === "reply" && (

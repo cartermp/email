@@ -12,6 +12,12 @@ import {
 import Composer from "@/components/Composer";
 import MobileBackButton from "@/components/MobileBackButton";
 import { getJmapContext } from "@/lib/jmapServer";
+import { visibleAttachments } from "@/lib/attachments";
+import {
+  extractForwardedHtml,
+} from "@/lib/composeHtml";
+import { sanitizeReaderHtml } from "@/lib/printHtml";
+import type { EmailBodyPart } from "@/lib/types";
 
 interface Props {
   searchParams: Promise<{ mode?: string; id?: string; draftId?: string }>;
@@ -65,6 +71,20 @@ export default async function ComposePage({ searchParams }: Props) {
   let title = "New Message";
   let initialDraftId: string | undefined;
   let forwardedHtml: string | undefined;
+  let initialIdentityId: string | undefined;
+  let initialInlineImages: {
+    id: string;
+    blobId: string;
+    dataUrl: string;
+    type: string;
+  }[] = [];
+  let initialAttachments: {
+    id: string;
+    name: string;
+    size: number;
+    type: string;
+    blobId: string;
+  }[] = [];
 
   // Resume a saved draft
   if (draftId) {
@@ -73,10 +93,13 @@ export default async function ComposePage({ searchParams }: Props) {
       initialDraftId = draftId;
       initialTo = draft.to?.map(formatAddressRFC).join(", ") ?? "";
       initialCc = draft.cc?.map(formatAddressRFC).join(", ") ?? "";
-      // bcc is visible on drafts since they live in the sender's mailbox
-      initialBcc = (draft as { bcc?: typeof draft.to })?.bcc
+      initialBcc = draft.bcc
         ?.map(formatAddressRFC)
         .join(", ") ?? "";
+      initialIdentityId = sorted.find(
+        (identity) =>
+          identity.email.toLowerCase() === draft.from?.[0]?.email.toLowerCase(),
+      )?.id;
       initialSubject = draft.subject ?? "";
       if (draft.textBody?.length > 0) {
         const part = draft.textBody[0];
@@ -84,6 +107,39 @@ export default async function ComposePage({ searchParams }: Props) {
           initialBody = draft.bodyValues[part.partId].value;
         }
       }
+      if (draft.htmlBody?.length > 0) {
+        const htmlPart = draft.htmlBody[0];
+        if (htmlPart.partId && draft.bodyValues?.[htmlPart.partId]) {
+          forwardedHtml = extractForwardedHtml(
+            draft.bodyValues[htmlPart.partId].value,
+          );
+        }
+      }
+      const inlineParts = (draft.attachments ?? []).filter(
+        (part) => part.blobId && part.disposition?.toLowerCase() === "inline",
+      );
+      initialInlineImages = inlineParts.flatMap((part) => {
+        const id = part.cid?.replace(/@mail$/i, "");
+        if (!id || !part.blobId) return [];
+        return [{
+          id,
+          blobId: part.blobId,
+          type: part.type,
+          dataUrl: inlinePartUrl(part),
+        }];
+      });
+      initialAttachments = visibleAttachments(draft.attachments).flatMap(
+        (part) =>
+          part.blobId
+            ? [{
+                id: `draft-${part.blobId}`,
+                name: part.name ?? "attachment",
+                size: part.size,
+                type: part.type,
+                blobId: part.blobId,
+              }]
+            : [],
+      );
       title = "Draft";
       if (draft.inReplyTo?.[0]) {
         inReplyToId = draft.inReplyTo[0];
@@ -146,7 +202,9 @@ export default async function ComposePage({ searchParams }: Props) {
         if (email.htmlBody?.length > 0) {
           const part = email.htmlBody[0];
           if (part.partId && email.bodyValues?.[part.partId]) {
-            forwardedHtml = email.bodyValues[part.partId].value;
+            forwardedHtml = sanitizeReaderHtml(
+              email.bodyValues[part.partId].value,
+            );
           }
         }
         // The markdown body carries the plain-text fallback (text/plain part
@@ -182,8 +240,21 @@ export default async function ComposePage({ searchParams }: Props) {
           replyThreadId={replyThreadId}
           initialDraftId={initialDraftId}
           forwardedHtml={forwardedHtml}
+          initialIdentityId={initialIdentityId}
+          initialInlineImages={initialInlineImages}
+          initialAttachments={initialAttachments}
         />
       </div>
     </div>
   );
+}
+
+function inlinePartUrl(part: EmailBodyPart): string {
+  const params = new URLSearchParams({
+    blobId: part.blobId ?? "",
+    name: part.name ?? "inline-image",
+    type: part.type,
+    inline: "true",
+  });
+  return `/api/download?${params.toString()}`;
 }

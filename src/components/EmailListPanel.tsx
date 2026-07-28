@@ -34,7 +34,18 @@ import {
   shouldCaptureConversationPointer,
 } from "@/lib/mailInteraction";
 import { formatDate } from "@/lib/format";
-import { loadMoreUnreads, loadMoreReads, searchEmailsAction, bulkMarkAsRead, bulkMarkAsUnread, bulkSetPin, bulkMoveToMailbox, checkInboxForNewMail } from "@/app/(inbox)/actions";
+import {
+  bulkMarkAsRead,
+  bulkMarkAsUnread,
+  bulkMoveToMailbox,
+  bulkSetPin,
+  checkInboxForNewMail,
+  emptyTrashAction,
+  loadMoreReads,
+  loadMoreUnreads,
+  permanentlyDeleteEmailsAction,
+  searchEmailsAction,
+} from "@/app/(inbox)/actions";
 import { deleteDraftAction } from "@/app/compose/actions";
 import { dispatchUnreadCountEvent, getReadEmailIds, getUnreadEmailIds, isEmailUnread } from "@/lib/unreadCount";
 import {
@@ -62,13 +73,21 @@ interface Props {
   spamReads?: Email[];
   spamReadTotal?: number;
   spamMailboxId?: string;
+  archiveUnreads?: Email[];
+  archiveUnreadTotal?: number;
+  archiveReads?: Email[];
+  archiveReadTotal?: number;
+  trashUnreads?: Email[];
+  trashUnreadTotal?: number;
+  trashReads?: Email[];
+  trashReadTotal?: number;
   deferredContent?: ReactNode;
   threadHrefPrefix?: string;
   autoSyncIntervalMs?: number;
   autoSyncCheck?: (inboxId: string) => Promise<InboxSnapshot>;
 }
 
-type View = "inbox" | "drafts" | "sent" | "spam";
+type View = "inbox" | "drafts" | "sent" | "spam" | "archive" | "trash";
 
 export interface DeferredMailPanelData {
   drafts: Email[];
@@ -78,6 +97,14 @@ export interface DeferredMailPanelData {
   spamUnreadTotal: number;
   spamReads: Email[];
   spamReadTotal: number;
+  archiveUnreads: Email[];
+  archiveUnreadTotal: number;
+  archiveReads: Email[];
+  archiveReadTotal: number;
+  trashUnreads: Email[];
+  trashUnreadTotal: number;
+  trashReads: Email[];
+  trashReadTotal: number;
 }
 
 const DeferredMailPanelContext = createContext<
@@ -194,6 +221,14 @@ export default function EmailListPanel({
   spamReads: initialSpamReads = [],
   spamReadTotal: initialSpamReadTotal = 0,
   spamMailboxId,
+  archiveUnreads: initialArchiveUnreads = [],
+  archiveUnreadTotal: initialArchiveUnreadTotal = 0,
+  archiveReads: initialArchiveReads = [],
+  archiveReadTotal: initialArchiveReadTotal = 0,
+  trashUnreads: initialTrashUnreads = [],
+  trashUnreadTotal: initialTrashUnreadTotal = 0,
+  trashReads: initialTrashReads = [],
+  trashReadTotal: initialTrashReadTotal = 0,
   deferredContent,
   threadHrefPrefix = "/thread",
   autoSyncIntervalMs = MAIL_AUTO_SYNC_INTERVAL_MS,
@@ -217,6 +252,10 @@ export default function EmailListPanel({
     ? "drafts"
     : pathname.startsWith("/sent") || searchParams.get("from") === "sent"
     ? "sent"
+    : pathname.startsWith("/archive") || searchParams.get("from") === "archive"
+    ? "archive"
+    : pathname.startsWith("/trash") || searchParams.get("from") === "trash"
+    ? "trash"
     : pathname.startsWith("/spam") || searchParams.get("from") === "spam"
     ? "spam"
     : "inbox";
@@ -271,6 +310,18 @@ export default function EmailListPanel({
     reads: initialSpamReads,
     readTotal: initialSpamReadTotal,
   });
+  const [archiveData, setArchiveData] = useState({
+    unreads: initialArchiveUnreads,
+    unreadTotal: initialArchiveUnreadTotal,
+    reads: initialArchiveReads,
+    readTotal: initialArchiveReadTotal,
+  });
+  const [trashData, setTrashData] = useState({
+    unreads: initialTrashUnreads,
+    unreadTotal: initialTrashUnreadTotal,
+    reads: initialTrashReads,
+    readTotal: initialTrashReadTotal,
+  });
 
   const syncDeferredData = useCallback((data: DeferredMailPanelData) => {
     setDraftsList(data.drafts);
@@ -282,15 +333,41 @@ export default function EmailListPanel({
       reads: data.spamReads,
       readTotal: data.spamReadTotal,
     });
+    setArchiveData({
+      unreads: data.archiveUnreads,
+      unreadTotal: data.archiveUnreadTotal,
+      reads: data.archiveReads,
+      readTotal: data.archiveReadTotal,
+    });
+    setTrashData({
+      unreads: data.trashUnreads,
+      unreadTotal: data.trashUnreadTotal,
+      reads: data.trashReads,
+      readTotal: data.trashReadTotal,
+    });
     setDeferredPending(false);
   }, []);
 
-  const currentUnreads = view === "spam" ? spamData.unreads : unreads;
-  const currentUnreadTotal =
-    view === "spam" ? spamData.unreadTotal : unreadTotal;
-  const currentReads = view === "spam" ? spamData.reads : reads;
-  const currentReadTotal = view === "spam" ? spamData.readTotal : readTotal;
-  const currentMailboxId = view === "spam" ? spamMailboxId ?? "" : inboxId;
+  const currentData =
+    view === "spam"
+      ? spamData
+      : view === "archive"
+        ? archiveData
+        : view === "trash"
+          ? trashData
+          : { unreads, unreadTotal, reads, readTotal };
+  const currentUnreads = currentData.unreads;
+  const currentUnreadTotal = currentData.unreadTotal;
+  const currentReads = currentData.reads;
+  const currentReadTotal = currentData.readTotal;
+  const currentMailboxId =
+    view === "spam"
+      ? spamMailboxId ?? ""
+      : view === "archive"
+        ? archiveMailboxId ?? ""
+        : view === "trash"
+          ? trashMailboxId ?? ""
+          : inboxId;
 
   useEffect(() => {
     setExtraUnreads([]);
@@ -592,12 +669,15 @@ export default function EmailListPanel({
     const result: Email[] = [];
     const add = (e: Email) => { if (!seenIds.has(e.id)) { seenIds.add(e.id); result.push(e); } };
     if (view === "inbox") {
-      pinnedList.forEach(add);
+      pinnedList.filter((email) => email.mailboxIds[inboxId]).forEach(add);
+      allUnreads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
+      allReads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
+    } else {
+      allUnreads.forEach(add);
+      allReads.forEach(add);
     }
-    allUnreads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
-    allReads.filter((e) => !pinnedIds.has(e.id)).forEach(add);
     return result;
-  }, [pinnedList, allUnreads, allReads, view]);
+  }, [pinnedList, allUnreads, allReads, view, inboxId]);
 
   const visibleEmails = useMemo(() => {
     const base = isInSearchMode ? searchResults : allInboxEmails;
@@ -785,7 +865,11 @@ export default function EmailListPanel({
     }
   }
 
-  async function moveMessages(emails: Email[], targetMailboxId: string) {
+  async function moveMessages(
+    emails: Email[],
+    targetMailboxId: string,
+    successMessage?: string,
+  ) {
     const ids = emails.map((e) => e.id);
     const sourceMailboxId = currentMailboxId;
     setArchivedIds((prev) => new Set([...prev, ...ids]));
@@ -796,9 +880,10 @@ export default function EmailListPanel({
     );
     showToast({
       message:
-        targetMailboxId === trashMailboxId
+        successMessage ??
+        (targetMailboxId === trashMailboxId
           ? ids.length === 1 ? "Moved to trash" : `${ids.length} messages moved to trash`
-          : ids.length === 1 ? "Archived" : `${ids.length} messages archived`,
+          : ids.length === 1 ? "Archived" : `${ids.length} messages archived`),
       actionLabel: "Undo",
       onAction: async () => {
         await movePromise;
@@ -856,6 +941,83 @@ export default function EmailListPanel({
         return next;
       });
       showToast({ message: "Could not move those messages.", tone: "error" });
+    }
+  }
+
+  async function handleBulkRestore() {
+    const emails = visibleEmails.filter((email) => selectedIds.has(email.id));
+    await moveMessages(
+      emails,
+      inboxId,
+      emails.length === 1
+        ? "Restored to Inbox"
+        : `${emails.length} messages restored to Inbox`,
+    );
+  }
+
+  async function deleteMessagesPermanently(
+    ids: string[],
+    clearSelected = false,
+  ) {
+    if (!trashMailboxId) return;
+    if (!ids.length) return;
+    const confirmed = window.confirm(
+      ids.length === 1
+        ? "Permanently delete this message? This cannot be undone."
+        : `Permanently delete ${ids.length} messages? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    if (clearSelected) clearSelection();
+    setArchivedIds((previous) => new Set([...previous, ...ids]));
+    try {
+      await permanentlyDeleteEmailsAction(ids, trashMailboxId);
+      showToast({
+        message:
+          ids.length === 1
+            ? "Message permanently deleted"
+            : `${ids.length} messages permanently deleted`,
+      });
+      router.refresh();
+    } catch {
+      setArchivedIds((previous) => {
+        const next = new Set(previous);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      showToast({
+        message: "Could not permanently delete those messages.",
+        tone: "error",
+      });
+    }
+  }
+
+  async function handlePermanentDelete() {
+    await deleteMessagesPermanently([...selectedIds], true);
+  }
+
+  async function handleEmptyTrash() {
+    if (!trashMailboxId) return;
+    const confirmed = window.confirm(
+      "Permanently delete every message in Trash? This cannot be undone.",
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await emptyTrashAction(trashMailboxId);
+      setTrashData({ unreads: [], unreadTotal: 0, reads: [], readTotal: 0 });
+      setExtraUnreads([]);
+      setExtraReads([]);
+      setArchivedIds(new Set());
+      showToast({
+        message:
+          result.destroyed === 1
+            ? "1 message permanently deleted"
+            : `${result.destroyed} messages permanently deleted`,
+      });
+      router.refresh();
+    } catch {
+      showToast({ message: "Could not empty Trash.", tone: "error" });
     }
   }
 
@@ -962,7 +1124,10 @@ export default function EmailListPanel({
         setShortcutHelpOpen((open) => !open);
         return;
       }
-      if ((view !== "inbox" && view !== "spam") || visibleThreads.length === 0) {
+      if (
+        !["inbox", "spam", "archive", "trash"].includes(view) ||
+        visibleThreads.length === 0
+      ) {
         return;
       }
 
@@ -996,9 +1161,9 @@ export default function EmailListPanel({
         event.preventDefault();
         if (!confirmNavigation()) return;
         router.push(
-          view === "spam"
-            ? `${threadHrefPrefix}/${activeThread.threadId}?from=spam`
-            : `${threadHrefPrefix}/${activeThread.threadId}`,
+          view === "inbox"
+            ? `${threadHrefPrefix}/${activeThread.threadId}`
+            : `${threadHrefPrefix}/${activeThread.threadId}?from=${view}`,
         );
       } else if (
         event.key.toLowerCase() === "e" &&
@@ -1044,6 +1209,25 @@ export default function EmailListPanel({
     ? visibleThreads.find((thread) => thread.threadId === keyboardThreadId)
         ?.latestEmail.subject || "(no subject)"
     : "";
+  const viewLabel =
+    view === "inbox"
+      ? "Inbox"
+      : view === "drafts"
+        ? "Drafts"
+        : view === "sent"
+          ? "Sent"
+          : view === "spam"
+            ? "Spam"
+            : view === "archive"
+              ? "Archive"
+              : "Trash";
+  const isThreadMailboxView =
+    view === "inbox" ||
+    view === "spam" ||
+    view === "archive" ||
+    view === "trash";
+  const isDeferredThreadMailbox =
+    view === "spam" || view === "archive" || view === "trash";
 
   const actionBtnCls =
     "flex h-10 w-10 items-center justify-center rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 transition-colors shrink-0";
@@ -1075,6 +1259,15 @@ export default function EmailListPanel({
           Not Spam
         </button>
       )}
+      {(view === "archive" || view === "trash") && (
+        <button
+          onClick={handleBulkRestore}
+          className="mr-1 shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/60"
+          title="Restore to Inbox"
+        >
+          Restore
+        </button>
+      )}
       <button onClick={handleBulkMarkRead} className={actionBtnCls} title="Mark as read" aria-label="Mark selected messages as read">
         <IconCheck />
       </button>
@@ -1096,8 +1289,18 @@ export default function EmailListPanel({
           <IconArchive />
         </button>
       )}
-      {trashMailboxId && (
+      {trashMailboxId && view !== "trash" && (
         <button onClick={() => handleBulkMove(trashMailboxId)} className={actionBtnCls} title="Delete" aria-label="Move selected messages to trash">
+          <IconTrash />
+        </button>
+      )}
+      {view === "trash" && trashMailboxId && (
+        <button
+          onClick={handlePermanentDelete}
+          className={actionBtnCls}
+          title="Delete forever"
+          aria-label="Permanently delete selected messages"
+        >
           <IconTrash />
         </button>
       )}
@@ -1124,7 +1327,7 @@ export default function EmailListPanel({
       <div className="flex min-h-[52px] items-center justify-between border-b border-stone-200 px-4 dark:border-stone-700 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-semibold text-stone-800 dark:text-stone-200 capitalize">
-            {view === "inbox" ? "Inbox" : view === "drafts" ? "Drafts" : view === "sent" ? "Sent" : "Spam"}
+            {viewLabel}
           </span>
           {view === "inbox" && (
             <UnreadCountBadge count={unreadCount} showZero className="shrink-0" />
@@ -1135,9 +1338,16 @@ export default function EmailListPanel({
           {view === "spam" && (
             <UnreadCountBadge count={currentUnreads.length} showZero className="shrink-0" />
           )}
+          {(view === "archive" || view === "trash") && (
+            <UnreadCountBadge
+              count={currentUnreadTotal + currentReadTotal}
+              showZero
+              className="shrink-0"
+            />
+          )}
         </div>
         <div className="flex items-center gap-1">
-          {(view === "inbox" || view === "spam") && (
+          {isThreadMailboxView && (
             <button
               type="button"
               onClick={handleRefresh}
@@ -1150,6 +1360,17 @@ export default function EmailListPanel({
               <span className="hidden xl:inline">Refresh</span>
             </button>
           )}
+          {view === "trash" &&
+            !deferredPending &&
+            currentUnreadTotal + currentReadTotal > 0 && (
+              <button
+                type="button"
+                onClick={handleEmptyTrash}
+                className="min-h-10 rounded-md px-2.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+              >
+                Empty Trash
+              </button>
+            )}
           <button
             type="button"
             onClick={() => setShortcutHelpOpen(true)}
@@ -1334,14 +1555,15 @@ export default function EmailListPanel({
       )}
 
       {/* Bulk action bar */}
-      {view === "spam" && selectionMode && (
+      {(view === "spam" || view === "archive" || view === "trash") &&
+        selectionMode && (
         <div className="flex items-center gap-0.5 px-2 py-1.5 bg-blue-50 dark:bg-blue-950/40 border-b border-blue-200 dark:border-blue-800 shrink-0">
           {selectionActions}
         </div>
       )}
 
       {/* Inbox list */}
-      {(view === "inbox" || view === "spam") && (
+      {isThreadMailboxView && (
         <div className="relative flex-1 overflow-hidden bg-stone-50 dark:bg-stone-900">
 
           {/* "Up to date" success pill — floats over the list after refresh */}
@@ -1360,34 +1582,52 @@ export default function EmailListPanel({
           )}
 
           <div className="absolute inset-0 overflow-y-auto">
-          {view === "spam" && deferredPending && (
+          {isDeferredThreadMailbox && deferredPending && (
             <MailRowsLoadingSkeleton />
           )}
-          {(!deferredPending || view !== "spam") && isSearching && (
+          {(!deferredPending || !isDeferredThreadMailbox) && isSearching && (
             <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-stone-400 dark:text-stone-500">
               <IconRefresh spinning />
               Searching…
             </div>
           )}
-          {(!deferredPending || view !== "spam") &&
+          {(!deferredPending || !isDeferredThreadMailbox) &&
             !isSearching &&
             visibleEmails.length === 0 && (
             <EmptyState
               compact
-              icon={isInSearchMode ? "search" : view === "spam" ? "spam" : "inbox"}
+              icon={
+                isInSearchMode
+                  ? "search"
+                  : view === "spam"
+                    ? "spam"
+                    : view === "archive"
+                      ? "archive"
+                      : view === "trash"
+                        ? "trash"
+                        : "inbox"
+              }
               title={
                 isInSearchMode
                   ? `No matches for “${searchQuery.trim()}”`
                   : view === "spam"
                     ? "No spam"
-                    : "You’re all caught up"
+                    : view === "archive"
+                      ? "Archive is empty"
+                      : view === "trash"
+                        ? "Trash is empty"
+                        : "You’re all caught up"
               }
               description={
                 isInSearchMode
                   ? "Try a broader phrase or remove one of the search filters."
                   : view === "spam"
                     ? "Messages identified as spam will appear here."
-                    : "New messages will appear here as they arrive."
+                    : view === "archive"
+                      ? "Messages you archive will appear here."
+                      : view === "trash"
+                        ? "Deleted messages remain here until you remove them permanently."
+                        : "New messages will appear here as they arrive."
               }
               action={
                 !isInSearchMode && view === "inbox"
@@ -1396,7 +1636,7 @@ export default function EmailListPanel({
               }
             />
           )}
-          {(!deferredPending || view !== "spam") &&
+          {(!deferredPending || !isDeferredThreadMailbox) &&
             !isSearching &&
             isInSearchMode &&
             visibleThreads.length > 0 && (
@@ -1404,14 +1644,14 @@ export default function EmailListPanel({
                 {visibleThreads.length} {visibleThreads.length === 1 ? "thread" : "threads"}
               </div>
             )}
-          {(!deferredPending || view !== "spam") &&
+          {(!deferredPending || !isDeferredThreadMailbox) &&
             !isSearching &&
             visibleThreads.map((thread, idx) => {
               const { latestEmail, senders } = thread;
               const threadHref =
-                view === "spam"
-                  ? `${threadHrefPrefix}/${thread.threadId}?from=spam`
-                  : `${threadHrefPrefix}/${thread.threadId}`;
+                view === "inbox"
+                  ? `${threadHrefPrefix}/${thread.threadId}`
+                  : `${threadHrefPrefix}/${thread.threadId}?from=${view}`;
               const isRouteSelected =
                 thread.threadId === selectedThreadId ||
                 thread.latestEmail.id === selectedEmailId;
@@ -1662,6 +1902,59 @@ export default function EmailListPanel({
                               <MailIcon name="archive" className="h-4 w-4" />
                             </button>
                           )}
+                          {(view === "archive" || view === "trash") && (
+                            <button
+                              type="button"
+                              title="Restore to Inbox"
+                              aria-label="Restore thread to Inbox"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void moveMessages(
+                                  thread.allEmails,
+                                  inboxId,
+                                  thread.allEmails.length === 1
+                                    ? "Restored to Inbox"
+                                    : `${thread.allEmails.length} messages restored to Inbox`,
+                                );
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-200"
+                            >
+                              <MailIcon name="inbox" className="h-4 w-4" />
+                            </button>
+                          )}
+                          {view === "archive" && trashMailboxId && (
+                            <button
+                              type="button"
+                              title="Move to Trash"
+                              aria-label="Move thread to Trash"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                moveThread(thread, trashMailboxId);
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-stone-200 hover:text-red-600 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-red-400"
+                            >
+                              <MailIcon name="trash" className="h-4 w-4" />
+                            </button>
+                          )}
+                          {view === "trash" && trashMailboxId && (
+                            <button
+                              type="button"
+                              title="Delete forever"
+                              aria-label="Permanently delete thread"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void deleteMessagesPermanently(
+                                  thread.allEmails.map((email) => email.id),
+                                );
+                              }}
+                              className="flex h-8 w-8 items-center justify-center rounded-md text-stone-400 hover:bg-red-50 hover:text-red-600 dark:text-stone-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                            >
+                              <MailIcon name="trash" className="h-4 w-4" />
+                            </button>
+                          )}
                           <button
                             type="button"
                             title={isUnread ? "Mark as read" : "Mark as unread"}
@@ -1679,37 +1972,39 @@ export default function EmailListPanel({
                             />
                           </button>
                         </div>
-                        <button
-                          type="button"
-                          title={thread.isPinned ? "Unpin" : "Pin"}
-                          aria-label={thread.isPinned ? "Unpin thread" : "Pin thread"}
-                          onClick={async (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            const ids = thread.allEmails.map((email) => email.id);
-                            const next = !thread.isPinned;
-                            ids.forEach((id) =>
-                              window.dispatchEvent(
-                                new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
-                              )
-                            );
-                            try {
-                              await bulkSetPin(ids, next);
-                              showToast({ message: next ? "Pinned" : "Unpinned" });
-                              router.refresh();
-                            } catch {
-                              showToast({ message: "Could not update pinning.", tone: "error" });
-                            }
-                          }}
-                          className={[
-                            "flex h-8 w-8 items-center justify-center rounded-md transition-all",
-                            thread.isPinned
-                              ? "text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
-                              : "text-stone-300 opacity-0 hover:bg-stone-200 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-stone-600 dark:hover:bg-stone-800 dark:hover:text-amber-400",
-                          ].join(" ")}
-                        >
-                          <IconPin />
-                        </button>
+                        {view === "inbox" && (
+                          <button
+                            type="button"
+                            title={thread.isPinned ? "Unpin" : "Pin"}
+                            aria-label={thread.isPinned ? "Unpin thread" : "Pin thread"}
+                            onClick={async (event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const ids = thread.allEmails.map((email) => email.id);
+                              const next = !thread.isPinned;
+                              ids.forEach((id) =>
+                                window.dispatchEvent(
+                                  new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
+                                )
+                              );
+                              try {
+                                await bulkSetPin(ids, next);
+                                showToast({ message: next ? "Pinned" : "Unpinned" });
+                                router.refresh();
+                              } catch {
+                                showToast({ message: "Could not update pinning.", tone: "error" });
+                              }
+                            }}
+                            className={[
+                              "flex h-8 w-8 items-center justify-center rounded-md transition-all",
+                              thread.isPinned
+                                ? "text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+                                : "text-stone-300 opacity-0 hover:bg-stone-200 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-stone-600 dark:hover:bg-stone-800 dark:hover:text-amber-400",
+                            ].join(" ")}
+                          >
+                            <IconPin />
+                          </button>
+                        )}
                       </div>
                     )}
                     </div>
@@ -1718,7 +2013,7 @@ export default function EmailListPanel({
               );
             })}
 
-          {(!deferredPending || view !== "spam") && hasMore && (
+          {(!deferredPending || !isDeferredThreadMailbox) && hasMore && (
             <button
               onClick={handleLoadMore}
               disabled={loadingMore}
@@ -1727,8 +2022,8 @@ export default function EmailListPanel({
               {loadingMore
                 ? "Loading…"
                 : hasMoreUnreads
-                  ? `Load more unread (${loadedUnreads} of ${unreadTotal})`
-                  : `Load more (${loadedUnreads + loadedReads} of ${unreadTotal + readTotal})`}
+                  ? `Load more unread (${loadedUnreads} of ${currentUnreadTotal})`
+                  : `Load more (${loadedUnreads + loadedReads} of ${currentUnreadTotal + currentReadTotal})`}
             </button>
           )}
           </div>

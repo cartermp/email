@@ -42,6 +42,7 @@ export interface Email {
   from: EmailAddress[] | null;
   to: EmailAddress[] | null;
   cc: EmailAddress[] | null;
+  bcc?: EmailAddress[] | null;
   replyTo: EmailAddress[] | null;
   inReplyTo: string[] | null;
   receivedAt: string;

@@ -15,6 +15,7 @@ const smokePanels = new Set<SmokePanel>([
   "tab-indicator",
   "message-actions",
   "mobile-viewport",
+  "reader-privacy",
 ]);
 
 export default async function SmokePage({ searchParams }: Props) {

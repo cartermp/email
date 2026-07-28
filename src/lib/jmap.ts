@@ -103,6 +103,8 @@ export interface MailPanelMailboxIds {
   drafts?: string;
   sent?: string;
   spam?: string;
+  archive?: string;
+  trash?: string;
 }
 
 export interface MailPanelData {
@@ -116,6 +118,18 @@ export interface MailPanelData {
   pinned: Email[];
   sent: { emails: Email[]; total: number };
   spam: {
+    unreads: Email[];
+    unreadTotal: number;
+    reads: Email[];
+    readTotal: number;
+  };
+  archive: {
+    unreads: Email[];
+    unreadTotal: number;
+    reads: Email[];
+    readTotal: number;
+  };
+  trash: {
     unreads: Email[];
     unreadTotal: number;
     reads: Email[];
@@ -226,6 +240,26 @@ export function buildMailPanelMethodCalls(
       }),
     );
   }
+  if (mailboxIds.archive) {
+    calls.push(
+      ...mailboxQuery(accountId, mailboxIds.archive, "au", {
+        notKeyword: "$seen",
+      }),
+      ...mailboxQuery(accountId, mailboxIds.archive, "ar", {
+        hasKeyword: "$seen",
+      }),
+    );
+  }
+  if (mailboxIds.trash) {
+    calls.push(
+      ...mailboxQuery(accountId, mailboxIds.trash, "tu", {
+        notKeyword: "$seen",
+      }),
+      ...mailboxQuery(accountId, mailboxIds.trash, "tr", {
+        hasKeyword: "$seen",
+      }),
+    );
+  }
 
   return calls;
 }
@@ -274,6 +308,18 @@ export async function loadMailPanelData(
       unreadTotal: total("suq"),
       reads: list("srg"),
       readTotal: total("srq"),
+    },
+    archive: {
+      unreads: list("aug"),
+      unreadTotal: total("auq"),
+      reads: list("arg"),
+      readTotal: total("arq"),
+    },
+    trash: {
+      unreads: list("tug"),
+      unreadTotal: total("tuq"),
+      reads: list("trg"),
+      readTotal: total("trq"),
     },
   };
 
@@ -576,6 +622,7 @@ export async function getEmail(
           "from",
           "to",
           "cc",
+          "bcc",
           "replyTo",
           "inReplyTo",
           "receivedAt",
@@ -622,7 +669,7 @@ export async function getThreadEmails(
         },
         properties: [
           "id", "messageId", "threadId", "mailboxIds",
-          "subject", "from", "to", "cc", "replyTo",
+          "subject", "from", "to", "cc", "bcc", "replyTo",
           "receivedAt", "preview", "keywords",
           "hasAttachment", "size",
           "htmlBody", "textBody", "attachments", "bodyValues",
@@ -811,17 +858,66 @@ export async function saveDraft(
     bcc: { name: string | null; email: string }[];
     subject: string;
     body: string;
+    htmlBody?: string;
+    inlineImages?: InlineImage[];
+    attachments?: { blobId: string; name: string; type: string }[];
     inReplyToId?: string;
   },
   existingDraftId?: string | null
 ): Promise<string> {
+  const textPart = { partId: "body", type: "text/plain" };
+  const contentPart = fields.htmlBody
+    ? {
+        type: "multipart/alternative",
+        subParts: [
+          textPart,
+          { partId: "html", type: "text/html" },
+        ],
+      }
+    : textPart;
+  const relatedPart =
+    fields.inlineImages && fields.inlineImages.length > 0
+      ? {
+          type: "multipart/related",
+          subParts: [
+            contentPart,
+            ...fields.inlineImages.map((image) => ({
+              type: image.type,
+              blobId: image.blobId,
+              cid: `${image.id}@mail`,
+              disposition: "inline",
+            })),
+          ],
+        }
+      : contentPart;
+  const bodyStructure =
+    fields.attachments && fields.attachments.length > 0
+      ? {
+          type: "multipart/mixed",
+          subParts: [
+            relatedPart,
+            ...fields.attachments.map((attachment) => ({
+              type: attachment.type,
+              blobId: attachment.blobId,
+              name: attachment.name,
+              disposition: "attachment",
+            })),
+          ],
+        }
+      : relatedPart;
+
   const draftEmail: Record<string, unknown> = {
     mailboxIds: { [draftsMailboxId]: true },
     keywords: { "$draft": true },
     from: [fields.from],
     subject: fields.subject || "(no subject)",
-    bodyStructure: { partId: "body", type: "text/plain" },
-    bodyValues: { body: { value: fields.body, charset: "utf-8" } },
+    bodyStructure,
+    bodyValues: {
+      body: { value: fields.body, charset: "utf-8" },
+      ...(fields.htmlBody
+        ? { html: { value: fields.htmlBody, charset: "utf-8" } }
+        : {}),
+    },
   };
   if (fields.to.length) draftEmail.to = fields.to;
   if (fields.cc.length) draftEmail.cc = fields.cc;
@@ -1185,6 +1281,75 @@ export async function moveEmailsToMailbox(
     update[email.id] = patch;
   }
   await jmapCall(apiUrl, [["Email/set", { accountId, update }, "0"]]);
+}
+
+export async function getEmailMailboxIds(
+  apiUrl: string,
+  accountId: string,
+  emailIds: string[],
+): Promise<Array<Pick<Email, "id" | "mailboxIds">>> {
+  if (!emailIds.length) return [];
+  const data = await jmapCall(apiUrl, [
+    [
+      "Email/get",
+      {
+        accountId,
+        ids: emailIds,
+        properties: ["id", "mailboxIds"],
+      },
+      "0",
+    ],
+  ]);
+  const [, result] = data.methodResponses[0];
+  return (result.list as Array<Pick<Email, "id" | "mailboxIds">>) ?? [];
+}
+
+export async function destroyEmails(
+  apiUrl: string,
+  accountId: string,
+  emailIds: string[],
+): Promise<void> {
+  if (!emailIds.length) return;
+  const data = await jmapCall(apiUrl, [
+    ["Email/set", { accountId, destroy: emailIds }, "0"],
+  ]);
+  const [, result] = data.methodResponses[0];
+  const notDestroyed = result.notDestroyed as
+    | Record<string, unknown>
+    | undefined;
+  if (notDestroyed && Object.keys(notDestroyed).length > 0) {
+    throw new Error("Some messages could not be permanently deleted");
+  }
+}
+
+export async function destroyAllEmailsInMailbox(
+  apiUrl: string,
+  accountId: string,
+  mailboxId: string,
+): Promise<number> {
+  let destroyed = 0;
+
+  for (let page = 0; page < 200; page++) {
+    const data = await jmapCall(apiUrl, [
+      [
+        "Email/query",
+        {
+          accountId,
+          filter: { inMailbox: mailboxId },
+          limit: 250,
+          position: 0,
+        },
+        "0",
+      ],
+    ]);
+    const [, result] = data.methodResponses[0];
+    const ids = (result.ids as string[] | undefined) ?? [];
+    if (ids.length === 0) return destroyed;
+    await destroyEmails(apiUrl, accountId, ids);
+    destroyed += ids.length;
+  }
+
+  throw new Error("Trash could not be emptied completely");
 }
 
 // ---------------------------------------------------------------------------

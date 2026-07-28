@@ -8,6 +8,7 @@ import { getJmapMailboxContext } from "@/lib/jmapServer";
 import SenderAvatar from "@/components/SenderAvatar";
 import MessageActionBar from "@/components/MessageActionBar";
 import Popover from "@/components/Popover";
+import { sanitizeReaderHtml } from "@/lib/printHtml";
 
 interface Props {
   email: Email;
@@ -23,7 +24,7 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
   if (email.htmlBody?.length > 0) {
     const part = email.htmlBody[0];
     if (part.partId && email.bodyValues?.[part.partId]) {
-      body = email.bodyValues[part.partId].value;
+      body = sanitizeReaderHtml(email.bodyValues[part.partId].value);
       bodyType = part.type === "text/html" ? "html" : "text";
     }
   }
@@ -49,6 +50,8 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
       m.name.toLowerCase() === "junk"
   );
   const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
+  const archiveMailbox = mailboxes.find((m) => m.role === "archive");
+  const trashMailbox = mailboxes.find((m) => m.role === "trash");
   const isSpam = !!(spamMailbox && email.mailboxIds[spamMailbox.id]);
 
   const hasMultipleRecipients =
@@ -135,6 +138,8 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
           isSpam={isSpam}
           mailboxIds={email.mailboxIds}
           inboxMailboxId={inboxMailbox?.id}
+          archiveMailboxId={archiveMailbox?.id}
+          trashMailboxId={trashMailbox?.id}
           className="border-t border-stone-100 dark:border-stone-700/70"
         />
       </div>

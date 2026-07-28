@@ -1,7 +1,7 @@
 import { JSDOM } from "jsdom";
 import { Email } from "@/lib/types";
 
-const BLOCKED_TAGS = [
+const PRINT_BLOCKED_TAGS = [
   "applet",
   "base",
   "button",
@@ -22,6 +22,28 @@ const BLOCKED_TAGS = [
   "textarea",
 ];
 
+const READER_BLOCKED_TAGS = [
+  "applet",
+  "audio",
+  "base",
+  "button",
+  "embed",
+  "form",
+  "frame",
+  "frameset",
+  "iframe",
+  "input",
+  "link",
+  "meta",
+  "noscript",
+  "object",
+  "script",
+  "select",
+  "source",
+  "textarea",
+  "video",
+];
+
 const URL_ATTRIBUTES = new Set([
   "action",
   "formaction",
@@ -33,14 +55,20 @@ const URL_ATTRIBUTES = new Set([
 
 const SAFE_DATA_URL_RE = /^data:image\/(?:bmp|gif|jpeg|jpg|png|webp);base64,[a-z0-9+/=\s]+$/i;
 
-function sanitizeCss(css: string): string {
-  return css
+function sanitizeCss(css: string, removeUrls = true): string {
+  const sanitized = css
     .replace(/@import[\s\S]*?;/gi, "")
-    .replace(/url\s*\((?:[^)(]|\([^)(]*\))*\)/gi, "")
     .replace(/expression\s*\([^)]*\)/gi, "")
     .replace(/behavior\s*:[^;"}]+;?/gi, "")
-    .replace(/-moz-binding\s*:[^;"}]+;?/gi, "")
-    .trim();
+    .replace(/-moz-binding\s*:[^;"}]+;?/gi, "");
+
+  return (removeUrls
+    ? sanitized.replace(/url\s*\((?:[^)(]|\([^)(]*\))*\)/gi, "")
+    : sanitized.replace(
+        /url\s*\(\s*(['"]?)\s*(?:javascript|vbscript):[\s\S]*?\1\s*\)/gi,
+        "none",
+      )
+  ).trim();
 }
 
 function sanitizeUrl(value: string): string | null {
@@ -74,24 +102,34 @@ function sanitizeUrl(value: string): string | null {
  * Server-side HTML sanitizer for print views.
  * Parses untrusted email HTML, removes active content, and strips dangerous URL/CSS vectors.
  */
-export function sanitizeHtml(html: string): string {
+function sanitizeDocument(
+  html: string,
+  blockedTags: string[],
+  removeCssUrls: boolean,
+): string {
   const dom = new JSDOM(html);
   const { document } = dom.window;
 
-  for (const tag of BLOCKED_TAGS) {
+  for (const tag of blockedTags) {
     document.querySelectorAll(tag).forEach((element) => element.remove());
   }
 
   document.querySelectorAll("*").forEach((element) => {
     for (const attr of Array.from(element.attributes)) {
       const name = attr.name.toLowerCase();
-      if (name.startsWith("on") || name === "srcdoc" || name === "srcset") {
+      if (
+        name.startsWith("on") ||
+        name === "srcdoc" ||
+        name === "srcset" ||
+        name === "ping" ||
+        name === "nonce"
+      ) {
         element.removeAttribute(attr.name);
         continue;
       }
 
       if (name === "style") {
-        const sanitizedStyle = sanitizeCss(attr.value);
+        const sanitizedStyle = sanitizeCss(attr.value, removeCssUrls);
         if (sanitizedStyle) {
           element.setAttribute("style", sanitizedStyle);
         } else {
@@ -114,12 +152,30 @@ export function sanitizeHtml(html: string): string {
   return document.documentElement.outerHTML;
 }
 
+/**
+ * Server-side HTML sanitizer for print views.
+ * Parses untrusted email HTML, removes active content, and strips dangerous URL/CSS vectors.
+ */
+export function sanitizeHtml(html: string): string {
+  return sanitizeDocument(html, PRINT_BLOCKED_TAGS, true);
+}
+
+/**
+ * Sanitizer for the interactive reader. It keeps inert authored styles and
+ * image URLs so the client can offer an explicit "load remote images" choice,
+ * while removing executable elements, handlers, forms, frames, and unsafe
+ * URL schemes before the HTML crosses the server/client boundary.
+ */
+export function sanitizeReaderHtml(html: string): string {
+  return sanitizeDocument(html, READER_BLOCKED_TAGS, false);
+}
+
 export function extractStyles(html: string): string {
   const out: string[] = [];
   const re = /<style[^>]*>([\s\S]*?)<\/style>/gi;
   let m;
   while ((m = re.exec(html)) !== null) out.push(m[1]);
-  return sanitizeCss(out.join("\n"));
+  return sanitizeCss(out.join("\n"), true);
 }
 
 export function extractBodyContent(html: string): string {

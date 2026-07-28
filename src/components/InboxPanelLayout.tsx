@@ -14,8 +14,7 @@ export default function InboxPanelLayout({ list, children }: Props) {
     pathname.startsWith("/thread/") ||
     pathname.startsWith("/calendar") ||
     pathname.startsWith("/attachment/") ||
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/sent");
+    pathname.startsWith("/settings");
 
   return (
     <div className="flex h-full w-full">

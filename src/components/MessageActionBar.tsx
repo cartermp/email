@@ -1,12 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import {
+  bulkMoveToMailbox,
+  permanentlyDeleteEmailsAction,
+} from "@/app/(inbox)/actions";
 import MailIcon from "@/components/MailIcon";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
 import NotSpamButton from "@/components/NotSpamButton";
 import PinButton from "@/components/PinButton";
 import Popover from "@/components/Popover";
+import { useToast } from "@/components/ToastProvider";
 
 interface Props {
   emailId: string;
@@ -15,6 +21,8 @@ interface Props {
   isSpam: boolean;
   mailboxIds: Record<string, boolean>;
   inboxMailboxId?: string;
+  archiveMailboxId?: string;
+  trashMailboxId?: string;
   className?: string;
 }
 
@@ -47,10 +55,94 @@ export default function MessageActionBar({
   isSpam,
   mailboxIds,
   inboxMailboxId,
+  archiveMailboxId,
+  trashMailboxId,
   className = "",
 }: Props) {
+  const router = useRouter();
+  const showToast = useToast();
+  const [busyAction, setBusyAction] = useState<string | null>(null);
   const showNotSpam = isSpam && !!inboxMailboxId;
   const secondaryColumns = showNotSpam ? "col-span-3" : "col-span-2";
+  const isInbox = !!(inboxMailboxId && mailboxIds[inboxMailboxId]);
+  const isArchive = !!(archiveMailboxId && mailboxIds[archiveMailboxId]);
+  const isTrash = !!(trashMailboxId && mailboxIds[trashMailboxId]);
+  const sourceMailboxId = isTrash
+    ? trashMailboxId
+    : isArchive
+      ? archiveMailboxId
+      : isInbox
+        ? inboxMailboxId
+        : Object.keys(mailboxIds)[0];
+  const sourcePath = isTrash
+    ? "/trash"
+    : isArchive
+      ? "/archive"
+      : isSpam
+        ? "/spam"
+        : "/";
+
+  async function moveMessage(
+    targetMailboxId: string,
+    successMessage: string,
+  ) {
+    if (!sourceMailboxId || busyAction) return;
+    setBusyAction(targetMailboxId);
+    const movePromise = bulkMoveToMailbox(
+      [{ id: emailId, mailboxIds }],
+      targetMailboxId,
+    );
+    showToast({
+      message: successMessage,
+      actionLabel: "Undo",
+      onAction: async () => {
+        await movePromise;
+        await bulkMoveToMailbox(
+          [{ id: emailId, mailboxIds: { [targetMailboxId]: true } }],
+          sourceMailboxId,
+        );
+        router.refresh();
+      },
+    });
+    try {
+      await movePromise;
+      router.replace(sourcePath);
+      router.refresh();
+    } catch {
+      showToast({ message: "Could not move this message.", tone: "error" });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function permanentlyDeleteMessage() {
+    if (!trashMailboxId || busyAction) return;
+    if (
+      !window.confirm(
+        "Permanently delete this message? This cannot be undone.",
+      )
+    ) {
+      return;
+    }
+
+    setBusyAction("delete");
+    try {
+      await permanentlyDeleteEmailsAction([emailId], trashMailboxId);
+      showToast({ message: "Message permanently deleted" });
+      router.replace("/trash");
+      router.refresh();
+    } catch {
+      showToast({
+        message: "Could not permanently delete this message.",
+        tone: "error",
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  const menuButtonClass =
+    "block w-full px-3 py-2.5 text-left text-stone-600 hover:bg-stone-100 disabled:cursor-wait disabled:opacity-50 dark:text-stone-300 dark:hover:bg-stone-800";
 
   return (
     <div
@@ -128,6 +220,59 @@ export default function MessageActionBar({
             >
               Print
             </Link>
+            {isInbox && archiveMailboxId && (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!!busyAction}
+                onClick={() => void moveMessage(archiveMailboxId, "Archived")}
+                className={menuButtonClass}
+              >
+                Archive
+              </button>
+            )}
+            {(isArchive || isTrash) && inboxMailboxId && (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!!busyAction}
+                onClick={() =>
+                  void moveMessage(inboxMailboxId, "Restored to Inbox")
+                }
+                className={menuButtonClass}
+              >
+                Restore to Inbox
+              </button>
+            )}
+            {!isTrash &&
+              trashMailboxId &&
+              (isInbox || isArchive || isSpam) && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!!busyAction}
+                  onClick={() =>
+                    void moveMessage(trashMailboxId, "Moved to Trash")
+                  }
+                  className={menuButtonClass}
+                >
+                  Move to Trash
+                </button>
+              )}
+            {isTrash && trashMailboxId && (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!!busyAction}
+                onClick={() => void permanentlyDeleteMessage()}
+                className={[
+                  menuButtonClass,
+                  "text-red-600 dark:text-red-400",
+                ].join(" ")}
+              >
+                Delete forever
+              </button>
+            )}
           </Popover>
         </ActionSlot>
       </div>

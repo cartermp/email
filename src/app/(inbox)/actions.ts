@@ -1,7 +1,7 @@
 "use server";
 
 import { auth } from "@/auth";
-import { getSession, getAccountId, getMailboxes, listEmails, loadMoreEmailsFiltered, searchEmails, setPin, setKeywordsOnMany, moveEmailsToMailbox, getInboxSnapshot } from "@/lib/jmap";
+import { getSession, getAccountId, getMailboxes, listEmails, loadMoreEmailsFiltered, searchEmails, setPin, setKeywordsOnMany, moveEmailsToMailbox, getInboxSnapshot, destroyAllEmailsInMailbox, destroyEmails, getEmailMailboxIds } from "@/lib/jmap";
 import { parseSearchQuery, buildJmapFilter } from "@/lib/search";
 import { log } from "@/lib/logger";
 import { Email } from "@/lib/types";
@@ -110,4 +110,71 @@ export async function bulkMoveToMailbox(
   }
   await moveEmailsToMailbox(session.apiUrl, accountId, emails, targetMailboxId);
   log.info({ count: emails.length, target_mailbox_id: targetMailboxId, duration_ms: Date.now() - t }, "action.move_emails");
+}
+
+async function requireTrashMailbox(
+  apiUrl: string,
+  accountId: string,
+  trashMailboxId: string,
+) {
+  const mailboxes = await getMailboxes(apiUrl, accountId);
+  const trash = mailboxes.find(
+    (mailbox) =>
+      mailbox.id === trashMailboxId && mailbox.role === "trash",
+  );
+  if (!trash) throw new Error("Invalid trash mailbox");
+  return trash;
+}
+
+export async function permanentlyDeleteEmailsAction(
+  emailIds: string[],
+  trashMailboxId: string,
+): Promise<void> {
+  const t = Date.now();
+  const { session, accountId } = await requireAuthedJmap();
+  if (!Array.isArray(emailIds) || typeof trashMailboxId !== "string") {
+    throw new Error("Invalid permanent delete request");
+  }
+  const ids = [
+    ...new Set(
+      emailIds
+        .slice(0, 500)
+        .filter((emailId): emailId is string => typeof emailId === "string" && !!emailId),
+    ),
+  ];
+  if (!ids.length) return;
+  await requireTrashMailbox(session.apiUrl, accountId, trashMailboxId);
+  const emails = await getEmailMailboxIds(session.apiUrl, accountId, ids);
+  if (
+    emails.length !== ids.length ||
+    emails.some((email) => !email.mailboxIds[trashMailboxId])
+  ) {
+    throw new Error("Only messages in Trash can be permanently deleted");
+  }
+  await destroyEmails(session.apiUrl, accountId, ids);
+  log.info(
+    { count: ids.length, duration_ms: Date.now() - t },
+    "action.destroy_emails",
+  );
+}
+
+export async function emptyTrashAction(
+  trashMailboxId: string,
+): Promise<{ destroyed: number }> {
+  const t = Date.now();
+  const { session, accountId } = await requireAuthedJmap();
+  if (typeof trashMailboxId !== "string" || !trashMailboxId) {
+    throw new Error("Invalid trash mailbox");
+  }
+  await requireTrashMailbox(session.apiUrl, accountId, trashMailboxId);
+  const destroyed = await destroyAllEmailsInMailbox(
+    session.apiUrl,
+    accountId,
+    trashMailboxId,
+  );
+  log.info(
+    { count: destroyed, duration_ms: Date.now() - t },
+    "action.empty_trash",
+  );
+  return { destroyed };
 }
