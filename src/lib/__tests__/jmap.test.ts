@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, listCalendarCandidateEmails, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -310,6 +310,34 @@ describe("listInboxEmails", () => {
     const calls = (capturedBodies[0] as any).methodCalls;
     assert.equal(calls[0][1].position, 0);
     assert.equal(calls[2][1].position, 0);
+  });
+});
+
+describe("listCalendarCandidateEmails", () => {
+  it("pages through the complete mailbox instead of stopping at a fixed ceiling", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/query", { ids: ["e1", "e2"], total: 3 }, "q"],
+        ["Email/get", { list: [makeEmailResponse("e1", true), makeEmailResponse("e2", true)] }, "g"],
+      ]),
+      makeJmapResponse([
+        ["Email/query", { ids: ["e3"], total: 3 }, "q"],
+        ["Email/get", { list: [makeEmailResponse("e3", true)] }, "g"],
+      ]),
+    ];
+
+    const result = await listCalendarCandidateEmails(
+      "https://api.example.com/jmap",
+      "acct1",
+      2
+    );
+
+    assert.deepEqual(result.map((email) => email.id), ["e1", "e2", "e3"]);
+    assert.equal(capturedBodies.length, 2);
+    assert.equal((capturedBodies[0] as any).methodCalls[0][1].position, 0);
+    assert.equal((capturedBodies[1] as any).methodCalls[0][1].position, 2);
+    assert.equal((capturedBodies[0] as any).methodCalls[0][1].calculateTotal, true);
   });
 });
 

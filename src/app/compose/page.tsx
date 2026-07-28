@@ -7,7 +7,7 @@ import {
   buildReplyQuote,
   buildForwardQuote,
   htmlToPlainText,
-  stripSignatureSeparator,
+  applyIdentitySignature,
 } from "@/lib/compose";
 import Composer from "@/components/Composer";
 import MobileBackButton from "@/components/MobileBackButton";
@@ -44,22 +44,6 @@ export default async function ComposePage({ searchParams }: Props) {
     if (b.mayDelete === false && a.mayDelete !== false) return 1;
     return 0;
   });
-
-  // Use the raw signature content, stripping any stored `-- \n` prefix that
-  // Fastmail or other clients may have prepended, so withSignature can add
-  // exactly one canonical separator.
-  const rawSig = sorted[0]?.textSignature ?? "";
-  const signature = stripSignatureSeparator(rawSig);
-
-  // Inserts the sig block (with RFC-3676 `-- \n` separator) before any
-  // quoted/forwarded content.
-  function withSignature(body: string): string {
-    const sigBlock = signature ? `\n\n-- \n${signature}` : "";
-    // Trim leading newlines from body so the sig block's trailing \n\n doesn't
-    // double-up with the leading \n\n that buildReplyQuote / buildForwardQuote
-    // prepend, which would otherwise produce 4 blank lines.
-    return body ? `${sigBlock}\n\n${body.trimStart()}` : sigBlock;
-  }
 
   let initialTo = "";
   let initialCc = "";
@@ -175,6 +159,13 @@ export default async function ComposePage({ searchParams }: Props) {
       const fromStr = fromAddr ? formatAddressRFC(fromAddr) : "";
       const dateStr = formatFullDate(email.receivedAt);
       const myEmails = new Set(sorted.map((i) => i.email.toLowerCase()));
+      const recipientEmails = new Set(
+        [...(email.to ?? []), ...(email.cc ?? []), ...(email.bcc ?? [])]
+          .map((address) => address.email.toLowerCase())
+      );
+      initialIdentityId = sorted.find((identity) =>
+        recipientEmails.has(identity.email.toLowerCase())
+      )?.id;
 
       if (mode === "reply") {
         title = "Reply";
@@ -182,7 +173,7 @@ export default async function ComposePage({ searchParams }: Props) {
         initialSubject = reSubject(email.subject);
         inReplyToId = email.messageId?.[0];
         replyThreadId = email.threadId;
-        initialBody = withSignature(buildReplyQuote(dateStr, fromStr, bodyText));
+        initialBody = buildReplyQuote(dateStr, fromStr, bodyText);
       } else if (mode === "reply-all") {
         title = "Reply All";
         initialTo = fromStr;
@@ -193,7 +184,7 @@ export default async function ComposePage({ searchParams }: Props) {
         initialSubject = reSubject(email.subject);
         inReplyToId = email.messageId?.[0];
         replyThreadId = email.threadId;
-        initialBody = withSignature(buildReplyQuote(dateStr, fromStr, bodyText));
+        initialBody = buildReplyQuote(dateStr, fromStr, bodyText);
       } else if (mode === "forward") {
         title = "Forward";
         initialSubject = fwdSubject(email.subject);
@@ -209,16 +200,24 @@ export default async function ComposePage({ searchParams }: Props) {
         }
         // The markdown body carries the plain-text fallback (text/plain part
         // of the sent email) and what's shown in the editor.
-        initialBody = withSignature(buildForwardQuote({
+        initialBody = buildForwardQuote({
           from: addrList(email.from),
           to: addrList(email.to),
           date: dateStr,
           subject: email.subject ?? "",
           body: bodyText,
-        }));
+        });
       }
     }
   }
+
+  const selectedIdentityId = initialIdentityId ?? sorted[0]?.id;
+  const selectedIdentity = sorted.find(
+    (identity) => identity.id === selectedIdentityId
+  );
+  const preparedBody = draftId
+    ? initialBody
+    : applyIdentitySignature(initialBody, selectedIdentity?.textSignature ?? "");
 
   return (
     <div className="flex flex-col h-full">
@@ -230,17 +229,22 @@ export default async function ComposePage({ searchParams }: Props) {
       </div>
       <div className="flex-1 min-h-0">
         <Composer
-          identities={sorted.map((i) => ({ id: i.id, name: i.name, email: i.email }))}
+          identities={sorted.map((i) => ({
+            id: i.id,
+            name: i.name,
+            email: i.email,
+            textSignature: i.textSignature,
+          }))}
           initialTo={initialTo}
           initialCc={initialCc}
           initialBcc={initialBcc}
           initialSubject={initialSubject}
-          initialBody={draftId ? initialBody : initialBody || withSignature("")}
+          initialBody={preparedBody}
           inReplyToId={inReplyToId}
           replyThreadId={replyThreadId}
           initialDraftId={initialDraftId}
           forwardedHtml={forwardedHtml}
-          initialIdentityId={initialIdentityId}
+          initialIdentityId={selectedIdentityId}
           initialInlineImages={initialInlineImages}
           initialAttachments={initialAttachments}
         />

@@ -11,6 +11,7 @@ import {
   quotedSectionStart,
   formatSignatureForSave,
   stripSignatureSeparator,
+  applyIdentitySignature,
 } from "../compose";
 
 describe("reSubject", () => {
@@ -215,6 +216,31 @@ describe("formatSignatureForSave", () => {
 
   it("stores an empty signature without a separator", () => {
     assert.equal(formatSignatureForSave(" \n "), "");
+  });
+});
+
+describe("applyIdentitySignature", () => {
+  it("adds the selected identity signature to a new message", () => {
+    assert.equal(
+      applyIdentitySignature("Hello", "-- \nPersonal signature"),
+      "Hello\n\n-- \nPersonal signature"
+    );
+  });
+
+  it("replaces the current signature without touching reply history", () => {
+    const original =
+      "My reply\n\n-- \nOld signature\n\n> On Monday, Maya wrote:\n>\n> Original";
+    assert.equal(
+      applyIdentitySignature(original, "-- \nWork signature"),
+      "My reply\n\n-- \nWork signature\n\n> On Monday, Maya wrote:\n>\n> Original"
+    );
+  });
+
+  it("removes the current signature when the selected identity has none", () => {
+    assert.equal(
+      applyIdentitySignature("Hello\n\n-- \nOld signature", ""),
+      "Hello"
+    );
   });
 });
 

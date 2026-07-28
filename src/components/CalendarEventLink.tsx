@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarEventData } from "@/components/CalendarEventCard";
+import type { CalendarEventData } from "@/lib/calendar";
 import { formatEventTime } from "@/lib/calendarView";
 
 function eventClasses(event: CalendarEventData): string {
-  if (event.method === "CANCEL") {
+  if (event.method.toUpperCase() === "CANCEL" || event.status === "CANCELLED") {
     return "border-red-200 bg-red-50/80 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300";
   }
   switch (event.myCurrentPartstat) {
@@ -21,7 +21,9 @@ function eventClasses(event: CalendarEventData): string {
 }
 
 function statusLabel(event: CalendarEventData): string | null {
-  if (event.method === "CANCEL") return "Cancelled";
+  if (event.method.toUpperCase() === "CANCEL" || event.status === "CANCELLED") {
+    return "Cancelled";
+  }
   switch (event.myCurrentPartstat) {
     case "ACCEPTED":
       return "Accepted";
@@ -60,7 +62,12 @@ export default function CalendarEventLink({ event }: Props) {
           </span>
         )}
       </div>
-      <p className={["mt-1 text-xs leading-snug", event.method === "CANCEL" ? "line-through" : ""].join(" ")}>
+      <p className={[
+        "mt-1 text-xs leading-snug",
+        event.method.toUpperCase() === "CANCEL" || event.status === "CANCELLED"
+          ? "line-through"
+          : "",
+      ].join(" ")}>
         {event.summary || event.emailSubject || "(no title)"}
       </p>
       {event.location && (

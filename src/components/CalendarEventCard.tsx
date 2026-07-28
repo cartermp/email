@@ -3,26 +3,9 @@
 import { useState } from "react";
 import { sendCalendarReplyAction } from "@/app/(inbox)/email/[id]/actions";
 import { useToast } from "@/components/ToastProvider";
+import type { CalendarEventData } from "@/lib/calendar";
 
-export interface CalendarEventData {
-  uid: string;
-  emailId: string;
-  threadId: string;
-  receivedAt: string;
-  emailSubject: string | null;
-  preview: string;
-  icsText: string;
-  method: string;
-  summary: string;
-  dtStart: string | null; // ISO string
-  dtEnd: string | null;   // ISO string
-  allDay: boolean;
-  location: string | null;
-  organizerName: string | null;
-  organizerEmail: string | null;
-  myCurrentPartstat: string | null;
-  inReplyToMessageId?: string;
-}
+export type { CalendarEventData } from "@/lib/calendar";
 
 function formatEventDateRange(
   dtStart: string | null,
@@ -125,7 +108,8 @@ export default function CalendarEventCard({ event, persistedResponse, onResponse
   const [error, setError] = useState<string | null>(null);
   const showToast = useToast();
 
-  const isCancelled = event.method === "CANCEL";
+  const isCancelled =
+    event.method.toUpperCase() === "CANCEL" || event.status === "CANCELLED";
   const isBusy = pendingResponse !== null;
 
   async function respond(response: Response) {

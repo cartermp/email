@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { CalendarEventData } from "@/components/CalendarEventCard";
+import type { CalendarEventData } from "@/lib/calendar";
 import CalendarEventLink from "@/components/CalendarEventLink";
 import EmptyState from "@/components/EmptyState";
 import { buildMonthDays } from "@/lib/calendarView";
@@ -85,7 +85,10 @@ export default function MobileCalendarAgenda({ monthKey, entries }: Props) {
                 </div>
               ) : (
                 day.events.map((event) => (
-                  <CalendarEventLink key={`${event.uid}-${event.emailId}`} event={event} />
+                  <CalendarEventLink
+                    key={`${event.uid}-${event.occurrenceId ?? event.emailId}`}
+                    event={event}
+                  />
                 ))
               )}
             </div>

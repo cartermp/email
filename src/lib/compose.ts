@@ -90,6 +90,35 @@ export function quotedSectionStart(markdown: string): number {
   return starts.length > 0 ? Math.min(...starts) : -1;
 }
 
+/**
+ * Replace the managed signature in the editable portion of a composition.
+ * Quoted reply/forward history is kept byte-for-byte after the signature.
+ */
+export function applyIdentitySignature(
+  markdown: string,
+  storedSignature: string
+): string {
+  const quoteStart = quotedSectionStart(markdown);
+  const editable = quoteStart >= 0 ? markdown.slice(0, quoteStart) : markdown;
+  const quotedHistory = quoteStart >= 0 ? markdown.slice(quoteStart) : "";
+
+  const separator = /(^|\n)--[ \t]*(?:\r?\n|$)/g;
+  let separatorMatch: RegExpExecArray | null;
+  let signatureStart = -1;
+  while ((separatorMatch = separator.exec(editable)) !== null) {
+    signatureStart = separatorMatch.index + (separatorMatch[1] ? 1 : 0);
+  }
+
+  const message = (signatureStart >= 0 ? editable.slice(0, signatureStart) : editable).trimEnd();
+  const signature = stripSignatureSeparator(storedSignature).trim();
+  const withSignature = signature
+    ? `${message ? `${message}\n\n` : ""}-- \n${signature}`
+    : message;
+
+  if (!quotedHistory) return withSignature;
+  return `${withSignature ? `${withSignature}\n\n` : ""}${quotedHistory.trimStart()}`;
+}
+
 export function buildForwardQuote({
   from,
   to,

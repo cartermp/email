@@ -351,6 +351,20 @@ test("keeps reply history intact while editing Markdown", async ({ page }) => {
   await expect(editor).toHaveValue(/The revised plan is ready for review\./);
 });
 
+test("switches the signature with the sending identity", async ({ page }) => {
+  await page.goto("/smoke-tests?panel=reply");
+
+  const editor = page.locator("textarea");
+  const identity = page.locator("select");
+  await identity.selectOption("identity-alias");
+  await expect(editor).toHaveValue(
+    /^Thanks, Maya\.\n\n-- \nWork signature\s*$/
+  );
+
+  await identity.selectOption("identity-primary");
+  await expect(editor).toHaveValue(/^Thanks, Maya\.\s*$/);
+});
+
 test("protects an edited reply from accidental navigation", async ({ page }) => {
   await page.goto("/smoke-tests?panel=reply");
   await page.locator("textarea").fill("A changed reply");

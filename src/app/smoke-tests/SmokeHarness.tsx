@@ -320,6 +320,13 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
                 id: "identity-primary",
                 name: "Phillip Carter",
                 email: "phillip@example.test",
+                textSignature: "",
+              },
+              {
+                id: "identity-alias",
+                name: "Phillip at Work",
+                email: "phillip@work.example.test",
+                textSignature: "-- \nWork signature",
               },
             ]}
             initialTo="Maya Chen <maya@example.test>"

@@ -703,37 +703,53 @@ export async function setPin(
   ]);
 }
 
-export async function listRecentCalendarCandidateEmails(
+export async function listCalendarCandidateEmails(
   apiUrl: string,
   accountId: string,
-  limit = 500
+  batchSize = 250
 ): Promise<Email[]> {
   const t = Date.now();
-  const data = await jmapCall(apiUrl, [
-    [
-      "Email/query",
-      {
-        accountId,
-        sort: [{ property: "receivedAt", isAscending: false }],
-        limit,
-        position: 0,
-      },
-      "q",
-    ],
-    [
-      "Email/get",
-      {
-        accountId,
-        "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
-        properties: CALENDAR_CANDIDATE_PROPERTIES,
-      },
-      "g",
-    ],
-  ]);
-  const [, gResult] = data.methodResponses[1];
-  const emails = (gResult.list as Email[]) ?? [];
+  const emails: Email[] = [];
+  let position = 0;
+  let total = Number.POSITIVE_INFINITY;
+  let pageCount = 0;
+
+  while (position < total) {
+    const data = await jmapCall(apiUrl, [
+      [
+        "Email/query",
+        {
+          accountId,
+          sort: [{ property: "receivedAt", isAscending: false }],
+          calculateTotal: true,
+          limit: batchSize,
+          position,
+        },
+        "q",
+      ],
+      [
+        "Email/get",
+        {
+          accountId,
+          "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
+          properties: CALENDAR_CANDIDATE_PROPERTIES,
+        },
+        "g",
+      ],
+    ]);
+    const [, queryResult] = data.methodResponses.find(([name]) => name === "Email/query") ?? [];
+    const [, getResult] = data.methodResponses.find(([name]) => name === "Email/get") ?? [];
+    const ids = ((queryResult as { ids?: string[] } | undefined)?.ids) ?? [];
+    total = (queryResult as { total?: number } | undefined)?.total ?? position + ids.length;
+    emails.push(...(((getResult as { list?: Email[] } | undefined)?.list) ?? []));
+    pageCount += 1;
+
+    if (ids.length === 0) break;
+    position += ids.length;
+  }
+
   log.info(
-    { count: emails.length, limit, duration_ms: Date.now() - t },
+    { count: emails.length, pages: pageCount, batch_size: batchSize, duration_ms: Date.now() - t },
     "jmap.list_calendar_candidates"
   );
   return emails;

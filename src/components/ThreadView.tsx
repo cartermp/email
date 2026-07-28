@@ -3,7 +3,8 @@
 import { useState } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
 import EmailBody from "@/components/EmailBody";
-import CalendarEventCard, { CalendarEventData, CalendarResponse } from "@/components/CalendarEventCard";
+import CalendarEventCard, { CalendarResponse } from "@/components/CalendarEventCard";
+import type { CalendarEventData } from "@/lib/calendar";
 import AttachmentList from "@/components/AttachmentList";
 import MessageActionBar from "@/components/MessageActionBar";
 import { Email } from "@/lib/types";

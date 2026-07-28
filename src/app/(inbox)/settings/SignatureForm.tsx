@@ -10,7 +10,8 @@ import { useToast } from "@/components/ToastProvider";
 import { useNavigationGuard } from "@/components/NavigationGuardProvider";
 
 interface Props {
-  identityLabel?: string;
+  identityId: string;
+  identityLabel: string;
   initialSignature: string;
 }
 
@@ -20,7 +21,14 @@ function stripSepPrefix(sig: string): string {
   return stripSignatureSeparator(sig);
 }
 
-export default function SignatureForm({ identityLabel, initialSignature }: Props) {
+export default function SignatureForm({
+  identityId,
+  identityLabel,
+  initialSignature,
+}: Props) {
+  const fieldId = `signature-${identityId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const helpId = `${fieldId}-help`;
+  const statusId = `${fieldId}-status`;
   const initialValue = stripSepPrefix(initialSignature);
   const [value, setValue] = useState(initialValue);
   const [savedValue, setSavedValue] = useState(initialValue);
@@ -39,7 +47,7 @@ export default function SignatureForm({ identityLabel, initialSignature }: Props
         // which other mail clients (Fastmail web, mobile apps) also expect.
         const normalized = value.trim();
         const toSave = formatSignatureForSave(value);
-        await saveSignatureAction(toSave);
+        await saveSignatureAction(identityId, toSave);
         setValue(normalized);
         setSavedValue(normalized);
         showToast({ message: "Signature saved" });
@@ -53,25 +61,23 @@ export default function SignatureForm({ identityLabel, initialSignature }: Props
 
   return (
     <div className="space-y-5">
-      {identityLabel && (
-        <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 dark:border-stone-700 dark:bg-stone-900/60">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500">
-            Sending as
-          </p>
-          <p className="mt-1 break-all text-xs text-stone-600 dark:text-stone-300">
-            {identityLabel}
-          </p>
-        </div>
-      )}
+      <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2.5 dark:border-stone-700 dark:bg-stone-900/60">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-stone-400 dark:text-stone-500">
+          Sending as
+        </p>
+        <p className="mt-1 break-all text-xs text-stone-600 dark:text-stone-300">
+          {identityLabel}
+        </p>
+      </div>
       <div>
         <label
-          htmlFor="signature"
+          htmlFor={fieldId}
           className="mb-2 block text-xs font-medium text-stone-600 dark:text-stone-300"
         >
           Signature text
         </label>
         <textarea
-          id="signature"
+          id={fieldId}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(event) => {
@@ -85,11 +91,11 @@ export default function SignatureForm({ identityLabel, initialSignature }: Props
           }}
           rows={6}
           placeholder="Your signature here…"
-          aria-describedby="signature-help signature-status"
+          aria-describedby={`${helpId} ${statusId}`}
           className="w-full resize-y rounded-lg border border-stone-200 bg-white px-4 py-3 font-mono text-sm leading-relaxed text-stone-700 outline-none placeholder:text-stone-300 focus:border-stone-400 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300 dark:placeholder:text-stone-600 dark:focus:border-stone-500"
         />
         <p
-          id="signature-help"
+          id={helpId}
           className="mt-2 text-xs text-stone-400 dark:text-stone-500"
         >
           Plain text · ⌘S or Ctrl+S to save
@@ -137,7 +143,7 @@ export default function SignatureForm({ identityLabel, initialSignature }: Props
           </button>
         )}
         <span
-          id="signature-status"
+          id={statusId}
           className={[
             "ml-auto text-xs",
             error

@@ -1,11 +1,10 @@
 import Link from "next/link";
 import MobileBackButton from "@/components/MobileBackButton";
-import { CalendarEventData } from "@/components/CalendarEventCard";
 import CalendarEventLink from "@/components/CalendarEventLink";
 import MobileCalendarAgenda from "@/components/MobileCalendarAgenda";
-import { resolveCalendarEvent } from "@/lib/calendarDetect";
+import { resolveCalendarEvents } from "@/lib/calendarDetect";
 import { addMonths, buildCalendarEntries, buildMonthDays, filterEventsForMonth, monthTitle, normalizeMonthKey } from "@/lib/calendarView";
-import { listRecentCalendarCandidateEmails } from "@/lib/jmap";
+import { listCalendarCandidateEmails } from "@/lib/jmap";
 import { getJmapMailboxContext } from "@/lib/jmapServer";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -27,8 +26,8 @@ export default async function CalendarPage({ searchParams }: Props) {
       .map((mailbox) => mailbox.id)
   );
 
-  const recentEmails = await listRecentCalendarCandidateEmails(session.apiUrl, accountId);
-  const inviteEmails = recentEmails.filter((email) => {
+  const candidateEmails = await listCalendarCandidateEmails(session.apiUrl, accountId);
+  const inviteEmails = candidateEmails.filter((email) => {
     const mailboxIds = Object.keys(email.mailboxIds ?? {});
     if (mailboxIds.some((mailboxId) => excludedMailboxIds.has(mailboxId))) {
       return false;
@@ -42,11 +41,11 @@ export default async function CalendarPage({ searchParams }: Props) {
 
   const resolvedEvents = (await Promise.all(
     inviteEmails.map((email) =>
-      resolveCalendarEvent(email, session.downloadUrl, accountId)
+      resolveCalendarEvents(email, session.downloadUrl, accountId)
     )
-  )).filter((event): event is CalendarEventData => event !== null);
+  )).flat();
 
-  const entries = buildCalendarEntries(resolvedEvents);
+  const entries = buildCalendarEntries(resolvedEvents, monthKey);
   const monthEntries = filterEventsForMonth(entries, monthKey);
   const monthDays = buildMonthDays(monthKey, monthEntries);
 
@@ -140,7 +139,10 @@ export default async function CalendarPage({ searchParams }: Props) {
                     </div>
                     <div className="space-y-1.5">
                       {day.events.map((event) => (
-                        <CalendarEventLink key={`${event.uid}-${event.emailId}`} event={event} />
+                        <CalendarEventLink
+                          key={`${event.uid}-${event.occurrenceId ?? event.emailId}`}
+                          event={event}
+                        />
                       ))}
                     </div>
                   </div>

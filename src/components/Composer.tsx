@@ -16,6 +16,7 @@ import {
   normalizeComposeMarkdown,
   htmlToPlainText,
   quotedSectionStart,
+  applyIdentitySignature,
 } from "@/lib/compose";
 
 // ---------------------------------------------------------------------------
@@ -170,6 +171,7 @@ interface Identity {
   id: string;
   name: string;
   email: string;
+  textSignature: string;
 }
 
 interface InlineImage {
@@ -735,6 +737,15 @@ export default function Composer({
     );
   }
 
+  function changeIdentity(nextIdentityId: string) {
+    const identity = identities.find((candidate) => candidate.id === nextIdentityId);
+    if (!identity) return;
+    setMarkdown((current) =>
+      applyIdentitySignature(current, identity.textSignature)
+    );
+    setIdentityId(nextIdentityId);
+  }
+
   function insertMarkdown(
     before: string,
     after: string,
@@ -773,7 +784,7 @@ export default function Composer({
             <label className={labelClass}>From</label>
             <select
               value={identityId}
-              onChange={(e) => setIdentityId(e.target.value)}
+              onChange={(e) => changeIdentity(e.target.value)}
               className="flex-1 text-sm text-stone-700 dark:text-stone-300 bg-transparent outline-none"
             >
               {identities.map((id) => (

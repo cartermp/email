@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { buildCalendarEntries, buildMonthDays, filterEventsForMonth, addMonths, normalizeMonthKey, monthTitle, formatEventTime } from "../calendarView";
-import { CalendarEventData } from "@/components/CalendarEventCard";
+import type { CalendarEventData } from "../calendar";
 
 function makeEvent(overrides: Partial<CalendarEventData> = {}): CalendarEventData {
   return {
@@ -22,6 +22,13 @@ function makeEvent(overrides: Partial<CalendarEventData> = {}): CalendarEventDat
     organizerEmail: null,
     myCurrentPartstat: null,
     inReplyToMessageId: undefined,
+    recurrenceRule: null,
+    recurrenceDates: [],
+    excludedDates: [],
+    recurrenceId: null,
+    recurrenceTimeZone: null,
+    status: null,
+    sequence: 0,
     ...overrides,
   };
 }
@@ -66,6 +73,98 @@ describe("calendarView", () => {
     const noStart = makeEvent({ uid: "nostart", dtStart: null });
     const result = buildCalendarEntries([reply, noStart]);
     assert.equal(result.length, 0);
+  });
+
+  it("removes a series when its latest message is a cancellation", () => {
+    const request = makeEvent({
+      uid: "cancelled-series",
+      recurrenceRule: "FREQ=WEEKLY",
+    });
+    const cancellation = makeEvent({
+      uid: "cancelled-series",
+      emailId: "cancel-email",
+      receivedAt: "2026-05-02T12:00:00.000Z",
+      method: "CANCEL",
+      dtStart: null,
+      dtEnd: null,
+    });
+    assert.deepEqual(buildCalendarEntries([request, cancellation], "2026-05"), []);
+  });
+
+  it("expands recurring events and preserves local time across daylight saving", () => {
+    const recurring = makeEvent({
+      uid: "weekly",
+      dtStart: "2026-03-02T17:00:00.000Z",
+      dtEnd: "2026-03-02T18:00:00.000Z",
+      recurrenceRule: "FREQ=WEEKLY;BYDAY=MO;COUNT=4",
+      recurrenceTimeZone: "America/Los_Angeles",
+    });
+    const result = buildCalendarEntries([recurring], "2026-03");
+    assert.deepEqual(
+      result.map((event) => event.dtStart),
+      [
+        "2026-03-02T17:00:00.000Z",
+        "2026-03-09T16:00:00.000Z",
+        "2026-03-16T16:00:00.000Z",
+        "2026-03-23T16:00:00.000Z",
+      ]
+    );
+  });
+
+  it("honors excluded dates and a cancelled occurrence", () => {
+    const recurring = makeEvent({
+      uid: "weekly",
+      dtStart: "2026-05-04T16:00:00.000Z",
+      dtEnd: "2026-05-04T17:00:00.000Z",
+      recurrenceRule: "FREQ=WEEKLY;BYDAY=MO;COUNT=4",
+      recurrenceTimeZone: "UTC",
+      excludedDates: ["2026-05-18T16:00:00.000Z"],
+    });
+    const cancelledOccurrence = makeEvent({
+      uid: "weekly",
+      emailId: "cancel-occurrence",
+      receivedAt: "2026-05-03T12:00:00.000Z",
+      method: "CANCEL",
+      dtStart: null,
+      dtEnd: null,
+      recurrenceId: "2026-05-11T16:00:00.000Z",
+    });
+    const result = buildCalendarEntries(
+      [recurring, cancelledOccurrence],
+      "2026-05"
+    );
+    assert.deepEqual(
+      result.map((event) => event.dtStart),
+      ["2026-05-04T16:00:00.000Z", "2026-05-25T16:00:00.000Z"]
+    );
+  });
+
+  it("uses a recurrence exception for a moved occurrence", () => {
+    const recurring = makeEvent({
+      uid: "weekly",
+      dtStart: "2026-05-04T16:00:00.000Z",
+      dtEnd: "2026-05-04T17:00:00.000Z",
+      recurrenceRule: "FREQ=WEEKLY;BYDAY=MO;COUNT=2",
+      recurrenceTimeZone: "UTC",
+    });
+    const exception = makeEvent({
+      uid: "weekly",
+      emailId: "moved-occurrence",
+      receivedAt: "2026-05-03T12:00:00.000Z",
+      summary: "Moved meeting",
+      dtStart: "2026-05-12T18:00:00.000Z",
+      dtEnd: null,
+      recurrenceId: "2026-05-11T16:00:00.000Z",
+    });
+    const result = buildCalendarEntries([recurring, exception], "2026-05");
+    assert.deepEqual(
+      result.map((event) => [event.dtStart, event.summary]),
+      [
+        ["2026-05-04T16:00:00.000Z", "Meeting"],
+        ["2026-05-12T18:00:00.000Z", "Moved meeting"],
+      ]
+    );
+    assert.equal(result[1].dtEnd, "2026-05-12T19:00:00.000Z");
   });
 
   it("filters events for the requested month", () => {

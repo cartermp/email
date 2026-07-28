@@ -1,7 +1,7 @@
 import { Email, EmailBodyPart } from "./types";
 import { downloadBlobAsText } from "./jmap";
-import { parseIcs } from "./ics";
-import { CalendarEventData } from "@/components/CalendarEventCard";
+import { parseIcsEvents } from "./ics";
+import type { CalendarEventData } from "./calendar";
 
 type CalendarSourceEmail = Pick<
   Email,
@@ -24,10 +24,18 @@ export async function resolveCalendarEvent(
   downloadUrl: string,
   accountId: string
 ): Promise<CalendarEventData | null> {
+  return (await resolveCalendarEvents(email, downloadUrl, accountId))[0] ?? null;
+}
+
+export async function resolveCalendarEvents(
+  email: CalendarSourceEmail,
+  downloadUrl: string,
+  accountId: string
+): Promise<CalendarEventData[]> {
   const inlineCalPart = email.textBody?.find((p) => p.type === "text/calendar");
   const attachedCalPart = email.attachments?.find((p) => p.type === "text/calendar");
   const calPart = inlineCalPart ?? attachedCalPart;
-  if (!calPart) return null;
+  if (!calPart) return [];
 
   try {
     let icsText: string | null = null;
@@ -43,22 +51,16 @@ export async function resolveCalendarEvent(
       );
     }
 
-    if (!icsText) return null;
+    if (!icsText) return [];
 
-    const event = parseIcs(icsText);
-    if (!event) return null;
+    const events = parseIcsEvents(icsText);
+    if (events.length === 0) return [];
 
     // Match against to + cc so forwarded / CC'd invites resolve correctly.
     const recipientEmails = new Set([
       ...(email.to ?? []).map((a) => a.email.toLowerCase()),
       ...(email.cc ?? []).map((a) => a.email.toLowerCase()),
     ]);
-    const organizerEmail = event.organizer?.email.toLowerCase();
-    const myAttendee = event.attendees.find((a) => {
-      const ae = a.email.toLowerCase();
-      return recipientEmails.has(ae) && ae !== organizerEmail;
-    });
-
     // Prefer a keyword-persisted RSVP response (set when the user responds via
     // this client) over the raw ICS PARTSTAT, which is often stale (NEEDS-ACTION)
     // even after the user has already responded.
@@ -68,26 +70,41 @@ export async function resolveCalendarEvent(
       email.keywords?.["$rsvp_declined"] ? "DECLINED" :
       null;
 
-    return {
-      uid: event.uid || email.id,
-      emailId: email.id,
-      threadId: email.threadId,
-      receivedAt: email.receivedAt,
-      emailSubject: email.subject,
-      preview: email.preview,
-      icsText,
-      method: event.method,
-      summary: event.summary,
-      dtStart: event.dtStart?.toISOString() ?? null,
-      dtEnd: event.dtEnd?.toISOString() ?? null,
-      allDay: event.allDay,
-      location: event.location,
-      organizerName: event.organizer?.name ?? null,
-      organizerEmail: event.organizer?.email ?? null,
-      myCurrentPartstat: keywordPartstat ?? myAttendee?.partstat ?? null,
-      inReplyToMessageId: email.messageId?.[0],
-    };
+    return events.map((event) => {
+      const organizerEmail = event.organizer?.email.toLowerCase();
+      const myAttendee = event.attendees.find((attendee) => {
+        const attendeeEmail = attendee.email.toLowerCase();
+        return recipientEmails.has(attendeeEmail) && attendeeEmail !== organizerEmail;
+      });
+
+      return {
+        uid: event.uid || email.id,
+        emailId: email.id,
+        threadId: email.threadId,
+        receivedAt: email.receivedAt,
+        emailSubject: email.subject,
+        preview: email.preview,
+        icsText,
+        method: event.method,
+        summary: event.summary,
+        dtStart: event.dtStart?.toISOString() ?? null,
+        dtEnd: event.dtEnd?.toISOString() ?? null,
+        allDay: event.allDay,
+        location: event.location,
+        organizerName: event.organizer?.name ?? null,
+        organizerEmail: event.organizer?.email ?? null,
+        myCurrentPartstat: keywordPartstat ?? myAttendee?.partstat ?? null,
+        inReplyToMessageId: email.messageId?.[0],
+        recurrenceRule: event.recurrenceRule,
+        recurrenceDates: event.recurrenceDates.map((date) => date.toISOString()),
+        excludedDates: event.excludedDates.map((date) => date.toISOString()),
+        recurrenceId: event.recurrenceId?.toISOString() ?? null,
+        recurrenceTimeZone: event.recurrenceTimeZone,
+        status: event.status,
+        sequence: event.sequence,
+      };
+    });
   } catch {
-    return null;
+    return [];
   }
 }
