@@ -101,10 +101,16 @@ const EMAIL_LIST_PROPERTIES = [
 export interface MailPanelMailboxIds {
   inbox?: string;
   drafts?: string;
+  pinned?: string;
   sent?: string;
   spam?: string;
   archive?: string;
   trash?: string;
+}
+
+export interface EmailPage {
+  emails: Email[];
+  total: number;
 }
 
 export interface MailPanelData {
@@ -114,9 +120,9 @@ export interface MailPanelData {
     reads: Email[];
     readTotal: number;
   };
-  drafts: Email[];
+  drafts: EmailPage;
   pinned: Email[];
-  sent: { emails: Email[]; total: number };
+  sent: EmailPage;
   spam: {
     unreads: Email[];
     unreadTotal: number;
@@ -135,6 +141,7 @@ export interface MailPanelData {
     reads: Email[];
     readTotal: number;
   };
+  emailState?: string;
 }
 
 function mailboxQuery(
@@ -178,7 +185,7 @@ function mailboxQuery(
 export function buildMailPanelMethodCalls(
   accountId: string,
   mailboxIds: MailPanelMailboxIds,
-  includePinned = true,
+  options: { includeEmailState?: boolean } = {},
 ): MethodCall[] {
   const calls: MethodCall[] = [];
 
@@ -198,13 +205,16 @@ export function buildMailPanelMethodCalls(
     );
   }
 
-  if (includePinned) {
+  if (mailboxIds.pinned) {
     calls.push(
       [
         "Email/query",
         {
           accountId,
-          filter: { hasKeyword: "$flagged" },
+          filter: {
+            inMailbox: mailboxIds.pinned,
+            hasKeyword: "$flagged",
+          },
           sort: [{ property: "receivedAt", isAscending: false }],
           limit: 100,
           position: 0,
@@ -261,6 +271,18 @@ export function buildMailPanelMethodCalls(
     );
   }
 
+  if (options.includeEmailState) {
+    calls.push([
+      "Email/get",
+      {
+        accountId,
+        ids: [],
+        properties: ["id"],
+      },
+      "state",
+    ]);
+  }
+
   return calls;
 }
 
@@ -273,13 +295,13 @@ export async function loadMailPanelData(
   apiUrl: string,
   accountId: string,
   mailboxIds: MailPanelMailboxIds,
-  includePinned = true,
+  options: { includeEmailState?: boolean } = {},
 ): Promise<MailPanelData> {
   const startedAt = Date.now();
   const methodCalls = buildMailPanelMethodCalls(
     accountId,
     mailboxIds,
-    includePinned,
+    options,
   );
   const data = await jmapCall(apiUrl, methodCalls);
   const byCallId = new Map(
@@ -297,7 +319,10 @@ export async function loadMailPanelData(
       reads: list("irg"),
       readTotal: total("irq"),
     },
-    drafts: list("dg"),
+    drafts: {
+      emails: list("dg"),
+      total: total("dq"),
+    },
     pinned: list("pg"),
     sent: {
       emails: list("sg"),
@@ -321,6 +346,7 @@ export async function loadMailPanelData(
       reads: list("trg"),
       readTotal: total("trq"),
     },
+    emailState: byCallId.get("state")?.state as string | undefined,
   };
 
   log.info(
@@ -355,19 +381,19 @@ const CALENDAR_CANDIDATE_PROPERTIES = [
   "attachments",
 ];
 
-export async function listEmails(
+async function queryEmailPage(
   apiUrl: string,
   accountId: string,
-  mailboxId: string,
+  filter: Record<string, unknown>,
+  position = 0,
   limit = 50,
-  position = 0
-): Promise<{ emails: Email[]; total: number }> {
+): Promise<EmailPage> {
   const data = await jmapCall(apiUrl, [
     [
       "Email/query",
       {
         accountId,
-        filter: { inMailbox: mailboxId },
+        filter,
         sort: [{ property: "receivedAt", isAscending: false }],
         calculateTotal: true,
         limit,
@@ -391,6 +417,22 @@ export async function listEmails(
     emails: (getResult.list as Email[]) ?? [],
     total: (queryResult.total as number) ?? 0,
   };
+}
+
+export async function listEmails(
+  apiUrl: string,
+  accountId: string,
+  mailboxId: string,
+  limit = 50,
+  position = 0
+): Promise<EmailPage> {
+  return queryEmailPage(
+    apiUrl,
+    accountId,
+    { inMailbox: mailboxId },
+    position,
+    limit,
+  );
 }
 
 /**
@@ -473,39 +515,32 @@ export async function getUnreadInboxTotal(
 }
 
 /**
- * Fetch the smallest useful inbox fingerprint for background synchronization.
- * A changed newest id or total means the visible inbox needs a full refresh.
+ * Fetch the JMAP Email state token. It changes for message delivery, moves,
+ * keyword changes, draft changes, and sends, making it the single reliable
+ * cross-client synchronization fingerprint for every mail view.
  */
-export async function getInboxSnapshot(
+export async function getEmailState(
   apiUrl: string,
   accountId: string,
-  mailboxId: string,
-): Promise<{ latestEmailId: string | null; total: number }> {
+): Promise<string> {
   const data = await jmapCall(
     apiUrl,
     [[
-      "Email/query",
+      "Email/get",
       {
         accountId,
-        filter: { inMailbox: mailboxId },
-        sort: [{ property: "receivedAt", isAscending: false }],
-        calculateTotal: true,
-        limit: 1,
-        position: 0,
+        ids: [],
+        properties: ["id"],
       },
-      "inbox-snapshot",
+      "email-state",
     ]],
     { logSuccess: false },
   );
   const [methodName, result] = data.methodResponses[0] ?? [];
-  if (methodName !== "Email/query") {
-    throw new Error("Unable to check for new inbox mail");
+  if (methodName !== "Email/get" || typeof result.state !== "string") {
+    throw new Error("Unable to check mail state");
   }
-
-  return {
-    latestEmailId: ((result.ids as string[] | undefined) ?? [])[0] ?? null,
-    total: (result.total as number | undefined) ?? 0,
-  };
+  return result.state;
 }
 
 export async function loadMoreEmailsFiltered(
@@ -515,91 +550,28 @@ export async function loadMoreEmailsFiltered(
   filter: "unread" | "read",
   position: number,
   limit = 50
-): Promise<{ emails: Email[]; total: number }> {
+): Promise<EmailPage> {
   const jmapFilter =
     filter === "unread"
       ? { inMailbox: mailboxId, notKeyword: "$seen" }
       : { inMailbox: mailboxId, hasKeyword: "$seen" };
-  const data = await jmapCall(apiUrl, [
-    ["Email/query", {
-      accountId,
-      filter: jmapFilter,
-      sort: [{ property: "receivedAt", isAscending: false }],
-      calculateTotal: true,
-      limit, position,
-    }, "0"],
-    ["Email/get", {
-      accountId,
-      "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-      properties: EMAIL_LIST_PROPERTIES,
-    }, "1"],
-  ]);
-  const [, queryResult] = data.methodResponses[0];
-  const [, getResult] = data.methodResponses[1];
-  return {
-    emails: (getResult.list as Email[]) ?? [],
-    total: (queryResult.total as number) ?? 0,
-  };
-}
-
-export async function listPinnedEmails(
-  apiUrl: string,
-  accountId: string
-): Promise<Email[]> {
-  const data = await jmapCall(apiUrl, [
-    [
-      "Email/query",
-      {
-        accountId,
-        filter: { hasKeyword: "$flagged" },
-        sort: [{ property: "receivedAt", isAscending: false }],
-        limit: 100,
-      },
-      "0",
-    ],
-    [
-      "Email/get",
-      {
-        accountId,
-        "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-        properties: EMAIL_LIST_PROPERTIES,
-      },
-      "1",
-    ],
-  ]);
-  const [, result] = data.methodResponses[1];
-  return (result.list as Email[]) ?? [];
+  return queryEmailPage(
+    apiUrl,
+    accountId,
+    jmapFilter,
+    position,
+    limit,
+  );
 }
 
 export async function searchEmails(
   apiUrl: string,
   accountId: string,
   filter: Record<string, unknown>,
-  limit = 50
-): Promise<Email[]> {
-  const data = await jmapCall(apiUrl, [
-    [
-      "Email/query",
-      {
-        accountId,
-        filter,
-        sort: [{ property: "receivedAt", isAscending: false }],
-        limit,
-      },
-      "0",
-    ],
-    [
-      "Email/get",
-      {
-        accountId,
-        "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-        properties: EMAIL_LIST_PROPERTIES,
-      },
-      "1",
-    ],
-  ]);
-  const [, result] = data.methodResponses[1];
-  return (result.list as Email[]) ?? [];
+  limit = 50,
+  position = 0,
+): Promise<EmailPage> {
+  return queryEmailPage(apiUrl, accountId, filter, position, limit);
 }
 
 export async function getEmail(
@@ -729,86 +701,6 @@ export async function setPin(
       "0",
     ],
   ]);
-}
-
-export async function listDrafts(
-  apiUrl: string,
-  accountId: string,
-  draftsMailboxId: string
-): Promise<Email[]> {
-  const t = Date.now();
-  const data = await jmapCall(apiUrl, [
-    [
-      "Email/query",
-        {
-          accountId,
-          filter: { inMailbox: draftsMailboxId },
-          sort: [{ property: "receivedAt", isAscending: false }],
-          calculateTotal: true,
-          limit: 50,
-        },
-      "0",
-    ],
-    [
-      "Email/get",
-      {
-        accountId,
-        "#ids": { resultOf: "0", name: "Email/query", path: "/ids" },
-        properties: EMAIL_LIST_PROPERTIES,
-      },
-      "1",
-    ],
-  ]);
-  const [, qResult] = data.methodResponses[0];
-  const [, gResult] = data.methodResponses[1];
-  const emails = (gResult.list as Email[]) ?? [];
-  const total = (qResult.total as number) ?? 0;
-  log.info(
-    { mailbox_id: draftsMailboxId, count: emails.length, total, duration_ms: Date.now() - t },
-    "jmap.list_drafts"
-  );
-  return emails;
-}
-
-export async function listSentEmails(
-  apiUrl: string,
-  accountId: string,
-  sentMailboxId: string,
-  limit = 50
-): Promise<{ emails: Email[]; total: number }> {
-  const t = Date.now();
-  const data = await jmapCall(apiUrl, [
-    [
-      "Email/query",
-        {
-          accountId,
-          filter: { inMailbox: sentMailboxId },
-          sort: [{ property: "receivedAt", isAscending: false }],
-          calculateTotal: true,
-          limit,
-          position: 0,
-        },
-      "q",
-    ],
-    [
-      "Email/get",
-      {
-        accountId,
-        "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
-        properties: EMAIL_LIST_PROPERTIES,
-      },
-      "g",
-    ],
-  ]);
-  const [, qResult] = data.methodResponses[0];
-  const [, gResult] = data.methodResponses[1];
-  const emails = (gResult.list as Email[]) ?? [];
-  const total = (qResult.total as number) ?? 0;
-  log.info(
-    { mailbox_id: sentMailboxId, count: emails.length, total, duration_ms: Date.now() - t },
-    "jmap.list_sent"
-  );
-  return { emails, total };
 }
 
 export async function listRecentCalendarCandidateEmails(

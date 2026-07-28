@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, getAccountId, getContactsAccountId, getInboxSnapshot, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -318,20 +318,30 @@ describe("loadMailPanelData", () => {
     const primaryCalls = buildMailPanelMethodCalls(
       "acct1",
       { inbox: "inbox" },
-      false,
+      { includeEmailState: true },
     );
     const deferredCalls = buildMailPanelMethodCalls("acct1", {
       drafts: "drafts",
+      pinned: "inbox",
       sent: "sent",
       spam: "spam",
       archive: "archive",
       trash: "trash",
     });
 
-    assert.equal(primaryCalls.length, 4);
+    assert.equal(primaryCalls.length, 5);
     assert.equal(deferredCalls.length, 18);
     assert.ok(
       primaryCalls.every(([, , callId]) => callId !== "pq" && callId !== "pg"),
+    );
+    const pinnedQuery = deferredCalls.find(([, , callId]) => callId === "pq");
+    assert.deepEqual(pinnedQuery?.[1].filter, {
+      inMailbox: "inbox",
+      hasKeyword: "$flagged",
+    });
+    assert.equal(
+      primaryCalls.find(([, , callId]) => callId === "state")?.[0],
+      "Email/get",
     );
   });
 
@@ -370,6 +380,7 @@ describe("loadMailPanelData", () => {
       {
         inbox: "inbox",
         drafts: "drafts",
+        pinned: "inbox",
         sent: "sent",
         spam: "spam",
         archive: "archive",
@@ -384,7 +395,8 @@ describe("loadMailPanelData", () => {
     );
     assert.equal(result.inbox.unreadTotal, 2);
     assert.equal(result.inbox.readTotal, 7);
-    assert.equal(result.drafts[0].id, "draft");
+    assert.equal(result.drafts.emails[0].id, "draft");
+    assert.equal(result.drafts.total, 1);
     assert.equal(result.pinned[0].id, "pinned");
     assert.equal(result.sent.total, 9);
     assert.equal(result.spam.unreadTotal, 3);
@@ -482,27 +494,52 @@ describe("getUnreadInboxTotal", () => {
   });
 });
 
-describe("getInboxSnapshot", () => {
-  it("uses one minimal query and returns the newest id with the inbox total", async () => {
+describe("getEmailState", () => {
+  it("uses one minimal get and returns the account-wide Email state", async () => {
     capturedBodies = [];
     mockResponses = [
       makeJmapResponse([
-        ["Email/query", { ids: ["newest"], total: 83 }, "inbox-snapshot"],
+        ["Email/get", { list: [], state: "state-83" }, "email-state"],
       ]),
     ];
 
-    const result = await getInboxSnapshot(
+    const result = await getEmailState(
       "https://api.example.com/jmap",
       "acct1",
-      "mbox1",
     );
     const calls = (capturedBodies[0] as any).methodCalls;
 
     assert.equal(calls.length, 1);
-    assert.deepEqual(calls[0][1].filter, { inMailbox: "mbox1" });
-    assert.equal(calls[0][1].limit, 1);
-    assert.equal(calls[0][1].calculateTotal, true);
-    assert.deepEqual(result, { latestEmailId: "newest", total: 83 });
+    assert.equal(calls[0][0], "Email/get");
+    assert.deepEqual(calls[0][1].ids, []);
+    assert.deepEqual(calls[0][1].properties, ["id"]);
+    assert.equal(result, "state-83");
+  });
+});
+
+describe("searchEmails", () => {
+  it("returns a total and passes the requested page position", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      makeJmapResponse([
+        ["Email/query", { ids: ["match"], total: 81 }, "0"],
+        ["Email/get", { list: [makeEmailResponse("match", true)] }, "1"],
+      ]),
+    ];
+
+    const result = await searchEmails(
+      "https://api.example.com/jmap",
+      "acct1",
+      { text: "quarterly" },
+      50,
+      50,
+    );
+    const query = (capturedBodies[0] as any).methodCalls[0][1];
+
+    assert.equal(query.position, 50);
+    assert.equal(query.calculateTotal, true);
+    assert.equal(result.total, 81);
+    assert.equal(result.emails[0].id, "match");
   });
 });
 

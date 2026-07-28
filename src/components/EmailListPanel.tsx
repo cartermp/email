@@ -37,12 +37,10 @@ import { formatDate } from "@/lib/format";
 import {
   bulkMarkAsRead,
   bulkMarkAsUnread,
-  bulkMoveToMailbox,
   bulkSetPin,
-  checkInboxForNewMail,
+  checkMailForUpdates,
   emptyTrashAction,
-  loadMoreReads,
-  loadMoreUnreads,
+  loadMailboxPageAction,
   permanentlyDeleteEmailsAction,
   searchEmailsAction,
 } from "@/app/(inbox)/actions";
@@ -51,61 +49,33 @@ import { dispatchUnreadCountEvent, getReadEmailIds, getUnreadEmailIds, isEmailUn
 import {
   MAIL_AUTO_SYNC_INTERVAL_MS,
   canRunImmediateMailSync,
-  getInboxSnapshot,
   getMailAutoSyncDelay,
-  inboxSnapshotKey,
-  type InboxSnapshot,
+  mailSyncSnapshotKey,
+  type MailSyncSnapshot,
 } from "@/lib/mailAutoSync";
+import {
+  getMailView,
+  getMailboxIdForView,
+  isThreadMailView,
+  MAIL_VIEW_LABELS,
+  type MailboxIds,
+} from "@/lib/mailbox";
+import type { MailPanelData } from "@/lib/jmap";
+import useMailboxMove from "@/components/useMailboxMove";
 
 interface Props {
-  unreads: Email[];
-  unreadTotal: number;
-  reads: Email[];
-  readTotal: number;
-  inboxId: string;
-  drafts?: Email[];
-  sentEmails?: Email[];
-  pinnedEmails?: Email[];
-  archiveMailboxId?: string;
-  trashMailboxId?: string;
-  spamUnreads?: Email[];
-  spamUnreadTotal?: number;
-  spamReads?: Email[];
-  spamReadTotal?: number;
-  spamMailboxId?: string;
-  archiveUnreads?: Email[];
-  archiveUnreadTotal?: number;
-  archiveReads?: Email[];
-  archiveReadTotal?: number;
-  trashUnreads?: Email[];
-  trashUnreadTotal?: number;
-  trashReads?: Email[];
-  trashReadTotal?: number;
+  initialData: MailPanelData;
+  mailboxIds: MailboxIds;
   deferredContent?: ReactNode;
   threadHrefPrefix?: string;
   autoSyncIntervalMs?: number;
-  autoSyncCheck?: (inboxId: string) => Promise<InboxSnapshot>;
+  autoSyncCheck?: () => Promise<MailSyncSnapshot>;
 }
 
-type View = "inbox" | "drafts" | "sent" | "spam" | "archive" | "trash";
-
-export interface DeferredMailPanelData {
-  drafts: Email[];
-  sentEmails: Email[];
-  pinnedEmails: Email[];
-  spamUnreads: Email[];
-  spamUnreadTotal: number;
-  spamReads: Email[];
-  spamReadTotal: number;
-  archiveUnreads: Email[];
-  archiveUnreadTotal: number;
-  archiveReads: Email[];
-  archiveReadTotal: number;
-  trashUnreads: Email[];
-  trashUnreadTotal: number;
-  trashReads: Email[];
-  trashReadTotal: number;
-}
+export type DeferredMailPanelData = Pick<
+  MailPanelData,
+  "drafts" | "pinned" | "sent" | "spam" | "archive" | "trash"
+>;
 
 const DeferredMailPanelContext = createContext<
   ((data: DeferredMailPanelData) => void) | null
@@ -206,39 +176,25 @@ function IconRefresh({ spinning = false }: { spinning?: boolean }) {
 // ---------------------------------------------------------------------------
 
 export default function EmailListPanel({
-  unreads,
-  unreadTotal,
-  reads,
-  readTotal,
-  inboxId,
-  drafts: initialDrafts = [],
-  sentEmails: initialSentEmails = [],
-  pinnedEmails = [],
-  archiveMailboxId,
-  trashMailboxId,
-  spamUnreads: initialSpamUnreads = [],
-  spamUnreadTotal: initialSpamUnreadTotal = 0,
-  spamReads: initialSpamReads = [],
-  spamReadTotal: initialSpamReadTotal = 0,
-  spamMailboxId,
-  archiveUnreads: initialArchiveUnreads = [],
-  archiveUnreadTotal: initialArchiveUnreadTotal = 0,
-  archiveReads: initialArchiveReads = [],
-  archiveReadTotal: initialArchiveReadTotal = 0,
-  trashUnreads: initialTrashUnreads = [],
-  trashUnreadTotal: initialTrashUnreadTotal = 0,
-  trashReads: initialTrashReads = [],
-  trashReadTotal: initialTrashReadTotal = 0,
+  initialData,
+  mailboxIds,
   deferredContent,
   threadHrefPrefix = "/thread",
   autoSyncIntervalMs = MAIL_AUTO_SYNC_INTERVAL_MS,
-  autoSyncCheck = checkInboxForNewMail,
+  autoSyncCheck = checkMailForUpdates,
 }: Props) {
+  const {
+    inbox: { unreads, unreadTotal, reads, readTotal },
+  } = initialData;
+  const inboxId = mailboxIds.inbox ?? "";
+  const archiveMailboxId = mailboxIds.archive;
+  const trashMailboxId = mailboxIds.trash;
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const confirmNavigation = useConfirmNavigation();
   const showToast = useToast();
+  const { moveEmails: moveEmailsBetweenMailboxes } = useMailboxMove();
   const selectedThreadId = pathname.startsWith("/thread/")
     ? pathname.slice("/thread/".length)
     : undefined;
@@ -248,17 +204,7 @@ export default function EmailListPanel({
     ? pathname.slice("/email/".length)
     : undefined;
 
-  const view: View = pathname.startsWith("/drafts")
-    ? "drafts"
-    : pathname.startsWith("/sent") || searchParams.get("from") === "sent"
-    ? "sent"
-    : pathname.startsWith("/archive") || searchParams.get("from") === "archive"
-    ? "archive"
-    : pathname.startsWith("/trash") || searchParams.get("from") === "trash"
-    ? "trash"
-    : pathname.startsWith("/spam") || searchParams.get("from") === "spam"
-    ? "spam"
-    : "inbox";
+  const view = getMailView(pathname, searchParams.get("from"));
 
   // -------------------------------------------------------------------------
   // Read / unread client-side overrides
@@ -299,52 +245,22 @@ export default function EmailListPanel({
   const [extraUnreads, setExtraUnreads] = useState<Email[]>([]);
   const [extraReads, setExtraReads] = useState<Email[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [draftsList, setDraftsList] = useState<Email[]>(initialDrafts);
-  const [pinnedList, setPinnedList] = useState(pinnedEmails);
+  const [draftsData, setDraftsData] = useState(initialData.drafts);
+  const [pinnedList, setPinnedList] = useState(initialData.pinned);
 
   const [deferredPending, setDeferredPending] = useState(!!deferredContent);
-  const [sentList, setSentList] = useState(initialSentEmails);
-  const [spamData, setSpamData] = useState({
-    unreads: initialSpamUnreads,
-    unreadTotal: initialSpamUnreadTotal,
-    reads: initialSpamReads,
-    readTotal: initialSpamReadTotal,
-  });
-  const [archiveData, setArchiveData] = useState({
-    unreads: initialArchiveUnreads,
-    unreadTotal: initialArchiveUnreadTotal,
-    reads: initialArchiveReads,
-    readTotal: initialArchiveReadTotal,
-  });
-  const [trashData, setTrashData] = useState({
-    unreads: initialTrashUnreads,
-    unreadTotal: initialTrashUnreadTotal,
-    reads: initialTrashReads,
-    readTotal: initialTrashReadTotal,
-  });
+  const [sentData, setSentData] = useState(initialData.sent);
+  const [spamData, setSpamData] = useState(initialData.spam);
+  const [archiveData, setArchiveData] = useState(initialData.archive);
+  const [trashData, setTrashData] = useState(initialData.trash);
 
   const syncDeferredData = useCallback((data: DeferredMailPanelData) => {
-    setDraftsList(data.drafts);
-    setSentList(data.sentEmails);
-    setPinnedList(data.pinnedEmails);
-    setSpamData({
-      unreads: data.spamUnreads,
-      unreadTotal: data.spamUnreadTotal,
-      reads: data.spamReads,
-      readTotal: data.spamReadTotal,
-    });
-    setArchiveData({
-      unreads: data.archiveUnreads,
-      unreadTotal: data.archiveUnreadTotal,
-      reads: data.archiveReads,
-      readTotal: data.archiveReadTotal,
-    });
-    setTrashData({
-      unreads: data.trashUnreads,
-      unreadTotal: data.trashUnreadTotal,
-      reads: data.trashReads,
-      readTotal: data.trashReadTotal,
-    });
+    setDraftsData(data.drafts);
+    setSentData(data.sent);
+    setPinnedList(data.pinned);
+    setSpamData(data.spam);
+    setArchiveData(data.archive);
+    setTrashData(data.trash);
     setDeferredPending(false);
   }, []);
 
@@ -360,14 +276,7 @@ export default function EmailListPanel({
   const currentUnreadTotal = currentData.unreadTotal;
   const currentReads = currentData.reads;
   const currentReadTotal = currentData.readTotal;
-  const currentMailboxId =
-    view === "spam"
-      ? spamMailboxId ?? ""
-      : view === "archive"
-        ? archiveMailboxId ?? ""
-        : view === "trash"
-          ? trashMailboxId ?? ""
-          : inboxId;
+  const currentMailboxId = getMailboxIdForView(mailboxIds, view) ?? "";
 
   useEffect(() => {
     setExtraUnreads([]);
@@ -415,20 +324,18 @@ export default function EmailListPanel({
   const refreshTimer2 = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const transitionPendingRef = useRef(isPending);
   transitionPendingRef.current = isPending;
-  const initialInboxSnapshot = useMemo(
-    () => getInboxSnapshot(unreads, unreadTotal, reads, readTotal),
-    [unreads, unreadTotal, reads, readTotal],
-  );
-  const inboxSnapshotKeyValue = inboxSnapshotKey(initialInboxSnapshot);
-  const knownInboxSnapshotRef = useRef(inboxSnapshotKeyValue);
+  const initialMailSyncKey = initialData.emailState ?? "";
+  const knownMailSyncRef = useRef(initialMailSyncKey);
   const [syncAnnouncement, setSyncAnnouncement] = useState("");
 
   useEffect(() => {
-    knownInboxSnapshotRef.current = inboxSnapshotKeyValue;
-  }, [inboxSnapshotKeyValue]);
+    knownMailSyncRef.current = initialMailSyncKey;
+    setExtraUnreads([]);
+    setExtraReads([]);
+  }, [initialMailSyncKey]);
 
   useEffect(() => {
-    if (!inboxId || autoSyncIntervalMs <= 0) return;
+    if (!initialMailSyncKey || autoSyncIntervalMs <= 0) return;
 
     let stopped = false;
     let inFlight = false;
@@ -473,14 +380,14 @@ export default function EmailListPanel({
       inFlight = true;
       lastCheckAt = now;
       try {
-        const snapshot = await autoSyncCheck(inboxId);
+        const snapshot = await autoSyncCheck();
         if (stopped || !canSync()) return;
 
         consecutiveFailures = 0;
-        const nextSnapshotKey = inboxSnapshotKey(snapshot);
-        if (nextSnapshotKey !== knownInboxSnapshotRef.current) {
-          knownInboxSnapshotRef.current = nextSnapshotKey;
-          setSyncAnnouncement(`Inbox updated at ${new Date().toLocaleTimeString()}`);
+        const nextSnapshotKey = mailSyncSnapshotKey(snapshot);
+        if (nextSnapshotKey !== knownMailSyncRef.current) {
+          knownMailSyncRef.current = nextSnapshotKey;
+          setSyncAnnouncement(`Mail updated at ${new Date().toLocaleTimeString()}`);
           startTransition(() => router.refresh());
         }
       } catch {
@@ -521,7 +428,13 @@ export default function EmailListPanel({
       window.removeEventListener("online", resumeSync);
       window.removeEventListener("offline", clearScheduledCheck);
     };
-  }, [autoSyncCheck, autoSyncIntervalMs, inboxId, router, startTransition]);
+  }, [
+    autoSyncCheck,
+    autoSyncIntervalMs,
+    initialMailSyncKey,
+    router,
+    startTransition,
+  ]);
 
   function applySelection(next: Set<string>) {
     setSelectedIds(next);
@@ -639,6 +552,7 @@ export default function EmailListPanel({
   // -------------------------------------------------------------------------
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Email[]>([]);
+  const [searchTotal, setSearchTotal] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -699,10 +613,12 @@ export default function EmailListPanel({
   const loadedReads = currentReads.length + extraReads.length;
   const hasMoreUnreads = loadedUnreads < currentUnreadTotal;
   const hasMoreReads = loadedReads < currentReadTotal;
-  const hasMore = !isInSearchMode && (hasMoreUnreads || hasMoreReads);
-
+  const hasMoreThreadMail = hasMoreUnreads || hasMoreReads;
+  const hasMoreSearch = searchResults.length < searchTotal;
+  const hasMoreDrafts = draftsData.emails.length < draftsData.total;
+  const hasMoreSent = sentData.emails.length < sentData.total;
   const unreadCount = useUnreadCount();
-  const draftCount = draftsList.length;
+  const draftCount = draftsData.total;
   const pinnedThreadCount = isInSearchMode
     ? 0
     : visibleThreads.filter((t) => t.isPinned).length;
@@ -712,18 +628,30 @@ export default function EmailListPanel({
   // -------------------------------------------------------------------------
   useEffect(() => {
     const q = searchQuery.trim();
-    if (!q) { setSearchResults([]); setIsSearching(false); return; }
+    if (!q) {
+      setSearchResults([]);
+      setSearchTotal(0);
+      setIsSearching(false);
+      return;
+    }
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const results = await searchEmailsAction(q);
-        setSearchResults(results);
+        const result = await searchEmailsAction(q);
+        if (!cancelled) {
+          setSearchResults(result.emails);
+          setSearchTotal(result.total);
+        }
       } finally {
-        setIsSearching(false);
+        if (!cancelled) setIsSearching(false);
       }
     }, 400);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, initialMailSyncKey]);
 
   // -------------------------------------------------------------------------
   // Auto-mark as read when navigating to a thread
@@ -758,11 +686,46 @@ export default function EmailListPanel({
   async function handleLoadMore() {
     setLoadingMore(true);
     try {
-      if (hasMoreUnreads) {
-        const { emails: more } = await loadMoreUnreads(currentMailboxId, loadedUnreads);
+      if (isInSearchMode) {
+        const result = await searchEmailsAction(
+          searchQuery.trim(),
+          searchResults.length,
+        );
+        setSearchResults((previous) => [...previous, ...result.emails]);
+        setSearchTotal(result.total);
+      } else if (view === "drafts" || view === "sent") {
+        const page = view === "drafts" ? draftsData : sentData;
+        const mailboxId = getMailboxIdForView(mailboxIds, view);
+        if (!mailboxId) return;
+        const result = await loadMailboxPageAction(
+          mailboxId,
+          "all",
+          page.emails.length,
+        );
+        if (view === "drafts") {
+          setDraftsData((previous) => ({
+            emails: [...previous.emails, ...result.emails],
+            total: result.total,
+          }));
+        } else {
+          setSentData((previous) => ({
+            emails: [...previous.emails, ...result.emails],
+            total: result.total,
+          }));
+        }
+      } else if (hasMoreUnreads) {
+        const { emails: more } = await loadMailboxPageAction(
+          currentMailboxId,
+          "unread",
+          loadedUnreads,
+        );
         setExtraUnreads((prev) => [...prev, ...more]);
       } else {
-        const { emails: more } = await loadMoreReads(currentMailboxId, loadedReads);
+        const { emails: more } = await loadMailboxPageAction(
+          currentMailboxId,
+          "read",
+          loadedReads,
+        );
         setExtraReads((prev) => [...prev, ...more]);
       }
     } finally {
@@ -805,13 +768,25 @@ export default function EmailListPanel({
   // -------------------------------------------------------------------------
   // Bulk actions
   // -------------------------------------------------------------------------
-  const allSelectedPinned = useMemo(
-    () => [...selectedIds].every((id) => {
-      const email = visibleEmails.find((e) => e.id === id);
-      return email ? isPinned(email) : false;
-    }),
-    [selectedIds, visibleEmails]
+  const selectedInboxEmails = useMemo(
+    () =>
+      visibleEmails.filter(
+        (email) =>
+          selectedIds.has(email.id) &&
+          !!inboxId &&
+          !!email.mailboxIds[inboxId],
+      ),
+    [inboxId, selectedIds, visibleEmails],
   );
+  const allSelectedPinned = useMemo(
+    () =>
+      selectedInboxEmails.length > 0 &&
+      selectedInboxEmails.every(isPinned),
+    [selectedInboxEmails],
+  );
+  const canPinSelection =
+    selectedInboxEmails.length > 0 &&
+    selectedInboxEmails.length === selectedIds.size;
 
   async function handleBulkMarkRead() {
     const selectedEmails = visibleEmails.filter((email) => selectedIds.has(email.id));
@@ -846,7 +821,8 @@ export default function EmailListPanel({
   }
 
   async function handleBulkPin() {
-    const ids = [...selectedIds];
+    const ids = selectedInboxEmails.map((email) => email.id);
+    if (!ids.length) return;
     const pin = !allSelectedPinned;
     clearSelection();
     ids.forEach((id) =>
@@ -872,47 +848,27 @@ export default function EmailListPanel({
   ) {
     const ids = emails.map((e) => e.id);
     const sourceMailboxId = currentMailboxId;
-    setArchivedIds((prev) => new Set([...prev, ...ids]));
-    clearSelection();
-    const movePromise = bulkMoveToMailbox(
-      emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
-      targetMailboxId
-    );
-    showToast({
-      message:
+    await moveEmailsBetweenMailboxes({
+      emails,
+      sourceMailboxId,
+      targetMailboxId,
+      successMessage:
         successMessage ??
         (targetMailboxId === trashMailboxId
           ? ids.length === 1 ? "Moved to trash" : `${ids.length} messages moved to trash`
           : ids.length === 1 ? "Archived" : `${ids.length} messages archived`),
-      actionLabel: "Undo",
-      onAction: async () => {
-        await movePromise;
+      onOptimistic: () => {
+        setArchivedIds((prev) => new Set([...prev, ...ids]));
+        clearSelection();
+      },
+      onRevert: () => {
         setArchivedIds((previous) => {
           const next = new Set(previous);
           ids.forEach((id) => next.delete(id));
           return next;
         });
-        await bulkMoveToMailbox(
-          emails.map((email) => ({
-            id: email.id,
-            mailboxIds: { [targetMailboxId]: true },
-          })),
-          sourceMailboxId,
-        );
-        router.refresh();
       },
     });
-    try {
-      await movePromise;
-      router.refresh();
-    } catch {
-      setArchivedIds((previous) => {
-        const next = new Set(previous);
-        ids.forEach((id) => next.delete(id));
-        return next;
-      });
-      showToast({ message: "Could not move those messages.", tone: "error" });
-    }
   }
 
   async function handleBulkMove(targetMailboxId: string) {
@@ -922,26 +878,13 @@ export default function EmailListPanel({
 
   async function handleBulkNotSpam() {
     const emails = visibleEmails.filter((e) => selectedIds.has(e.id));
-    const ids = emails.map((e) => e.id);
-    setArchivedIds((prev) => new Set([...prev, ...ids]));
-    clearSelection();
-    try {
-      await bulkMoveToMailbox(
-        emails.map((e) => ({ id: e.id, mailboxIds: e.mailboxIds })),
-        inboxId
-      );
-      showToast({
-        message: ids.length === 1 ? "Moved to inbox" : `${ids.length} messages moved to inbox`,
-      });
-      router.refresh();
-    } catch {
-      setArchivedIds((previous) => {
-        const next = new Set(previous);
-        ids.forEach((id) => next.delete(id));
-        return next;
-      });
-      showToast({ message: "Could not move those messages.", tone: "error" });
-    }
+    await moveMessages(
+      emails,
+      inboxId,
+      emails.length === 1
+        ? "Moved to Inbox"
+        : `${emails.length} messages moved to Inbox`,
+    );
   }
 
   async function handleBulkRestore() {
@@ -1209,23 +1152,8 @@ export default function EmailListPanel({
     ? visibleThreads.find((thread) => thread.threadId === keyboardThreadId)
         ?.latestEmail.subject || "(no subject)"
     : "";
-  const viewLabel =
-    view === "inbox"
-      ? "Inbox"
-      : view === "drafts"
-        ? "Drafts"
-        : view === "sent"
-          ? "Sent"
-          : view === "spam"
-            ? "Spam"
-            : view === "archive"
-              ? "Archive"
-              : "Trash";
-  const isThreadMailboxView =
-    view === "inbox" ||
-    view === "spam" ||
-    view === "archive" ||
-    view === "trash";
+  const viewLabel = MAIL_VIEW_LABELS[view];
+  const isThreadMailboxView = isThreadMailView(view);
   const isDeferredThreadMailbox =
     view === "spam" || view === "archive" || view === "trash";
 
@@ -1274,7 +1202,7 @@ export default function EmailListPanel({
       <button onClick={handleBulkMarkUnread} className={actionBtnCls} title="Mark as unread" aria-label="Mark selected messages as unread">
         <IconDot />
       </button>
-      {view === "inbox" && (
+      {view === "inbox" && canPinSelection && (
         <button
           onClick={handleBulkPin}
           className={actionBtnCls}
@@ -1662,6 +1590,10 @@ export default function EmailListPanel({
                 ) && !isRouteSelected;
               const swipeOffset = swipeOffsets[thread.threadId] ?? 0;
               const isSwipeActionVisible = swipeOffset !== 0;
+              const pinnableEmails = thread.allEmails.filter(
+                (email) => !!inboxId && !!email.mailboxIds[inboxId],
+              );
+              const threadIsPinned = pinnableEmails.some(isPinned);
 
               const showPinnedDivider =
                 !isInSearchMode && view === "inbox" && pinnedThreadCount > 0 && idx === 0;
@@ -1972,16 +1904,16 @@ export default function EmailListPanel({
                             />
                           </button>
                         </div>
-                        {view === "inbox" && (
+                        {view === "inbox" && pinnableEmails.length > 0 && (
                           <button
                             type="button"
-                            title={thread.isPinned ? "Unpin" : "Pin"}
-                            aria-label={thread.isPinned ? "Unpin thread" : "Pin thread"}
+                            title={threadIsPinned ? "Unpin" : "Pin"}
+                            aria-label={threadIsPinned ? "Unpin thread" : "Pin thread"}
                             onClick={async (event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              const ids = thread.allEmails.map((email) => email.id);
-                              const next = !thread.isPinned;
+                              const ids = pinnableEmails.map((email) => email.id);
+                              const next = !threadIsPinned;
                               ids.forEach((id) =>
                                 window.dispatchEvent(
                                   new CustomEvent("email-pin-changed", { detail: { id, pinned: next } })
@@ -1997,7 +1929,7 @@ export default function EmailListPanel({
                             }}
                             className={[
                               "flex h-8 w-8 items-center justify-center rounded-md transition-all",
-                              thread.isPinned
+                              threadIsPinned
                                 ? "text-amber-500 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
                                 : "text-stone-300 opacity-0 hover:bg-stone-200 hover:text-amber-500 group-hover:opacity-100 group-focus-within:opacity-100 dark:text-stone-600 dark:hover:bg-stone-800 dark:hover:text-amber-400",
                             ].join(" ")}
@@ -2013,7 +1945,8 @@ export default function EmailListPanel({
               );
             })}
 
-          {(!deferredPending || !isDeferredThreadMailbox) && hasMore && (
+          {(!deferredPending || !isDeferredThreadMailbox) &&
+            (isInSearchMode ? hasMoreSearch : hasMoreThreadMail) && (
             <button
               onClick={handleLoadMore}
               disabled={loadingMore}
@@ -2021,7 +1954,9 @@ export default function EmailListPanel({
             >
               {loadingMore
                 ? "Loading…"
-                : hasMoreUnreads
+                : isInSearchMode
+                  ? `Load more results (${searchResults.length} of ${searchTotal})`
+                  : hasMoreUnreads
                   ? `Load more unread (${loadedUnreads} of ${currentUnreadTotal})`
                   : `Load more (${loadedUnreads + loadedReads} of ${currentUnreadTotal + currentReadTotal})`}
             </button>
@@ -2035,7 +1970,7 @@ export default function EmailListPanel({
         <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
           {deferredPending ? (
             <MailRowsLoadingSkeleton />
-          ) : draftsList.length === 0 ? (
+          ) : draftsData.emails.length === 0 ? (
             <EmptyState
               compact
               icon="drafts"
@@ -2044,42 +1979,58 @@ export default function EmailListPanel({
               action={{ href: "/compose", label: "Compose a message" }}
             />
           ) : (
-            draftsList.map((draft) => (
-              <div
-                key={draft.id}
-                className="group relative flex items-center border-b border-stone-100 dark:border-stone-700/60 hover:bg-stone-100 dark:hover:bg-stone-900 transition-colors"
-              >
-                <Link
-                  href={`/compose?draftId=${draft.id}`}
-                  className="mail-list-row flex flex-col gap-0.5 px-4 py-2.5 flex-1 min-w-0"
+            <>
+              {draftsData.emails.map((draft) => (
+                <div
+                  key={draft.id}
+                  className="group relative flex items-center border-b border-stone-100 dark:border-stone-700/60 hover:bg-stone-100 dark:hover:bg-stone-900 transition-colors"
                 >
-                  <div className="flex items-center gap-2 pr-6">
-                    <span className="flex-1 text-sm truncate text-stone-500 dark:text-stone-400">
-                      {draft.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
-                    </span>
-                    <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
-                      {formatDate(draft.receivedAt)}
-                    </span>
-                  </div>
-                  <div className="text-xs truncate text-stone-500 dark:text-stone-400">
-                    {draft.subject || "(no subject)"}
-                  </div>
-                </Link>
+                  <Link
+                    href={`/compose?draftId=${draft.id}`}
+                    className="mail-list-row flex flex-col gap-0.5 px-4 py-2.5 flex-1 min-w-0"
+                  >
+                    <div className="flex items-center gap-2 pr-6">
+                      <span className="flex-1 text-sm truncate text-stone-500 dark:text-stone-400">
+                        {draft.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
+                      </span>
+                      <span className="shrink-0 text-xs text-stone-400 dark:text-stone-500 tabular-nums">
+                        {formatDate(draft.receivedAt)}
+                      </span>
+                    </div>
+                    <div className="text-xs truncate text-stone-500 dark:text-stone-400">
+                      {draft.subject || "(no subject)"}
+                    </div>
+                  </Link>
+                  <button
+                    title="Delete draft"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDraftsData((previous) => ({
+                        emails: previous.emails.filter((item) => item.id !== draft.id),
+                        total: Math.max(0, previous.total - 1),
+                      }));
+                      await deleteDraftAction(draft.id);
+                      router.refresh();
+                    }}
+                    className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-stone-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  >
+                    <IconTrash />
+                  </button>
+                </div>
+              ))}
+              {hasMoreDrafts && (
                 <button
-                  title="Delete draft"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDraftsList((prev) => prev.filter((d) => d.id !== draft.id));
-                    await deleteDraftAction(draft.id);
-                    router.refresh();
-                  }}
-                  className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded text-stone-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-stone-200 dark:hover:bg-stone-700"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="w-full py-3 text-xs text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 disabled:opacity-50 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300"
                 >
-                  <IconTrash />
+                  {loadingMore
+                    ? "Loading…"
+                    : `Load more (${draftsData.emails.length} of ${draftsData.total})`}
                 </button>
-              </div>
-            ))
+              )}
+            </>
           )}
         </div>
       )}
@@ -2089,7 +2040,7 @@ export default function EmailListPanel({
         <div className="overflow-y-auto flex-1 bg-stone-50 dark:bg-stone-900">
           {deferredPending ? (
             <MailRowsLoadingSkeleton />
-          ) : sentList.length === 0 ? (
+          ) : sentData.emails.length === 0 ? (
             <EmptyState
               compact
               icon="sent"
@@ -2098,35 +2049,48 @@ export default function EmailListPanel({
               action={{ href: "/compose", label: "Compose a message" }}
             />
           ) : (
-            sentList.map((email) => (
-              <Link
-                key={email.id}
-                href={`/email/${email.id}?from=sent`}
-                className={[
-                  "mail-list-row flex flex-col gap-0.5 px-4 py-2.5 border-b border-stone-100 dark:border-stone-700/60 transition-colors",
-                  email.id === selectedEmailId
-                    ? "bg-stone-200 dark:bg-stone-800"
-                    : "hover:bg-stone-100 dark:hover:bg-stone-900",
-                ].join(" ")}
-              >
-                <div className="flex items-baseline gap-2">
-                  <span className="flex-1 text-sm truncate text-stone-600 dark:text-stone-400">
-                    {email.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
-                    {formatDate(email.receivedAt)}
-                  </span>
-                </div>
-                <div className="text-xs truncate text-stone-500 dark:text-stone-400">
-                  {email.subject || "(no subject)"}
-                </div>
-                {email.preview && (
-                  <p className="mail-list-preview text-xs text-stone-400 dark:text-stone-500 truncate">
-                    {email.preview}
-                  </p>
-                )}
-              </Link>
-            ))
+            <>
+              {sentData.emails.map((email) => (
+                <Link
+                  key={email.id}
+                  href={`/email/${email.id}?from=sent`}
+                  className={[
+                    "mail-list-row flex flex-col gap-0.5 px-4 py-2.5 border-b border-stone-100 dark:border-stone-700/60 transition-colors",
+                    email.id === selectedEmailId
+                      ? "bg-stone-200 dark:bg-stone-800"
+                      : "hover:bg-stone-100 dark:hover:bg-stone-900",
+                  ].join(" ")}
+                >
+                  <div className="flex items-baseline gap-2">
+                    <span className="flex-1 text-sm truncate text-stone-600 dark:text-stone-400">
+                      {email.to?.map((a) => a.name ?? a.email).join(", ") || "(no recipient)"}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-stone-400 dark:text-stone-500 tabular-nums">
+                      {formatDate(email.receivedAt)}
+                    </span>
+                  </div>
+                  <div className="text-xs truncate text-stone-500 dark:text-stone-400">
+                    {email.subject || "(no subject)"}
+                  </div>
+                  {email.preview && (
+                    <p className="mail-list-preview text-xs text-stone-400 dark:text-stone-500 truncate">
+                      {email.preview}
+                    </p>
+                  )}
+                </Link>
+              ))}
+              {hasMoreSent && (
+                <button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="w-full py-3 text-xs text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 disabled:opacity-50 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300"
+                >
+                  {loadingMore
+                    ? "Loading…"
+                    : `Load more (${sentData.emails.length} of ${sentData.total})`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

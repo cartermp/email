@@ -1,34 +1,13 @@
-import type { Email } from "./types";
-
 export const MAIL_AUTO_SYNC_INTERVAL_MS = 15_000;
 export const MAIL_AUTO_SYNC_MAX_DELAY_MS = 120_000;
 export const MAIL_AUTO_SYNC_MIN_IMMEDIATE_GAP_MS = 5_000;
 
-export interface InboxSnapshot {
-  latestEmailId: string | null;
-  total: number;
+export interface MailSyncSnapshot {
+  emailState: string;
 }
 
-export function getInboxSnapshot(
-  unreads: Email[],
-  unreadTotal: number,
-  reads: Email[],
-  readTotal: number,
-): InboxSnapshot {
-  let latest: Email | undefined;
-
-  for (const email of [...unreads, ...reads]) {
-    if (!latest || email.receivedAt > latest.receivedAt) latest = email;
-  }
-
-  return {
-    latestEmailId: latest?.id ?? null,
-    total: unreadTotal + readTotal,
-  };
-}
-
-export function inboxSnapshotKey(snapshot: InboxSnapshot): string {
-  return `${snapshot.total}:${snapshot.latestEmailId ?? ""}`;
+export function mailSyncSnapshotKey(snapshot: MailSyncSnapshot): string {
+  return snapshot.emailState;
 }
 
 export function getMailAutoSyncDelay(

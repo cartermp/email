@@ -9,23 +9,15 @@ import EmailListPanel, {
 import InboxPanelLayout from "@/components/InboxPanelLayout";
 import { MailListLoadingSkeleton } from "@/components/LoadingSkeletons";
 import { getJmapMailboxContext } from "@/lib/jmapServer";
+import { getMailboxIds, resolveMailboxes } from "@/lib/mailbox";
 
 const EMPTY_DEFERRED_DATA: DeferredMailPanelData = {
-  drafts: [],
-  sentEmails: [],
-  pinnedEmails: [],
-  spamUnreads: [],
-  spamUnreadTotal: 0,
-  spamReads: [],
-  spamReadTotal: 0,
-  archiveUnreads: [],
-  archiveUnreadTotal: 0,
-  archiveReads: [],
-  archiveReadTotal: 0,
-  trashUnreads: [],
-  trashUnreadTotal: 0,
-  trashReads: [],
-  trashReadTotal: 0,
+  drafts: { emails: [], total: 0 },
+  sent: { emails: [], total: 0 },
+  pinned: [],
+  spam: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+  archive: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+  trash: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
 };
 
 async function DeferredPanelData({
@@ -58,18 +50,14 @@ async function MailPanelData() {
   }
   const { session, accountId, mailboxes } = context;
 
-  const inbox = mailboxes.find((m) => m.role === "inbox");
-  const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
-  const sentMailbox = mailboxes.find((m) => m.role === "sent");
-  const archiveMailbox = mailboxes.find((m) => m.role === "archive");
-  const trashMailbox = mailboxes.find((m) => m.role === "trash");
-  const spamMailbox = mailboxes.find((m) => m.role === "junk" || m.name.toLowerCase() === "spam" || m.name.toLowerCase() === "junk");
+  const resolvedMailboxes = resolveMailboxes(mailboxes);
+  const mailboxIds = getMailboxIds(resolvedMailboxes);
 
   const primaryResult = loadMailPanelData(
     session.apiUrl,
     accountId,
-    { inbox: inbox?.id },
-    false,
+    { inbox: mailboxIds.inbox },
+    { includeEmailState: true },
   );
   const deferredResult = primaryResult
     .then(() =>
@@ -77,32 +65,23 @@ async function MailPanelData() {
         session.apiUrl,
         accountId,
         {
-          drafts: draftsMailbox?.id,
-          sent: sentMailbox?.id,
-          spam: spamMailbox?.id,
-          archive: archiveMailbox?.id,
-          trash: trashMailbox?.id,
+          drafts: mailboxIds.drafts,
+          pinned: mailboxIds.inbox,
+          sent: mailboxIds.sent,
+          spam: mailboxIds.spam,
+          archive: mailboxIds.archive,
+          trash: mailboxIds.trash,
         },
-        true,
       ),
     )
     .then(
       (data): DeferredMailPanelData => ({
         drafts: data.drafts,
-        sentEmails: data.sent.emails,
-        pinnedEmails: data.pinned,
-        spamUnreads: data.spam.unreads,
-        spamUnreadTotal: data.spam.unreadTotal,
-        spamReads: data.spam.reads,
-        spamReadTotal: data.spam.readTotal,
-        archiveUnreads: data.archive.unreads,
-        archiveUnreadTotal: data.archive.unreadTotal,
-        archiveReads: data.archive.reads,
-        archiveReadTotal: data.archive.readTotal,
-        trashUnreads: data.trash.unreads,
-        trashUnreadTotal: data.trash.unreadTotal,
-        trashReads: data.trash.reads,
-        trashReadTotal: data.trash.readTotal,
+        sent: data.sent,
+        pinned: data.pinned,
+        spam: data.spam,
+        archive: data.archive,
+        trash: data.trash,
       }),
     )
     .catch((err) => {
@@ -120,12 +99,13 @@ async function MailPanelData() {
     log.error({ err }, "layout.inbox.fetch_error");
     panelData = {
       inbox: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
-      drafts: [],
+      drafts: { emails: [], total: 0 },
       pinned: [],
       sent: { emails: [], total: 0 },
       spam: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
       archive: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
       trash: { unreads: [], unreadTotal: 0, reads: [], readTotal: 0 },
+      emailState: undefined,
     };
   }
 
@@ -137,30 +117,15 @@ async function MailPanelData() {
     read_count: reads.length,
     read_total: readTotal,
     pinned_count: panelData.pinned.length,
-    has_drafts_mailbox: !!draftsMailbox,
-    has_sent_mailbox: !!sentMailbox,
-    has_spam_mailbox: !!spamMailbox,
+    has_drafts_mailbox: !!mailboxIds.drafts,
+    has_sent_mailbox: !!mailboxIds.sent,
+    has_spam_mailbox: !!mailboxIds.spam,
   }, "layout.inbox.load");
 
   return (
     <EmailListPanel
-      unreads={unreads}
-      unreadTotal={unreadTotal}
-      reads={reads}
-      readTotal={readTotal}
-      inboxId={inbox?.id ?? ""}
-      pinnedEmails={panelData.pinned}
-      archiveMailboxId={archiveMailbox?.id}
-      trashMailboxId={trashMailbox?.id}
-      spamMailboxId={spamMailbox?.id}
-      archiveUnreads={[]}
-      archiveUnreadTotal={0}
-      archiveReads={[]}
-      archiveReadTotal={0}
-      trashUnreads={[]}
-      trashUnreadTotal={0}
-      trashReads={[]}
-      trashReadTotal={0}
+      initialData={panelData}
+      mailboxIds={mailboxIds}
       deferredContent={
         <Suspense fallback={null}>
           <DeferredPanelData result={deferredResult} />

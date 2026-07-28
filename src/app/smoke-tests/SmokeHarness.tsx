@@ -17,6 +17,7 @@ import {
 import { prepareHtml } from "@/lib/emailHtml";
 import { dispatchUnreadCountEvent } from "@/lib/unreadCount";
 import type { Email, EmailBodyPart } from "@/lib/types";
+import type { MailPanelData } from "@/lib/jmap";
 
 export type SmokePanel =
   | "inbox"
@@ -74,6 +75,35 @@ const fixtureEmails: Email[] = [
     size: 1220,
   },
 ];
+
+function makePanelData(
+  emails: Email[],
+  emailState: string,
+): MailPanelData {
+  const unreads = emails.filter((email) => !email.keywords["$seen"]);
+  const reads = emails.filter((email) => email.keywords["$seen"]);
+  const emptySplit = {
+    unreads: [] as Email[],
+    unreadTotal: 0,
+    reads: [] as Email[],
+    readTotal: 0,
+  };
+  return {
+    inbox: {
+      unreads,
+      unreadTotal: unreads.length,
+      reads,
+      readTotal: reads.length,
+    },
+    drafts: { emails: [], total: 0 },
+    pinned: [],
+    sent: { emails: [], total: 0 },
+    spam: emptySplit,
+    archive: emptySplit,
+    trash: emptySplit,
+    emailState,
+  };
+}
 
 const fixtureAttachments: EmailBodyPart[] = [
   {
@@ -212,8 +242,7 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
         : [incomingEmail, ...current],
     );
     return {
-      latestEmailId: incomingEmail.id,
-      total: fixtureEmails.length + 1,
+      emailState: "state-with-incoming-email",
     };
   }, []);
 
@@ -248,13 +277,13 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
       <div className="min-h-0 flex-1">
         {panel === "inbox" && (
           <EmailListPanel
-            unreads={[fixtureEmails[0]]}
-            unreadTotal={1}
-            reads={[fixtureEmails[1]]}
-            readTotal={1}
-            inboxId="mailbox-inbox"
-            archiveMailboxId="mailbox-archive"
-            trashMailboxId="mailbox-trash"
+            initialData={makePanelData(fixtureEmails, "state-initial")}
+            mailboxIds={{
+              inbox: "mailbox-inbox",
+              archive: "mailbox-archive",
+              trash: "mailbox-trash",
+              spam: "mailbox-spam",
+            }}
             threadHrefPrefix="/smoke-tests/thread"
             autoSyncIntervalMs={0}
           />
@@ -262,17 +291,13 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
 
         {panel === "auto-sync" && (
           <EmailListPanel
-            unreads={autoSyncEmails.filter(
-              (email) => !email.keywords["$seen"],
+            initialData={makePanelData(
+              autoSyncEmails,
+              autoSyncEmails.length > fixtureEmails.length
+                ? "state-with-incoming-email"
+                : "state-initial",
             )}
-            unreadTotal={
-              autoSyncEmails.filter((email) => !email.keywords["$seen"]).length
-            }
-            reads={autoSyncEmails.filter((email) => email.keywords["$seen"])}
-            readTotal={
-              autoSyncEmails.filter((email) => email.keywords["$seen"]).length
-            }
-            inboxId="mailbox-inbox"
+            mailboxIds={{ inbox: "mailbox-inbox" }}
             threadHrefPrefix="/smoke-tests/thread"
             autoSyncIntervalMs={700}
             autoSyncCheck={runAutoSyncCheck}
@@ -349,7 +374,12 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
                 initiallyPinned={false}
                 isSpam={false}
                 mailboxIds={{ "mailbox-inbox": true }}
-                inboxMailboxId="mailbox-inbox"
+                systemMailboxIds={{
+                  inbox: "mailbox-inbox",
+                  archive: "mailbox-archive",
+                  trash: "mailbox-trash",
+                  spam: "mailbox-spam",
+                }}
                 className="border-t border-stone-100 dark:border-stone-700/70"
               />
             </div>

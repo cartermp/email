@@ -261,6 +261,11 @@ test("aligns message actions at the iPhone 15 Pro viewport", async ({
       (action) => action.height >= 44,
     ),
   ).toBe(true);
+
+  await page.getByRole("button", { name: "More message actions" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Report Spam" }),
+  ).toBeVisible();
 });
 
 test("keeps the mobile navigation attached after viewport height changes", async ({

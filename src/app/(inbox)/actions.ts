@@ -1,11 +1,10 @@
 "use server";
 
 import { auth } from "@/auth";
-import { getSession, getAccountId, getMailboxes, listEmails, loadMoreEmailsFiltered, searchEmails, setPin, setKeywordsOnMany, moveEmailsToMailbox, getInboxSnapshot, destroyAllEmailsInMailbox, destroyEmails, getEmailMailboxIds } from "@/lib/jmap";
+import { getSession, getAccountId, getMailboxes, listEmails, loadMoreEmailsFiltered, searchEmails, setPin, setKeywordsOnMany, moveEmailsToMailbox, getEmailState, destroyAllEmailsInMailbox, destroyEmails, getEmailMailboxIds, type EmailPage } from "@/lib/jmap";
 import { parseSearchQuery, buildJmapFilter } from "@/lib/search";
 import { log } from "@/lib/logger";
-import { Email } from "@/lib/types";
-import type { InboxSnapshot } from "@/lib/mailAutoSync";
+import type { MailSyncSnapshot } from "@/lib/mailAutoSync";
 
 async function requireAuthedJmap() {
   const sessionData = await auth();
@@ -14,55 +13,65 @@ async function requireAuthedJmap() {
   return { session, accountId: getAccountId(session) };
 }
 
-export async function loadMoreEmails(
-  inboxId: string,
-  position: number
-): Promise<{ emails: Email[]; total: number }> {
+export async function loadMailboxPageAction(
+  mailboxId: string,
+  filter: "all" | "unread" | "read",
+  position: number,
+): Promise<EmailPage> {
+  if (
+    typeof mailboxId !== "string" ||
+    !mailboxId ||
+    !["all", "unread", "read"].includes(filter) ||
+    !Number.isInteger(position) ||
+    position < 0
+  ) {
+    throw new Error("Invalid mailbox page request");
+  }
   const t = Date.now();
   const { session, accountId } = await requireAuthedJmap();
-  const result = await listEmails(session.apiUrl, accountId, inboxId, 50, position);
-  log.info({ mailbox_id: inboxId, position, limit: 50, returned: result.emails.length, total: result.total, duration_ms: Date.now() - t }, "action.load_more");
+  const result =
+    filter === "all"
+      ? await listEmails(session.apiUrl, accountId, mailboxId, 50, position)
+      : await loadMoreEmailsFiltered(
+          session.apiUrl,
+          accountId,
+          mailboxId,
+          filter,
+          position,
+        );
+  log.info({ mailbox_id: mailboxId, filter, position, limit: 50, returned: result.emails.length, total: result.total, duration_ms: Date.now() - t }, "action.load_more");
   return result;
 }
 
-export async function checkInboxForNewMail(
-  inboxId: string,
-): Promise<InboxSnapshot> {
-  if (!inboxId) return { latestEmailId: null, total: 0 };
+export async function checkMailForUpdates(): Promise<MailSyncSnapshot> {
   const { session, accountId } = await requireAuthedJmap();
-  return getInboxSnapshot(session.apiUrl, accountId, inboxId);
+  return { emailState: await getEmailState(session.apiUrl, accountId) };
 }
 
-export async function loadMoreUnreads(
-  inboxId: string,
-  position: number
-): Promise<{ emails: Email[]; total: number }> {
-  const t = Date.now();
-  const { session, accountId } = await requireAuthedJmap();
-  const result = await loadMoreEmailsFiltered(session.apiUrl, accountId, inboxId, "unread", position);
-  log.info({ mailbox_id: inboxId, filter: "unread", position, limit: 50, returned: result.emails.length, total: result.total, duration_ms: Date.now() - t }, "action.load_more");
-  return result;
-}
-
-export async function loadMoreReads(
-  inboxId: string,
-  position: number
-): Promise<{ emails: Email[]; total: number }> {
-  const t = Date.now();
-  const { session, accountId } = await requireAuthedJmap();
-  const result = await loadMoreEmailsFiltered(session.apiUrl, accountId, inboxId, "read", position);
-  log.info({ mailbox_id: inboxId, filter: "read", position, limit: 50, returned: result.emails.length, total: result.total, duration_ms: Date.now() - t }, "action.load_more");
-  return result;
-}
-
-export async function searchEmailsAction(query: string): Promise<Email[]> {
+export async function searchEmailsAction(
+  query: string,
+  position = 0,
+): Promise<EmailPage> {
+  if (
+    typeof query !== "string" ||
+    !Number.isInteger(position) ||
+    position < 0
+  ) {
+    throw new Error("Invalid search request");
+  }
   const t = Date.now();
   const { session, accountId } = await requireAuthedJmap();
   const parsed = parseSearchQuery(query);
   const filter = buildJmapFilter(parsed);
-  const results = await searchEmails(session.apiUrl, accountId, filter);
-  log.info({ query_len: query.length, results: results.length, duration_ms: Date.now() - t }, "action.search");
-  return results;
+  const result = await searchEmails(
+    session.apiUrl,
+    accountId,
+    filter,
+    50,
+    position,
+  );
+  log.info({ query_len: query.length, position, results: result.emails.length, total: result.total, duration_ms: Date.now() - t }, "action.search");
+  return result;
 }
 
 export async function togglePinAction(

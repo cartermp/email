@@ -11,6 +11,7 @@ import {
   getJmapMailboxContext,
 } from "@/lib/jmapServer";
 import { sanitizeReaderHtml } from "@/lib/printHtml";
+import { getMailboxIds, resolveMailboxes } from "@/lib/mailbox";
 
 interface Props {
   params: Promise<{ threadId: string }>;
@@ -78,10 +79,7 @@ export default async function ThreadPage({ params, searchParams }: Props) {
       ),
     ),
   ]);
-  const spamMailbox = mailboxes.find((m) => m.role === "junk" || m.name.toLowerCase() === "spam" || m.name.toLowerCase() === "junk");
-  const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
-  const archiveMailbox = mailboxes.find((m) => m.role === "archive");
-  const trashMailbox = mailboxes.find((m) => m.role === "trash");
+  const mailboxIds = getMailboxIds(resolveMailboxes(mailboxes));
 
   return (
     <div className="overflow-y-auto h-full bg-stone-50 dark:bg-stone-900">
@@ -105,10 +103,7 @@ export default async function ThreadPage({ params, searchParams }: Props) {
         <ThreadView
           emails={emails}
           calendarEvents={calendarEvents}
-          spamMailboxId={spamMailbox?.id}
-          inboxMailboxId={inboxMailbox?.id}
-          archiveMailboxId={archiveMailbox?.id}
-          trashMailboxId={trashMailbox?.id}
+          systemMailboxIds={mailboxIds}
         />
       </div>
     </div>

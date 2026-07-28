@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import {
-  bulkMoveToMailbox,
-  permanentlyDeleteEmailsAction,
-} from "@/app/(inbox)/actions";
+import { permanentlyDeleteEmailsAction } from "@/app/(inbox)/actions";
 import MailIcon from "@/components/MailIcon";
 import MarkUnreadButton from "@/components/MarkUnreadButton";
-import NotSpamButton from "@/components/NotSpamButton";
 import PinButton from "@/components/PinButton";
 import Popover from "@/components/Popover";
 import { useToast } from "@/components/ToastProvider";
+import useMailboxMove from "@/components/useMailboxMove";
+import {
+  getMailboxViewForEmail,
+  MAIL_VIEW_PATHS,
+  type MailboxIds,
+} from "@/lib/mailbox";
 
 interface Props {
   emailId: string;
@@ -20,9 +22,7 @@ interface Props {
   initiallyPinned: boolean;
   isSpam: boolean;
   mailboxIds: Record<string, boolean>;
-  inboxMailboxId?: string;
-  archiveMailboxId?: string;
-  trashMailboxId?: string;
+  systemMailboxIds: MailboxIds;
   className?: string;
 }
 
@@ -54,69 +54,45 @@ export default function MessageActionBar({
   initiallyPinned,
   isSpam,
   mailboxIds,
-  inboxMailboxId,
-  archiveMailboxId,
-  trashMailboxId,
+  systemMailboxIds,
   className = "",
 }: Props) {
   const router = useRouter();
   const showToast = useToast();
-  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const { moveEmails, movingTo } = useMailboxMove();
+  const [deleting, setDeleting] = useState(false);
+  const inboxMailboxId = systemMailboxIds.inbox;
+  const archiveMailboxId = systemMailboxIds.archive;
+  const trashMailboxId = systemMailboxIds.trash;
+  const spamMailboxId = systemMailboxIds.spam;
   const showNotSpam = isSpam && !!inboxMailboxId;
   const secondaryColumns = showNotSpam ? "col-span-3" : "col-span-2";
   const isInbox = !!(inboxMailboxId && mailboxIds[inboxMailboxId]);
   const isArchive = !!(archiveMailboxId && mailboxIds[archiveMailboxId]);
   const isTrash = !!(trashMailboxId && mailboxIds[trashMailboxId]);
-  const sourceMailboxId = isTrash
-    ? trashMailboxId
-    : isArchive
-      ? archiveMailboxId
-      : isInbox
-        ? inboxMailboxId
-        : Object.keys(mailboxIds)[0];
-  const sourcePath = isTrash
-    ? "/trash"
-    : isArchive
-      ? "/archive"
-      : isSpam
-        ? "/spam"
-        : "/";
+  const sourceView = getMailboxViewForEmail(mailboxIds, systemMailboxIds);
+  const sourceMailboxId =
+    (sourceView && systemMailboxIds[sourceView]) ?? Object.keys(mailboxIds)[0];
+  const sourcePath = sourceView ? MAIL_VIEW_PATHS[sourceView] : "/";
+  const busy = deleting || !!movingTo;
 
   async function moveMessage(
     targetMailboxId: string,
     successMessage: string,
   ) {
-    if (!sourceMailboxId || busyAction) return;
-    setBusyAction(targetMailboxId);
-    const movePromise = bulkMoveToMailbox(
-      [{ id: emailId, mailboxIds }],
+    if (!sourceMailboxId || busy) return;
+    await moveEmails({
+      emails: [{ id: emailId, mailboxIds }],
+      sourceMailboxId,
       targetMailboxId,
-    );
-    showToast({
-      message: successMessage,
-      actionLabel: "Undo",
-      onAction: async () => {
-        await movePromise;
-        await bulkMoveToMailbox(
-          [{ id: emailId, mailboxIds: { [targetMailboxId]: true } }],
-          sourceMailboxId,
-        );
-        router.refresh();
-      },
+      successMessage,
+      failureMessage: "Could not move this message.",
+      navigateTo: sourcePath,
     });
-    try {
-      await movePromise;
-      router.replace(sourcePath);
-      router.refresh();
-    } catch {
-      showToast({ message: "Could not move this message.", tone: "error" });
-    } finally {
-      setBusyAction(null);
-    }
   }
 
   async function permanentlyDeleteMessage() {
-    if (!trashMailboxId || busyAction) return;
+    if (!trashMailboxId || busy) return;
     if (
       !window.confirm(
         "Permanently delete this message? This cannot be undone.",
@@ -125,7 +101,7 @@ export default function MessageActionBar({
       return;
     }
 
-    setBusyAction("delete");
+    setDeleting(true);
     try {
       await permanentlyDeleteEmailsAction([emailId], trashMailboxId);
       showToast({ message: "Message permanently deleted" });
@@ -137,7 +113,7 @@ export default function MessageActionBar({
         tone: "error",
       });
     } finally {
-      setBusyAction(null);
+      setDeleting(false);
     }
   }
 
@@ -177,17 +153,22 @@ export default function MessageActionBar({
       <div className="contents sm:ml-auto sm:flex sm:flex-wrap sm:items-center sm:justify-end sm:gap-2">
         {showNotSpam && (
           <ActionSlot columns={secondaryColumns} action="not-spam">
-            <NotSpamButton
-              emailId={emailId}
-              mailboxIds={mailboxIds}
-              inboxMailboxId={inboxMailboxId}
-            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void moveMessage(inboxMailboxId, "Moved to Inbox")}
+              className="min-h-10 whitespace-nowrap rounded-md border border-stone-200 px-3 text-xs text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50 dark:border-stone-700 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+            >
+              {movingTo === inboxMailboxId ? "Moving…" : "Not Spam"}
+            </button>
           </ActionSlot>
         )}
 
-        <ActionSlot columns={secondaryColumns} action="pin">
-          <PinButton emailId={emailId} initiallyPinned={initiallyPinned} />
-        </ActionSlot>
+        {isInbox && (
+          <ActionSlot columns={secondaryColumns} action="pin">
+            <PinButton emailId={emailId} initiallyPinned={initiallyPinned} />
+          </ActionSlot>
+        )}
 
         <ActionSlot columns={secondaryColumns} action="mark-unread">
           <MarkUnreadButton emailId={emailId} />
@@ -224,7 +205,7 @@ export default function MessageActionBar({
               <button
                 type="button"
                 role="menuitem"
-                disabled={!!busyAction}
+                disabled={busy}
                 onClick={() => void moveMessage(archiveMailboxId, "Archived")}
                 className={menuButtonClass}
               >
@@ -235,7 +216,7 @@ export default function MessageActionBar({
               <button
                 type="button"
                 role="menuitem"
-                disabled={!!busyAction}
+                disabled={busy}
                 onClick={() =>
                   void moveMessage(inboxMailboxId, "Restored to Inbox")
                 }
@@ -244,13 +225,29 @@ export default function MessageActionBar({
                 Restore to Inbox
               </button>
             )}
+            {!isSpam &&
+              !isTrash &&
+              spamMailboxId &&
+              (isInbox || isArchive) && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={busy}
+                  onClick={() =>
+                    void moveMessage(spamMailboxId, "Reported as Spam")
+                  }
+                  className={menuButtonClass}
+                >
+                  Report Spam
+                </button>
+              )}
             {!isTrash &&
               trashMailboxId &&
               (isInbox || isArchive || isSpam) && (
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={!!busyAction}
+                  disabled={busy}
                   onClick={() =>
                     void moveMessage(trashMailboxId, "Moved to Trash")
                   }
@@ -263,7 +260,7 @@ export default function MessageActionBar({
               <button
                 type="button"
                 role="menuitem"
-                disabled={!!busyAction}
+                disabled={busy}
                 onClick={() => void permanentlyDeleteMessage()}
                 className={[
                   menuButtonClass,

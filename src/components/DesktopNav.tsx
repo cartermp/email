@@ -4,21 +4,26 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import LiveUnreadCountBadge from "@/components/LiveUnreadCountBadge";
 import MailIcon, { type MailIconName } from "@/components/MailIcon";
+import {
+  isMailViewActive,
+  type MailView,
+} from "@/lib/mailbox";
 
 interface NavItem {
   href: string;
   label: string;
   icon: MailIconName;
   badge?: "inbox" | "drafts" | "spam";
+  view?: MailView;
 }
 
 const mailboxItems: NavItem[] = [
-  { href: "/", label: "Inbox", icon: "inbox", badge: "inbox" },
-  { href: "/drafts", label: "Drafts", icon: "drafts", badge: "drafts" },
-  { href: "/sent", label: "Sent", icon: "sent" },
-  { href: "/archive", label: "Archive", icon: "archive" },
-  { href: "/trash", label: "Trash", icon: "trash" },
-  { href: "/spam", label: "Spam", icon: "spam", badge: "spam" },
+  { href: "/", label: "Inbox", icon: "inbox", badge: "inbox", view: "inbox" },
+  { href: "/drafts", label: "Drafts", icon: "drafts", badge: "drafts", view: "drafts" },
+  { href: "/sent", label: "Sent", icon: "sent", view: "sent" },
+  { href: "/archive", label: "Archive", icon: "archive", view: "archive" },
+  { href: "/trash", label: "Trash", icon: "trash", view: "trash" },
+  { href: "/spam", label: "Spam", icon: "spam", badge: "spam", view: "spam" },
   { href: "/calendar", label: "Calendar", icon: "calendar" },
 ];
 
@@ -27,30 +32,7 @@ function isActive(
   pathname: string,
   from: string | null,
 ): boolean {
-  if (item.href === "/") {
-    return (
-      (pathname === "/" ||
-        pathname.startsWith("/email/") ||
-        pathname.startsWith("/thread/") ||
-        pathname.startsWith("/attachment/")) &&
-      from !== "spam" &&
-      from !== "sent" &&
-      from !== "archive" &&
-      from !== "trash"
-    );
-  }
-  if (item.href === "/sent") {
-    return pathname.startsWith("/sent") || from === "sent";
-  }
-  if (item.href === "/spam") {
-    return pathname.startsWith("/spam") || from === "spam";
-  }
-  if (item.href === "/archive") {
-    return pathname.startsWith("/archive") || from === "archive";
-  }
-  if (item.href === "/trash") {
-    return pathname.startsWith("/trash") || from === "trash";
-  }
+  if (item.view) return isMailViewActive(item.view, pathname, from);
   return pathname.startsWith(item.href);
 }
 

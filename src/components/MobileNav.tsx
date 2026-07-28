@@ -7,40 +7,26 @@ import MailIcon, { type MailIconName } from "@/components/MailIcon";
 import { useMailboxCounts } from "@/components/UnreadCountProvider";
 import UnreadCountBadge from "@/components/UnreadCountBadge";
 import useModalDialog from "@/components/useModalDialog";
+import {
+  isMailViewActive,
+  type MailView,
+} from "@/lib/mailbox";
 
 interface Destination {
   href: string;
   label: string;
   icon: MailIconName;
   badge?: number;
+  view?: MailView;
 }
 
 function destinationActive(
-  href: string,
+  item: Destination,
   pathname: string,
   from: string | null,
 ): boolean {
-  if (href === "/") {
-    return (
-      (pathname === "/" ||
-        pathname.startsWith("/email/") ||
-        pathname.startsWith("/thread/") ||
-        pathname.startsWith("/attachment/")) &&
-      from !== "spam" &&
-      from !== "sent" &&
-      from !== "archive" &&
-      from !== "trash"
-    );
-  }
-  if (href === "/sent") return pathname.startsWith("/sent") || from === "sent";
-  if (href === "/spam") return pathname.startsWith("/spam") || from === "spam";
-  if (href === "/archive") {
-    return pathname.startsWith("/archive") || from === "archive";
-  }
-  if (href === "/trash") {
-    return pathname.startsWith("/trash") || from === "trash";
-  }
-  return pathname.startsWith(href);
+  if (item.view) return isMailViewActive(item.view, pathname, from);
+  return pathname.startsWith(item.href);
 }
 
 function DestinationLink({
@@ -121,22 +107,22 @@ export default function MobileNav() {
   const dialogRef = useModalDialog(closeMore, moreOpen);
 
   const primary: Destination[] = [
-    { href: "/", label: "Inbox", icon: "inbox", badge: counts.inbox },
+    { href: "/", label: "Inbox", icon: "inbox", badge: counts.inbox, view: "inbox" },
     { href: "/calendar", label: "Calendar", icon: "calendar" },
     { href: "/compose", label: "Compose", icon: "compose" },
   ];
 
   const secondary: Destination[] = [
-    { href: "/drafts", label: "Drafts", icon: "drafts", badge: counts.drafts },
-    { href: "/sent", label: "Sent", icon: "sent" },
-    { href: "/archive", label: "Archive", icon: "archive" },
-    { href: "/trash", label: "Trash", icon: "trash" },
-    { href: "/spam", label: "Spam", icon: "spam", badge: counts.spam },
+    { href: "/drafts", label: "Drafts", icon: "drafts", badge: counts.drafts, view: "drafts" },
+    { href: "/sent", label: "Sent", icon: "sent", view: "sent" },
+    { href: "/archive", label: "Archive", icon: "archive", view: "archive" },
+    { href: "/trash", label: "Trash", icon: "trash", view: "trash" },
+    { href: "/spam", label: "Spam", icon: "spam", badge: counts.spam, view: "spam" },
     { href: "/settings", label: "Settings", icon: "settings" },
   ];
 
   const secondaryActive = secondary.some((item) =>
-    destinationActive(item.href, pathname, from),
+    destinationActive(item, pathname, from),
   );
 
   return (
@@ -178,7 +164,7 @@ export default function MobileNav() {
                 <DestinationLink
                   key={item.href}
                   item={item}
-                  active={destinationActive(item.href, pathname, from)}
+                  active={destinationActive(item, pathname, from)}
                   compact
                   onNavigate={closeMore}
                 />
@@ -196,7 +182,7 @@ export default function MobileNav() {
           <DestinationLink
             key={item.href}
             item={item}
-            active={destinationActive(item.href, pathname, from)}
+            active={destinationActive(item, pathname, from)}
           />
         ))}
         <button

@@ -14,6 +14,7 @@ import UnreadCountProvider, {
 } from "@/components/UnreadCountProvider";
 import { getJmapMailboxContext } from "@/lib/jmapServer";
 import { APPEARANCE_BOOTSTRAP_SCRIPT } from "@/lib/appearance";
+import { resolveMailboxes } from "@/lib/mailbox";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,14 +25,7 @@ export const metadata: Metadata = {
 async function MailboxCountsLoader() {
   try {
     const { mailboxes } = await getJmapMailboxContext();
-    const inbox = mailboxes.find((mailbox) => mailbox.role === "inbox");
-    const drafts = mailboxes.find((mailbox) => mailbox.role === "drafts");
-    const spam = mailboxes.find(
-      (mailbox) =>
-        mailbox.role === "junk" ||
-        mailbox.name.toLowerCase() === "spam" ||
-        mailbox.name.toLowerCase() === "junk",
-    );
+    const { inbox, drafts, spam } = resolveMailboxes(mailboxes);
 
     return (
       <MailboxCountSync

@@ -9,6 +9,7 @@ import MessageActionBar from "@/components/MessageActionBar";
 import { Email } from "@/lib/types";
 import { formatAddressList, formatFullDate } from "@/lib/format";
 import { visibleAttachments } from "@/lib/attachments";
+import type { MailboxIds } from "@/lib/mailbox";
 
 // ---------------------------------------------------------------------------
 // Body resolution (mirrors email/[id]/page.tsx logic)
@@ -46,10 +47,7 @@ interface ItemProps {
   onResponseSent: (r: CalendarResponse) => void;
   expanded: boolean;
   onToggle: () => void;
-  spamMailboxId?: string;
-  inboxMailboxId?: string;
-  archiveMailboxId?: string;
-  trashMailboxId?: string;
+  systemMailboxIds: MailboxIds;
 }
 
 function EmailStackItem({
@@ -59,14 +57,14 @@ function EmailStackItem({
   onResponseSent,
   expanded,
   onToggle,
-  spamMailboxId,
-  inboxMailboxId,
-  archiveMailboxId,
-  trashMailboxId,
+  systemMailboxIds,
 }: ItemProps) {
   const isUnread = !email.keywords?.["$seen"];
   const resolved = resolveBody(email);
-  const isSpam = !!(spamMailboxId && email.mailboxIds[spamMailboxId]);
+  const isSpam = !!(
+    systemMailboxIds.spam &&
+    email.mailboxIds[systemMailboxIds.spam]
+  );
   const downloadableAttachments = visibleAttachments(email.attachments);
   const hasMultipleRecipients =
     (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;
@@ -172,9 +170,7 @@ function EmailStackItem({
             initiallyPinned={!!email.keywords?.["$flagged"]}
             isSpam={isSpam}
             mailboxIds={email.mailboxIds}
-            inboxMailboxId={inboxMailboxId}
-            archiveMailboxId={archiveMailboxId}
-            trashMailboxId={trashMailboxId}
+            systemMailboxIds={systemMailboxIds}
             className="border-b border-stone-100 dark:border-stone-700/50"
           />
 
@@ -222,19 +218,13 @@ function EmailStackItem({
 interface Props {
   emails: Email[]; // sorted oldest → newest
   calendarEvents: (CalendarEventData | null)[];
-  spamMailboxId?: string;
-  inboxMailboxId?: string;
-  archiveMailboxId?: string;
-  trashMailboxId?: string;
+  systemMailboxIds: MailboxIds;
 }
 
 export default function ThreadView({
   emails,
   calendarEvents,
-  spamMailboxId,
-  inboxMailboxId,
-  archiveMailboxId,
-  trashMailboxId,
+  systemMailboxIds,
 }: Props) {
   // Start with the most recent email expanded
   const lastId = emails[emails.length - 1]?.id;
@@ -269,10 +259,7 @@ export default function ThreadView({
           onResponseSent={(r) => setRsvpResponses((prev) => ({ ...prev, [email.id]: r }))}
           expanded={expandedIds.has(email.id)}
           onToggle={() => toggle(email.id)}
-          spamMailboxId={spamMailboxId}
-          inboxMailboxId={inboxMailboxId}
-          archiveMailboxId={archiveMailboxId}
-          trashMailboxId={trashMailboxId}
+          systemMailboxIds={systemMailboxIds}
         />
       ))}
     </div>

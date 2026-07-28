@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { getSession, getAccountId, getIdentities, getMailboxes, sendEmail } from "@/lib/jmap";
 import { log } from "@/lib/logger";
+import { resolveMailboxes } from "@/lib/mailbox";
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -86,7 +87,7 @@ export async function POST(req: NextRequest) {
       log.warn({ identity_id: identityId, duration_ms: Date.now() - t }, "route.send.invalid_identity");
       return NextResponse.json({ error: "Invalid identity" }, { status: 400 });
     }
-    const sentMailboxId = mailboxes.find((m) => m.role === "sent")?.id;
+    const sentMailboxId = resolveMailboxes(mailboxes).sent?.id;
 
     const result = await sendEmail(session.apiUrl, accountId, {
       identityId,

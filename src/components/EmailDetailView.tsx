@@ -9,6 +9,7 @@ import SenderAvatar from "@/components/SenderAvatar";
 import MessageActionBar from "@/components/MessageActionBar";
 import Popover from "@/components/Popover";
 import { sanitizeReaderHtml } from "@/lib/printHtml";
+import { getMailboxIds, resolveMailboxes } from "@/lib/mailbox";
 
 interface Props {
   email: Email;
@@ -42,17 +43,10 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
     getJmapMailboxContext(),
   ]);
 
-  // ── Detect spam/junk mailbox ────────────────────────────────────
-  const spamMailbox = mailboxes.find(
-    (m) =>
-      m.role === "junk" ||
-      m.name.toLowerCase() === "spam" ||
-      m.name.toLowerCase() === "junk"
+  const mailboxIds = getMailboxIds(resolveMailboxes(mailboxes));
+  const isSpam = !!(
+    mailboxIds.spam && email.mailboxIds[mailboxIds.spam]
   );
-  const inboxMailbox = mailboxes.find((m) => m.role === "inbox");
-  const archiveMailbox = mailboxes.find((m) => m.role === "archive");
-  const trashMailbox = mailboxes.find((m) => m.role === "trash");
-  const isSpam = !!(spamMailbox && email.mailboxIds[spamMailbox.id]);
 
   const hasMultipleRecipients =
     (email.to?.length ?? 0) + (email.cc?.length ?? 0) > 1;
@@ -137,9 +131,7 @@ export default async function EmailDetailView({ email, downloadUrl, accountId }:
           initiallyPinned={!!email.keywords?.["$flagged"]}
           isSpam={isSpam}
           mailboxIds={email.mailboxIds}
-          inboxMailboxId={inboxMailbox?.id}
-          archiveMailboxId={archiveMailbox?.id}
-          trashMailboxId={trashMailbox?.id}
+          systemMailboxIds={mailboxIds}
           className="border-t border-stone-100 dark:border-stone-700/70"
         />
       </div>

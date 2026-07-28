@@ -11,6 +11,7 @@ import {
   parseAddresses,
 } from "@/lib/jmap";
 import { log } from "@/lib/logger";
+import { resolveMailboxes } from "@/lib/mailbox";
 
 function splitRaw(raw: string) {
   return raw
@@ -101,7 +102,7 @@ export async function saveDraftAction(
     getMailboxes(session.apiUrl, accountId),
     getIdentities(session.apiUrl, accountId),
   ]);
-  const draftsMailbox = mailboxes.find((m) => m.role === "drafts");
+  const draftsMailbox = resolveMailboxes(mailboxes).drafts;
   if (!draftsMailbox) throw new Error("No drafts mailbox found");
   const identity = identities.find((candidate) => candidate.id === identityId);
   if (!identity) throw new Error("Invalid from address");
