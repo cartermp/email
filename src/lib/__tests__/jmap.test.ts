@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, listCalendarCandidateEmails, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, downloadBlobAsText, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, listCalendarCandidateEmails, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -18,6 +18,7 @@ globalThis.fetch = async (_url: string | URL | Request, init?: RequestInit) => {
   const body = init?.body ? JSON.parse(init.body as string) : undefined;
   capturedBodies.push(body);
   const response = mockResponses.shift();
+  if (response instanceof Response) return response;
   return {
     ok: true,
     json: async () => response,
@@ -338,6 +339,30 @@ describe("listCalendarCandidateEmails", () => {
     assert.equal((capturedBodies[0] as any).methodCalls[0][1].position, 0);
     assert.equal((capturedBodies[1] as any).methodCalls[0][1].position, 2);
     assert.equal((capturedBodies[0] as any).methodCalls[0][1].calculateTotal, true);
+  });
+});
+
+describe("downloadBlobAsText", () => {
+  it("retries a rate-limited download using Retry-After", async () => {
+    capturedBodies = [];
+    mockResponses = [
+      new Response(null, {
+        status: 429,
+        statusText: "Too Many Requests",
+        headers: { "Retry-After": "0" },
+      }),
+      new Response("BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"),
+    ];
+
+    const result = await downloadBlobAsText(
+      "https://api.example.com/download/{accountId}/{blobId}/{name}?type={type}",
+      "acct1",
+      "blob1",
+      "invite.ics",
+    );
+
+    assert.match(result, /BEGIN:VCALENDAR/);
+    assert.equal(capturedBodies.length, 2);
   });
 });
 

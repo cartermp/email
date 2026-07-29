@@ -6,8 +6,10 @@ import { resolveCalendarEvents } from "@/lib/calendarDetect";
 import { addMonths, buildCalendarEntries, buildMonthDays, filterEventsForMonth, monthTitle, normalizeMonthKey } from "@/lib/calendarView";
 import { listCalendarCandidateEmails } from "@/lib/jmap";
 import { getJmapMailboxContext } from "@/lib/jmapServer";
+import { mapWithConcurrency } from "@/lib/promisePool";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const CALENDAR_DOWNLOAD_CONCURRENCY = 4;
 
 interface Props {
   searchParams: Promise<{ month?: string }>;
@@ -39,10 +41,11 @@ export default async function CalendarPage({ searchParams }: Props) {
     );
   });
 
-  const resolvedEvents = (await Promise.all(
-    inviteEmails.map((email) =>
+  const resolvedEvents = (await mapWithConcurrency(
+    inviteEmails,
+    CALENDAR_DOWNLOAD_CONCURRENCY,
+    (email) =>
       resolveCalendarEvents(email, session.downloadUrl, accountId)
-    )
   )).flat();
 
   const entries = buildCalendarEntries(resolvedEvents, monthKey);

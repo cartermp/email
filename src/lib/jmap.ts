@@ -3,6 +3,9 @@ import { log } from "./logger";
 
 const SESSION_URL = "https://api.fastmail.com/jmap/session";
 const CONTACTS_CAPABILITY = "urn:ietf:params:jmap:contacts";
+const BLOB_DOWNLOAD_MAX_ATTEMPTS = 3;
+const BLOB_DOWNLOAD_RETRY_BASE_MS = 500;
+const BLOB_DOWNLOAD_MAX_RETRY_DELAY_MS = 30_000;
 
 const JMAP_USING = [
   "urn:ietf:params:jmap:core",
@@ -910,14 +913,62 @@ export async function downloadBlobAsText(
     .replace(/\{blobId\}/, blobId)
     .replace(/\{name\}/, encodeURIComponent(name))
     .replace(/\{type\}/, "text%2Fcalendar");
-  const res = await fetch(url, { headers: authHeader(), cache: "no-store" });
-  if (!res.ok) {
-    log.error({ blob_id: blobId, http_status: res.status, duration_ms: Date.now() - t }, "jmap.blob_download.error");
+
+  for (let attempt = 1; attempt <= BLOB_DOWNLOAD_MAX_ATTEMPTS; attempt += 1) {
+    const res = await fetch(url, { headers: authHeader(), cache: "no-store" });
+    if (res.ok) {
+      const text = await res.text();
+      log.info(
+        { blob_id: blobId, bytes: text.length, attempt, duration_ms: Date.now() - t },
+        "jmap.blob_download"
+      );
+      return text;
+    }
+
+    if (res.status === 429 && attempt < BLOB_DOWNLOAD_MAX_ATTEMPTS) {
+      const retryAfter = res.headers.get("retry-after");
+      const retryAfterMs = retryAfter === null
+        ? null
+        : /^\d+(?:\.\d+)?$/.test(retryAfter.trim())
+          ? Number(retryAfter) * 1000
+          : Date.parse(retryAfter) - Date.now();
+      const retryDelayMs = Math.min(
+        Math.max(
+          0,
+          retryAfterMs !== null && Number.isFinite(retryAfterMs)
+            ? retryAfterMs
+            : BLOB_DOWNLOAD_RETRY_BASE_MS * 2 ** (attempt - 1)
+        ),
+        BLOB_DOWNLOAD_MAX_RETRY_DELAY_MS
+      );
+
+      log.warn(
+        {
+          blob_id: blobId,
+          http_status: res.status,
+          attempt,
+          retry_delay_ms: retryDelayMs,
+          duration_ms: Date.now() - t,
+        },
+        "jmap.blob_download.retry"
+      );
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      continue;
+    }
+
+    log.error(
+      {
+        blob_id: blobId,
+        http_status: res.status,
+        attempts: attempt,
+        duration_ms: Date.now() - t,
+      },
+      "jmap.blob_download.error"
+    );
     throw new Error(`Blob download failed: ${res.statusText}`);
   }
-  const text = await res.text();
-  log.info({ blob_id: blobId, bytes: text.length, duration_ms: Date.now() - t }, "jmap.blob_download");
-  return text;
+
+  throw new Error("Blob download failed after retries");
 }
 
 export async function uploadBlob(
