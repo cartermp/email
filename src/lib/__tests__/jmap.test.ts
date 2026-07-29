@@ -3,7 +3,7 @@ process.env.FASTMAIL_API_TOKEN = "test-token";
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { buildMailPanelMethodCalls, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, downloadBlobAsText, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, listCalendarCandidateEmails, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
+import { buildMailPanelMethodCalls, clearCalendarBodyCache, clearRecipientSuggestionCaches, deleteDraft, destroyAllEmailsInMailbox, destroyEmails, downloadBlobAsText, getAccountId, getContactsAccountId, getEmailState, getUnreadInboxTotal, hydrateCalendarBodyValues, listCalendarCandidateEmails, listInboxEmails, loadMailPanelData, loadMoreEmailsFiltered, moveEmailsToMailbox, parseAddresses, saveDraft, searchContacts, searchEmails, searchRecipientSuggestions, sendEmail, setKeywordsOnMany } from "../jmap";
 
 const MAIL_CAP = "urn:ietf:params:jmap:mail";
 
@@ -315,30 +315,109 @@ describe("listInboxEmails", () => {
 });
 
 describe("listCalendarCandidateEmails", () => {
-  it("pages through the complete mailbox instead of stopping at a fixed ceiling", async () => {
+  function makeCalendarEmail(id: string, location: "attachment" | "inline") {
+    const calendarPart = {
+      partId: `part-${id}`,
+      blobId: `blob-${id}`,
+      size: 100,
+      type: "text/calendar",
+      name: "invite.ics",
+    };
+    return {
+      ...makeEmailResponse(id, true),
+      messageId: null,
+      cc: null,
+      textBody: location === "inline" ? [calendarPart] : [],
+      attachments: location === "attachment" ? [calendarPart] : [],
+      bodyValues: {},
+    };
+  }
+
+  it("pages only attachment-bearing mail and adds a bounded recent fallback", async () => {
     capturedBodies = [];
     mockResponses = [
       makeJmapResponse([
-        ["Email/query", { ids: ["e1", "e2"], total: 3 }, "q"],
-        ["Email/get", { list: [makeEmailResponse("e1", true), makeEmailResponse("e2", true)] }, "g"],
+        ["Email/query", { ids: ["e1", "e2"], total: 3 }, "aq0"],
+        ["Email/get", { list: [makeCalendarEmail("e1", "attachment"), makeEmailResponse("e2", true)] }, "ag0"],
+        ["Email/query", { ids: ["e4"] }, "rq"],
+        ["Email/get", { list: [makeCalendarEmail("e4", "inline")] }, "rg"],
       ]),
       makeJmapResponse([
-        ["Email/query", { ids: ["e3"], total: 3 }, "q"],
-        ["Email/get", { list: [makeEmailResponse("e3", true)] }, "g"],
+        ["Email/query", { ids: ["e3"], total: 3 }, "aq1"],
+        ["Email/get", { list: [makeCalendarEmail("e3", "attachment")] }, "ag1"],
       ]),
     ];
 
     const result = await listCalendarCandidateEmails(
       "https://api.example.com/jmap",
       "acct1",
-      2
+      2,
+      1,
     );
 
-    assert.deepEqual(result.map((email) => email.id), ["e1", "e2", "e3"]);
+    assert.deepEqual(result.map((email) => email.id), ["e1", "e4", "e3"]);
     assert.equal(capturedBodies.length, 2);
     assert.equal((capturedBodies[0] as any).methodCalls[0][1].position, 0);
     assert.equal((capturedBodies[1] as any).methodCalls[0][1].position, 2);
+    assert.deepEqual((capturedBodies[0] as any).methodCalls[0][1].filter, {
+      hasAttachment: true,
+    });
+    assert.equal((capturedBodies[0] as any).methodCalls[2][1].limit, 1);
+    assert.equal((capturedBodies[1] as any).methodCalls.length, 2);
     assert.equal((capturedBodies[0] as any).methodCalls[0][1].calculateTotal, true);
+  });
+
+  it("hydrates all calendar bodies in one request and reuses immutable blobs", async () => {
+    clearCalendarBodyCache();
+    capturedBodies = [];
+    const emails = [
+      makeCalendarEmail("e1", "attachment"),
+      makeCalendarEmail("e2", "attachment"),
+    ] as any[];
+    mockResponses = [
+      makeJmapResponse([
+        [
+          "Email/get",
+          {
+            list: emails.map((email) => ({
+              id: email.id,
+              bodyValues: {
+                [`part-${email.id}`]: {
+                  value: `BEGIN:VCALENDAR\r\nX-ID:${email.id}\r\nEND:VCALENDAR\r\n`,
+                  charset: "utf-8",
+                  isEncodingProblem: false,
+                  isTruncated: false,
+                },
+              },
+            })),
+          },
+          "g",
+        ],
+      ]),
+    ];
+
+    const first = await hydrateCalendarBodyValues(
+      "https://api.example.com/jmap",
+      "acct1",
+      emails,
+    );
+
+    assert.equal(capturedBodies.length, 1);
+    assert.deepEqual((capturedBodies[0] as any).methodCalls[0][1].ids, ["e1", "e2"]);
+    assert.equal((capturedBodies[0] as any).methodCalls[0][1].fetchAllBodyValues, true);
+    assert.match(first[0].bodyValues["part-e1"].value, /X-ID:e1/);
+
+    capturedBodies = [];
+    mockResponses = [];
+    const second = await hydrateCalendarBodyValues(
+      "https://api.example.com/jmap",
+      "acct1",
+      emails,
+    );
+
+    assert.equal(capturedBodies.length, 0);
+    assert.match(second[1].bodyValues["part-e2"].value, /X-ID:e2/);
+    clearCalendarBodyCache();
   });
 });
 

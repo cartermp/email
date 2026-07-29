@@ -4,7 +4,7 @@ import CalendarEventLink from "@/components/CalendarEventLink";
 import MobileCalendarAgenda from "@/components/MobileCalendarAgenda";
 import { resolveCalendarEvents } from "@/lib/calendarDetect";
 import { addMonths, buildCalendarEntries, buildMonthDays, filterEventsForMonth, monthTitle, normalizeMonthKey } from "@/lib/calendarView";
-import { listCalendarCandidateEmails } from "@/lib/jmap";
+import { hydrateCalendarBodyValues, listCalendarCandidateEmails } from "@/lib/jmap";
 import { getJmapMailboxContext } from "@/lib/jmapServer";
 import { mapWithConcurrency } from "@/lib/promisePool";
 
@@ -41,8 +41,13 @@ export default async function CalendarPage({ searchParams }: Props) {
     );
   });
 
-  const resolvedEvents = (await mapWithConcurrency(
+  const hydratedInviteEmails = await hydrateCalendarBodyValues(
+    session.apiUrl,
+    accountId,
     inviteEmails,
+  );
+  const resolvedEvents = (await mapWithConcurrency(
+    hydratedInviteEmails,
     CALENDAR_DOWNLOAD_CONCURRENCY,
     (email) =>
       resolveCalendarEvents(email, session.downloadUrl, accountId)

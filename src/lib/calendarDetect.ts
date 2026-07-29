@@ -40,8 +40,11 @@ export async function resolveCalendarEvents(
   try {
     let icsText: string | null = null;
 
-    if (calPart.partId && email.bodyValues?.[calPart.partId]) {
-      icsText = email.bodyValues[calPart.partId].value;
+    const bodyValue = calPart.partId
+      ? email.bodyValues?.[calPart.partId]
+      : undefined;
+    if (bodyValue?.value && bodyValue.isTruncated !== true) {
+      icsText = bodyValue.value;
     } else if (calPart.blobId) {
       icsText = await downloadBlobAsText(
         downloadUrl,

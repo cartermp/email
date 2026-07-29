@@ -57,7 +57,7 @@ export async function jmapCall(
 
   const data: { methodResponses: [string, Record<string, unknown>, string][] } = await res.json();
   if (options.logSuccess !== false) {
-    log.info(
+    log.debug(
       { methods, method_count: methodCalls.length, account_id: accountId, response_count: data.methodResponses.length, duration_ms: Date.now() - t },
       "jmap.call"
     );
@@ -367,6 +367,11 @@ export async function loadMailPanelData(
 // returned as truncated bodyValues. Keep a generous bounded cap so full
 // layouts render without turning normal list queries into body downloads.
 const MAX_RENDERED_BODY_BYTES = 10 * 1024 * 1024;
+const MAX_CALENDAR_BODY_BYTES = 1024 * 1024;
+const CALENDAR_QUERY_BATCH_SIZE = 4000;
+const RECENT_INLINE_CALENDAR_CANDIDATES = 500;
+const CALENDAR_BODY_BATCH_SIZE = 1000;
+const CALENDAR_BODY_CACHE_MAX_ENTRIES = 2000;
 
 const CALENDAR_CANDIDATE_PROPERTIES = [
   "id",
@@ -383,6 +388,58 @@ const CALENDAR_CANDIDATE_PROPERTIES = [
   "textBody",
   "attachments",
 ];
+
+const calendarBodyCache = new Map<string, string>();
+
+function calendarPart(email: Pick<Email, "textBody" | "attachments">) {
+  return (
+    email.textBody?.find((part) => part.type === "text/calendar") ??
+    email.attachments?.find((part) => part.type === "text/calendar")
+  );
+}
+
+function calendarBodyCacheKey(accountId: string, blobId: string) {
+  return `${accountId}:${blobId}`;
+}
+
+function cacheCalendarBody(accountId: string, blobId: string, value: string) {
+  const key = calendarBodyCacheKey(accountId, blobId);
+  calendarBodyCache.delete(key);
+  calendarBodyCache.set(key, value);
+
+  while (calendarBodyCache.size > CALENDAR_BODY_CACHE_MAX_ENTRIES) {
+    const oldestKey = calendarBodyCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    calendarBodyCache.delete(oldestKey);
+  }
+}
+
+function getCachedCalendarBody(accountId: string, blobId: string): string | undefined {
+  const key = calendarBodyCacheKey(accountId, blobId);
+  const value = calendarBodyCache.get(key);
+  if (value === undefined) return undefined;
+  cacheCalendarBody(accountId, blobId, value);
+  return value;
+}
+
+function withCalendarBodyValue(email: Email, partId: string, value: string): Email {
+  return {
+    ...email,
+    bodyValues: {
+      ...(email.bodyValues ?? {}),
+      [partId]: {
+        value,
+        charset: "utf-8",
+        isEncodingProblem: false,
+        isTruncated: false,
+      },
+    },
+  };
+}
+
+export function clearCalendarBodyCache() {
+  calendarBodyCache.clear();
+}
 
 async function queryEmailPage(
   apiUrl: string,
@@ -709,42 +766,86 @@ export async function setPin(
 export async function listCalendarCandidateEmails(
   apiUrl: string,
   accountId: string,
-  batchSize = 250
+  batchSize = CALENDAR_QUERY_BATCH_SIZE,
+  recentLimit = RECENT_INLINE_CALENDAR_CANDIDATES,
 ): Promise<Email[]> {
   const t = Date.now();
-  const emails: Email[] = [];
+  const candidates = new Map<string, Email>();
   let position = 0;
   let total = Number.POSITIVE_INFINITY;
   let pageCount = 0;
 
   while (position < total) {
-    const data = await jmapCall(apiUrl, [
+    const attachmentQueryId = `aq${pageCount}`;
+    const attachmentGetId = `ag${pageCount}`;
+    const methodCalls: MethodCall[] = [
       [
         "Email/query",
         {
           accountId,
+          filter: { hasAttachment: true },
           sort: [{ property: "receivedAt", isAscending: false }],
           calculateTotal: true,
           limit: batchSize,
           position,
         },
-        "q",
+        attachmentQueryId,
       ],
       [
         "Email/get",
         {
           accountId,
-          "#ids": { resultOf: "q", name: "Email/query", path: "/ids" },
+          "#ids": {
+            resultOf: attachmentQueryId,
+            name: "Email/query",
+            path: "/ids",
+          },
           properties: CALENDAR_CANDIDATE_PROPERTIES,
         },
-        "g",
+        attachmentGetId,
       ],
-    ]);
-    const [, queryResult] = data.methodResponses.find(([name]) => name === "Email/query") ?? [];
-    const [, getResult] = data.methodResponses.find(([name]) => name === "Email/get") ?? [];
+    ];
+
+    if (pageCount === 0 && recentLimit > 0) {
+      methodCalls.push(
+        [
+          "Email/query",
+          {
+            accountId,
+            sort: [{ property: "receivedAt", isAscending: false }],
+            limit: recentLimit,
+            position: 0,
+          },
+          "rq",
+        ],
+        [
+          "Email/get",
+          {
+            accountId,
+            "#ids": { resultOf: "rq", name: "Email/query", path: "/ids" },
+            properties: CALENDAR_CANDIDATE_PROPERTIES,
+          },
+          "rg",
+        ],
+      );
+    }
+
+    const data = await jmapCall(apiUrl, methodCalls, { logSuccess: false });
+    const queryResult = data.methodResponses.find(([, , id]) => id === attachmentQueryId)?.[1];
+    const getResult = data.methodResponses.find(([, , id]) => id === attachmentGetId)?.[1];
     const ids = ((queryResult as { ids?: string[] } | undefined)?.ids) ?? [];
     total = (queryResult as { total?: number } | undefined)?.total ?? position + ids.length;
-    emails.push(...(((getResult as { list?: Email[] } | undefined)?.list) ?? []));
+
+    const emails = ((getResult as { list?: Email[] } | undefined)?.list) ?? [];
+    const recentEmails =
+      pageCount === 0
+        ? ((data.methodResponses.find(([, , id]) => id === "rg")?.[1] as
+            | { list?: Email[] }
+            | undefined)?.list ?? [])
+        : [];
+    for (const email of [...emails, ...recentEmails]) {
+      if (calendarPart(email)) candidates.set(email.id, email);
+    }
     pageCount += 1;
 
     if (ids.length === 0) break;
@@ -752,10 +853,113 @@ export async function listCalendarCandidateEmails(
   }
 
   log.info(
-    { count: emails.length, pages: pageCount, batch_size: batchSize, duration_ms: Date.now() - t },
+    {
+      count: candidates.size,
+      attachment_total: Number.isFinite(total) ? total : 0,
+      pages: pageCount,
+      batch_size: batchSize,
+      recent_limit: recentLimit,
+      duration_ms: Date.now() - t,
+    },
     "jmap.list_calendar_candidates"
   );
-  return emails;
+  return [...candidates.values()];
+}
+
+export async function hydrateCalendarBodyValues(
+  apiUrl: string,
+  accountId: string,
+  emails: readonly Email[],
+  batchSize = CALENDAR_BODY_BATCH_SIZE,
+): Promise<Email[]> {
+  const t = Date.now();
+  const hydratedById = new Map<string, Email>();
+  const pending: Email[] = [];
+  let cachedCount = 0;
+
+  for (const email of emails) {
+    const part = calendarPart(email);
+    const existingValue = part?.partId ? email.bodyValues?.[part.partId] : undefined;
+    if (!part?.partId || (existingValue?.value && existingValue.isTruncated !== true)) {
+      hydratedById.set(email.id, email);
+      continue;
+    }
+
+    const cachedValue = part.blobId
+      ? getCachedCalendarBody(accountId, part.blobId)
+      : undefined;
+    if (cachedValue !== undefined) {
+      hydratedById.set(
+        email.id,
+        withCalendarBodyValue(email, part.partId, cachedValue),
+      );
+      cachedCount += 1;
+      continue;
+    }
+
+    pending.push(email);
+  }
+
+  let requestCount = 0;
+  for (let offset = 0; offset < pending.length; offset += batchSize) {
+    const batch = pending.slice(offset, offset + batchSize);
+    const data = await jmapCall(
+      apiUrl,
+      [
+        [
+          "Email/get",
+          {
+            accountId,
+            ids: batch.map((email) => email.id),
+            properties: ["id", "bodyValues"],
+            fetchAllBodyValues: true,
+            maxBodyValueBytes: MAX_CALENDAR_BODY_BYTES,
+          },
+          "g",
+        ],
+      ],
+      { logSuccess: false },
+    );
+    requestCount += 1;
+
+    const list = (data.methodResponses.find(([, , id]) => id === "g")?.[1] as
+      | { list?: Email[] }
+      | undefined)?.list ?? [];
+    const bodyValuesById = new Map(
+      list.map((email) => [email.id, email.bodyValues] as const),
+    );
+
+    for (const email of batch) {
+      const part = calendarPart(email);
+      const bodyValues = bodyValuesById.get(email.id);
+      const bodyValue = part?.partId ? bodyValues?.[part.partId] : undefined;
+      const hydrated = bodyValues
+        ? { ...email, bodyValues: { ...(email.bodyValues ?? {}), ...bodyValues } }
+        : email;
+      hydratedById.set(email.id, hydrated);
+
+      if (
+        part?.blobId &&
+        bodyValue?.value &&
+        bodyValue.isTruncated !== true
+      ) {
+        cacheCalendarBody(accountId, part.blobId, bodyValue.value);
+      }
+    }
+  }
+
+  log.info(
+    {
+      count: emails.length,
+      fetched_count: pending.length,
+      cached_count: cachedCount,
+      request_count: requestCount,
+      duration_ms: Date.now() - t,
+    },
+    "jmap.calendar_body_values",
+  );
+
+  return emails.map((email) => hydratedById.get(email.id) ?? email);
 }
 
 export async function saveDraft(
