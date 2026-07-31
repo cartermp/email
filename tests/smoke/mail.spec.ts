@@ -151,6 +151,32 @@ test("mail quick actions overlay text instead of reserving row space", async ({
     };
   });
   expect(overlayColors.actions).toBe(overlayColors.row);
+
+  await page.mouse.move(0, 0);
+  await page.keyboard.press("j");
+  await conversation.focus();
+  await expect(
+    quickActions.getByRole("button", { name: "Archive thread" }),
+  ).toBeVisible();
+
+  const selectedOverlay = await quickActions.evaluate((element) => {
+    const color = getComputedStyle(element).backgroundColor;
+    const rgba = color.match(/^rgba?\(([^)]+)\)$/);
+    const slashAlpha = color.match(/\/\s*([\d.]+)(%)?\s*\)$/);
+    let alpha = 1;
+
+    if (rgba) {
+      const channels = rgba[1].split(",").map((value) => value.trim());
+      if (channels.length === 4) alpha = Number(channels[3]);
+    } else if (slashAlpha) {
+      alpha = Number(slashAlpha[1]) / (slashAlpha[2] ? 100 : 1);
+    }
+
+    return { alpha, color };
+  });
+
+  expect(selectedOverlay.alpha).toBe(1);
+  expect(selectedOverlay.color).not.toBe("rgba(0, 0, 0, 0)");
 });
 
 test("replaces search with selection actions without shifting conversations", async ({

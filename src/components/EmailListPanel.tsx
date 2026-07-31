@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   useTransition,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import SenderAvatar from "@/components/SenderAvatar";
@@ -76,6 +77,39 @@ export type DeferredMailPanelData = Pick<
   MailPanelData,
   "drafts" | "pinned" | "sent" | "spam" | "archive" | "trash"
 >;
+
+const ROW_ACTION_SURFACES = {
+  default: {
+    light: "var(--color-stone-50)",
+    lightHover: "var(--color-stone-100)",
+    dark: "var(--color-stone-900)",
+    darkHover: "var(--color-stone-950)",
+  },
+  checked: {
+    light: "var(--color-blue-50)",
+    lightHover: "var(--color-blue-50)",
+    dark:
+      "color-mix(in srgb, var(--color-blue-950) 25%, var(--color-stone-900))",
+    darkHover:
+      "color-mix(in srgb, var(--color-blue-950) 25%, var(--color-stone-900))",
+  },
+  keyboard: {
+    light:
+      "color-mix(in srgb, var(--color-blue-50) 70%, var(--color-stone-50))",
+    lightHover:
+      "color-mix(in srgb, var(--color-blue-50) 70%, var(--color-stone-50))",
+    dark:
+      "color-mix(in srgb, var(--color-blue-950) 20%, var(--color-stone-900))",
+    darkHover:
+      "color-mix(in srgb, var(--color-blue-950) 20%, var(--color-stone-900))",
+  },
+  route: {
+    light: "var(--color-stone-200)",
+    lightHover: "var(--color-stone-200)",
+    dark: "var(--color-stone-800)",
+    darkHover: "var(--color-stone-800)",
+  },
+} as const;
 
 const DeferredMailPanelContext = createContext<
   ((data: DeferredMailPanelData) => void) | null
@@ -1594,6 +1628,13 @@ export default function EmailListPanel({
                 (email) => !!inboxId && !!email.mailboxIds[inboxId],
               );
               const threadIsPinned = pinnableEmails.some(isPinned);
+              const rowActionSurface = isChecked
+                ? ROW_ACTION_SURFACES.checked
+                : keyboardThreadId === thread.threadId
+                  ? ROW_ACTION_SURFACES.keyboard
+                  : isRouteSelected
+                    ? ROW_ACTION_SURFACES.route
+                    : ROW_ACTION_SURFACES.default;
 
               const showPinnedDivider =
                 !isInSearchMode && view === "inbox" && pinnedThreadCount > 0 && idx === 0;
@@ -1674,7 +1715,13 @@ export default function EmailListPanel({
                           swipeOffset === 0
                             ? "transform 160ms ease-out"
                             : "none",
-                      }}
+                        "--mail-row-action-light": rowActionSurface.light,
+                        "--mail-row-action-light-hover":
+                          rowActionSurface.lightHover,
+                        "--mail-row-action-dark": rowActionSurface.dark,
+                        "--mail-row-action-dark-hover":
+                          rowActionSurface.darkHover,
+                      } as CSSProperties}
                       onPointerDown={(event) =>
                         startRowPointer(
                           event,
@@ -1821,7 +1868,7 @@ export default function EmailListPanel({
                       <>
                         <div
                           className={[
-                            "pointer-events-none absolute inset-y-0 z-10 hidden items-center bg-transparent pl-2 group-hover:pointer-events-auto group-hover:bg-inherit group-focus-within:pointer-events-auto group-focus-within:bg-inherit lg:flex",
+                            "pointer-events-none absolute inset-y-0 z-10 hidden items-center bg-transparent pl-2 group-hover:pointer-events-auto group-hover:bg-[var(--mail-row-action-light-hover)] group-focus-within:pointer-events-auto group-focus-within:bg-[var(--mail-row-action-light)] dark:group-hover:bg-[var(--mail-row-action-dark-hover)] dark:group-focus-within:bg-[var(--mail-row-action-dark)] lg:flex",
                             pinnableEmails.length > 0 ? "right-11" : "right-3",
                           ].join(" ")}
                           data-thread-quick-actions={thread.threadId}
@@ -1919,8 +1966,8 @@ export default function EmailListPanel({
                               className={[
                                 "pointer-events-none absolute inset-y-0 right-3 z-10 w-8",
                                 threadIsPinned
-                                  ? "bg-inherit"
-                                  : "bg-transparent group-hover:bg-inherit group-focus-within:bg-inherit",
+                                  ? "bg-[var(--mail-row-action-light)] dark:bg-[var(--mail-row-action-dark)]"
+                                  : "bg-transparent group-hover:bg-[var(--mail-row-action-light-hover)] group-focus-within:bg-[var(--mail-row-action-light)] dark:group-hover:bg-[var(--mail-row-action-dark-hover)] dark:group-focus-within:bg-[var(--mail-row-action-dark)]",
                               ].join(" ")}
                               data-pinned={threadIsPinned ? "true" : "false"}
                               aria-hidden="true"
