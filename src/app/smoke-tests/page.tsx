@@ -8,6 +8,7 @@ interface Props {
 const smokePanels = new Set<SmokePanel>([
   "inbox",
   "reply",
+  "forward",
   "attachments",
   "target",
   "auto-sync",

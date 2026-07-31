@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  appendForwardedHtml,
+  buildForwardedHtml,
+  combineEmailHtml,
   extractForwardedHtml,
   markQuotedReplyHtml,
+  replaceCidReferences,
   wrapComposePreviewHtml,
   wrapEmailHtml,
 } from "../composeHtml";
@@ -28,15 +30,49 @@ describe("wrapEmailHtml", () => {
 
 describe("forwarded draft HTML", () => {
   it("round-trips forwarded HTML through a saved draft", () => {
-    const forwarded = appendForwardedHtml(
-      "<html><head><title>Original</title></head><body><p>Original message</p></body></html>",
+    const forwardedHtml = buildForwardedHtml(
+      "<html><head><style>.brand{color:#123456}</style></head><body class=\"newsletter\"><p class=\"brand\">Original message</p></body></html>",
+      {
+        from: "Sender <sender@example.com>",
+        to: "Reader <reader@example.com>",
+        date: "July 31, 2026",
+        subject: "Original subject",
+      },
     );
-    const draft = wrapEmailHtml(`<p>My note</p>${forwarded}`);
-    assert.equal(extractForwardedHtml(draft), "<p>Original message</p>");
+    const draft = wrapEmailHtml(
+      combineEmailHtml("<p>My note</p>", forwardedHtml),
+    );
+    assert.equal(extractForwardedHtml(draft), forwardedHtml);
+    assert.ok(draft.includes(".brand{color:#123456}"));
+    assert.ok(draft.includes('class="newsletter"'));
+    assert.ok(draft.includes("Original subject"));
   });
 
   it("returns no forwarded body for an ordinary draft", () => {
     assert.equal(extractForwardedHtml(wrapEmailHtml("<p>Hello</p>")), undefined);
+  });
+
+  it("keeps authored styles from changing the preserved original layout", () => {
+    const result = wrapEmailHtml(
+      combineEmailHtml(
+        "<p>My note</p>",
+        "<table><tr><td>Original layout</td></tr></table>",
+      ),
+    );
+    assert.ok(result.includes(".mail-authored-content td"));
+    assert.ok(!result.includes(".mail-content td"));
+  });
+
+  it("rewrites embedded content IDs for the outgoing message and preview", () => {
+    const outgoing = replaceCidReferences(
+      '<img src="cid:hero@original"><div style="background:url(cid:bg@original)">',
+      [
+        { cid: "hero@original", url: "cid:forwarded-1@mail" },
+        { cid: "bg@original", url: "/api/download?blobId=2" },
+      ],
+    );
+    assert.ok(outgoing.includes('src="cid:forwarded-1@mail"'));
+    assert.ok(outgoing.includes("url(/api/download?blobId=2)"));
   });
 });
 

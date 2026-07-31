@@ -14,7 +14,9 @@ import MobileBackButton from "@/components/MobileBackButton";
 import { getJmapContext } from "@/lib/jmapServer";
 import { visibleAttachments } from "@/lib/attachments";
 import {
+  buildForwardedHtml,
   extractForwardedHtml,
+  replaceCidReferences,
 } from "@/lib/composeHtml";
 import { sanitizeReaderHtml } from "@/lib/printHtml";
 import type { EmailBodyPart } from "@/lib/types";
@@ -188,14 +190,54 @@ export default async function ComposePage({ searchParams }: Props) {
       } else if (mode === "forward") {
         title = "Forward";
         initialSubject = fwdSubject(email.subject);
-        // Capture the original HTML body so the Composer can append it
-        // verbatim to the outgoing email — preserving images and formatting.
+        // Preserve downloadable files and embedded CID resources from the
+        // original message. CID references are rewritten to stable IDs used by
+        // the new outgoing multipart/related message.
+        const forwardedInlineParts = (email.attachments ?? []).filter((part) =>
+          !!part.blobId &&
+          !!part.cid &&
+          part.type !== "text/calendar" &&
+          part.disposition?.toLowerCase() !== "attachment"
+        );
+        const cidReplacements = forwardedInlineParts.map((part, index) => {
+          const inlineId = `forwarded-${index + 1}`;
+          initialInlineImages.push({
+            id: inlineId,
+            blobId: part.blobId!,
+            dataUrl: inlinePartUrl(part),
+            type: part.type,
+          });
+          return { cid: part.cid!, url: `cid:${inlineId}@mail` };
+        });
+        initialAttachments = visibleAttachments(email.attachments).flatMap(
+          (part) =>
+            part.blobId
+              ? [{
+                  id: `forwarded-${part.blobId}`,
+                  name: part.name ?? "attachment",
+                  size: part.size,
+                  type: part.type,
+                  blobId: part.blobId,
+                }]
+              : [],
+        );
+
+        // Keep the original rich message as a separate HTML fragment. The
+        // Markdown quote remains the text/plain fallback and is not duplicated
+        // into the outgoing HTML part.
         if (email.htmlBody?.length > 0) {
           const part = email.htmlBody[0];
           if (part.partId && email.bodyValues?.[part.partId]) {
-            forwardedHtml = sanitizeReaderHtml(
-              email.bodyValues[part.partId].value,
+            const originalHtml = replaceCidReferences(
+              sanitizeReaderHtml(email.bodyValues[part.partId].value),
+              cidReplacements,
             );
+            forwardedHtml = buildForwardedHtml(originalHtml, {
+              from: addrList(email.from),
+              to: addrList(email.to),
+              date: dateStr,
+              subject: email.subject ?? "",
+            });
           }
         }
         // The markdown body carries the plain-text fallback (text/plain part

@@ -7,14 +7,16 @@ import { saveDraftAction, deleteDraftAction } from "@/app/compose/actions";
 import { useToast } from "@/components/ToastProvider";
 import { useNavigationGuard } from "@/components/NavigationGuardProvider";
 import {
-  appendForwardedHtml,
+  combineEmailHtml,
   markQuotedReplyHtml,
+  replaceCidReferences,
   wrapComposePreviewHtml,
   wrapEmailHtml,
 } from "@/lib/composeHtml";
 import {
   normalizeComposeMarkdown,
   htmlToPlainText,
+  markdownBeforeQuotedHistory,
   quotedSectionStart,
   applyIdentitySignature,
 } from "@/lib/compose";
@@ -375,13 +377,23 @@ export default function Composer({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const html = await marked.parse(normalizeComposeMarkdown(markdown));
+      const htmlMarkdown = forwardedHtml
+        ? markdownBeforeQuotedHistory(markdown)
+        : markdown;
+      const html = await marked.parse(normalizeComposeMarkdown(htmlMarkdown));
       const withImages = replacePlaceholders(html, (id) => {
         return inlineImages.find((img) => img.id === id)?.dataUrl ?? "";
       });
-      const composed = forwardedHtml
-        ? withImages + appendForwardedHtml(forwardedHtml)
-        : withImages;
+      const previewForward = forwardedHtml
+        ? replaceCidReferences(
+            forwardedHtml,
+            inlineImages.map(({ id, dataUrl }) => ({
+              cid: `${id}@mail`,
+              url: dataUrl,
+            })),
+          )
+        : undefined;
+      const composed = combineEmailHtml(withImages, previewForward);
       const body = inReplyToId ? markQuotedReplyHtml(composed) : composed;
       if (!cancelled) setPreview(wrapComposePreviewHtml(body));
     })();
@@ -415,14 +427,15 @@ export default function Composer({
       const existingDraftId = draftIdRef.current;
       const isFirstSave = !existingDraftId;
       try {
-        const rawHtml = await marked.parse(normalizeComposeMarkdown(markdown));
+        const htmlMarkdown = forwardedHtml
+          ? markdownBeforeQuotedHistory(markdown)
+          : markdown;
+        const rawHtml = await marked.parse(normalizeComposeMarkdown(htmlMarkdown));
         const htmlWithCids = replacePlaceholders(
           rawHtml,
           (id) => `cid:${id}@mail`,
         );
-        const renderedBody = forwardedHtml
-          ? htmlWithCids + appendForwardedHtml(forwardedHtml)
-          : htmlWithCids;
+        const renderedBody = combineEmailHtml(htmlWithCids, forwardedHtml);
         const composedBody = inReplyToId
           ? markQuotedReplyHtml(renderedBody)
           : renderedBody;
@@ -617,11 +630,17 @@ export default function Composer({
     suppressDraftSideEffectsRef.current = true;
     cleanupPendingDraftsRef.current = false;
     try {
-      const rawHtml = await marked.parse(normalizeComposeMarkdown(markdown));
+      const fullMarkdownHtml = await marked.parse(
+        normalizeComposeMarkdown(markdown),
+      );
+      const htmlMarkdown = forwardedHtml
+        ? markdownBeforeQuotedHistory(markdown)
+        : markdown;
+      const rawHtml = forwardedHtml
+        ? await marked.parse(normalizeComposeMarkdown(htmlMarkdown))
+        : fullMarkdownHtml;
       const htmlWithCids = replacePlaceholders(rawHtml, (id) => `cid:${id}@mail`);
-      const renderedBody = forwardedHtml
-        ? htmlWithCids + appendForwardedHtml(forwardedHtml)
-        : htmlWithCids;
+      const renderedBody = combineEmailHtml(htmlWithCids, forwardedHtml);
       const composedBody = inReplyToId
         ? markQuotedReplyHtml(renderedBody)
         : renderedBody;
@@ -643,7 +662,7 @@ export default function Composer({
           subject,
           // Drafts stay Markdown, while the text/plain transport is a clean,
           // readable fallback derived from the rendered representation.
-          textBody: htmlToPlainText(composedBody),
+          textBody: htmlToPlainText(fullMarkdownHtml),
           htmlBody: wrapEmailHtml(composedBody),
           inlineImages: inlineImagesRef.current.map(({ id, blobId, type }) => ({
             id,

@@ -9,6 +9,7 @@ import {
   htmlToPlainText,
   normalizeComposeMarkdown,
   quotedSectionStart,
+  markdownBeforeQuotedHistory,
   formatSignatureForSave,
   stripSignatureSeparator,
   applyIdentitySignature,
@@ -291,5 +292,17 @@ describe("quotedSectionStart", () => {
     const markdown =
       "Reply\n\n> On Monday, Maya wrote:\n>\n> Text\n\n---\n\n**---------- Forwarded message ----------**";
     assert.equal(quotedSectionStart(markdown), "Reply\n\n".length);
+  });
+});
+
+describe("markdownBeforeQuotedHistory", () => {
+  it("keeps the author's note while omitting the forwarded text fallback", () => {
+    const markdown =
+      "For your review.\n\n---\n\n**---------- Forwarded message ----------**\n\nA long plain-text original";
+    assert.equal(markdownBeforeQuotedHistory(markdown), "For your review.");
+  });
+
+  it("keeps an ordinary message intact", () => {
+    assert.equal(markdownBeforeQuotedHistory("Hello\n\nWorld"), "Hello\n\nWorld");
   });
 });

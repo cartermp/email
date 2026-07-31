@@ -417,6 +417,26 @@ test("keeps reply history intact while editing Markdown", async ({ page }) => {
   await expect(editor).toHaveValue(/The revised plan is ready for review\./);
 });
 
+test("preserves the original rich layout when forwarding HTML mail", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests?panel=forward");
+  await page.getByRole("button", { name: "Preview" }).click();
+
+  const preview = page.frameLocator('iframe[title="Email preview"]');
+  const newsletter = preview.locator("#preserved-newsletter");
+  await expect(newsletter).toBeVisible();
+  await expect(newsletter).toHaveCSS("background-color", "rgb(238, 242, 255)");
+  await expect(newsletter).toHaveCSS("border-top-width", "2px");
+  await expect(preview.getByText("Read the paper")).toBeVisible();
+  await expect(
+    preview.getByText("https://substack.com/redirect/very-long-tracking-link"),
+  ).toHaveCount(0);
+  await expect(
+    preview.getByText("---------- Forwarded message ----------"),
+  ).toBeVisible();
+});
+
 test("switches the signature with the sending identity", async ({ page }) => {
   await page.goto("/smoke-tests?panel=reply");
 

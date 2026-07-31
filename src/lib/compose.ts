@@ -91,6 +91,16 @@ export function quotedSectionStart(markdown: string): number {
 }
 
 /**
+ * Return only the author-controlled portion of a reply or forward. This is
+ * useful when a rich original message is supplied separately for the HTML
+ * transport and the Markdown quote exists solely as the text/plain fallback.
+ */
+export function markdownBeforeQuotedHistory(markdown: string): string {
+  const quoteStart = quotedSectionStart(markdown);
+  return (quoteStart >= 0 ? markdown.slice(0, quoteStart) : markdown).trimEnd();
+}
+
+/**
  * Replace the managed signature in the editable portion of a composition.
  * Quoted reply/forward history is kept byte-for-byte after the signature.
  */

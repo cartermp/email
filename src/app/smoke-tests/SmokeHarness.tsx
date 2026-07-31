@@ -15,6 +15,7 @@ import {
   getUnreadFaviconDataUrl,
 } from "@/lib/browserTabIndicator";
 import { prepareHtml } from "@/lib/emailHtml";
+import { buildForwardedHtml } from "@/lib/composeHtml";
 import { dispatchUnreadCountEvent } from "@/lib/unreadCount";
 import type { Email, EmailBodyPart } from "@/lib/types";
 import type { MailPanelData } from "@/lib/jmap";
@@ -22,6 +23,7 @@ import type { MailPanelData } from "@/lib/jmap";
 export type SmokePanel =
   | "inbox"
   | "reply"
+  | "forward"
   | "attachments"
   | "target"
   | "auto-sync"
@@ -150,6 +152,31 @@ const darkRenderingDocument = prepareHtml(
     </section>
   </main>`,
   { colorMode: "dark" },
+);
+
+const forwardedNewsletterHtml = buildForwardedHtml(
+  `<html>
+    <head>
+      <style>
+        .newsletter-card { background: #eef2ff; border: 2px solid #6366f1; border-radius: 14px; padding: 28px; }
+        .newsletter-title { color: #312e81; font: 700 26px/1.2 Georgia, serif; margin: 0 0 12px; }
+        .newsletter-link { color: #4338ca; font-weight: 700; }
+      </style>
+    </head>
+    <body>
+      <div id="preserved-newsletter" class="newsletter-card">
+        <h1 class="newsletter-title">Retrieval Weekly</h1>
+        <p>The latest research, presented in its original layout.</p>
+        <a class="newsletter-link" href="https://substack.com/redirect/very-long-tracking-link">Read the paper</a>
+      </div>
+    </body>
+  </html>`,
+  {
+    from: "Retrieval Weekly <newsletter@example.test>",
+    to: "Phillip Carter <phillip@example.test>",
+    date: "July 31, 2026",
+    subject: "The latest in information retrieval",
+  },
 );
 
 const navItems: Array<{ panel: SmokePanel; label: string }> = [
@@ -336,6 +363,24 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             }
             inReplyToId="message-maya@example.test"
             replyThreadId="thread-maya"
+          />
+        )}
+
+        {panel === "forward" && (
+          <Composer
+            identities={[
+              {
+                id: "identity-primary",
+                name: "Phillip Carter",
+                email: "phillip@example.test",
+                textSignature: "",
+              },
+            ]}
+            initialSubject="Fwd: The latest in information retrieval"
+            initialBody={
+              "\n\n---\n\n**---------- Forwarded message ----------**\n\n**From:** Retrieval Weekly <newsletter@example.test>  \n**To:** Phillip Carter <phillip@example.test>  \n**Date:** July 31, 2026  \n**Subject:** The latest in information retrieval\n\nRetrieval Weekly [ https://substack.com/redirect/very-long-tracking-link ]"
+            }
+            forwardedHtml={forwardedNewsletterHtml}
           />
         )}
 
