@@ -113,6 +113,21 @@ test("opens a conversation from a desktop click", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("removes a moved message from the list without a refresh", async ({
+  page,
+}) => {
+  await page.goto("/smoke-tests?panel=mailbox-move");
+
+  const movedConversation = page.getByText("Quarterly plan", { exact: true });
+  await expect(movedConversation).toBeVisible();
+
+  await page.getByRole("button", { name: "Move fixture to Trash" }).click();
+  await expect(movedConversation).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Roll back fixture move" }).click();
+  await expect(page.getByText("Quarterly plan", { exact: true })).toBeVisible();
+});
+
 test("mail quick actions overlay text instead of reserving row space", async ({
   page,
 }) => {

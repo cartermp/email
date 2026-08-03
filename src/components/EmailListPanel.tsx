@@ -63,6 +63,12 @@ import {
 } from "@/lib/mailbox";
 import type { MailPanelData } from "@/lib/jmap";
 import useMailboxMove from "@/components/useMailboxMove";
+import {
+  applyMailboxMoveNotice,
+  MAILBOX_MOVE_EVENT,
+  reconcileMailboxMoveIds,
+  type MailboxMoveNotice,
+} from "@/lib/mailboxMove";
 
 interface Props {
   initialData: MailPanelData;
@@ -315,14 +321,13 @@ export default function EmailListPanel({
   useEffect(() => {
     setExtraUnreads([]);
     setExtraReads([]);
+    setArchivedIds(new Set());
   }, [view]);
 
   useEffect(() => {
     const fresh = [...currentUnreads, ...currentReads, ...pinnedList];
     setExtraUnreads((prev) => mergeEmailUpdates(prev, fresh));
     setExtraReads((prev) => mergeEmailUpdates(prev, fresh));
-    // Server state is authoritative after a refresh; clear optimistic removals
-    setArchivedIds(new Set());
   }, [currentUnreads, currentReads, pinnedList]);
 
   // -------------------------------------------------------------------------
@@ -348,6 +353,17 @@ export default function EmailListPanel({
     active: boolean;
   } | null>(null);
   const suppressLinkClick = useRef<string | null>(null);
+
+  useEffect(() => {
+    function onMailboxMove(event: Event) {
+      const notice = (event as CustomEvent<MailboxMoveNotice>).detail;
+      if (!notice || notice.sourceMailboxId !== currentMailboxId) return;
+      setArchivedIds((current) => applyMailboxMoveNotice(current, notice));
+    }
+
+    window.addEventListener(MAILBOX_MOVE_EVENT, onMailboxMove);
+    return () => window.removeEventListener(MAILBOX_MOVE_EVENT, onMailboxMove);
+  }, [currentMailboxId]);
 
   // -------------------------------------------------------------------------
   // Refresh state
@@ -626,6 +642,13 @@ export default function EmailListPanel({
     }
     return result;
   }, [pinnedList, allUnreads, allReads, view, inboxId]);
+
+  useEffect(() => {
+    const sourceIds = new Set(
+      (isInSearchMode ? searchResults : allInboxEmails).map((email) => email.id),
+    );
+    setArchivedIds((current) => reconcileMailboxMoveIds(current, sourceIds));
+  }, [allInboxEmails, isInSearchMode, searchResults]);
 
   const visibleEmails = useMemo(() => {
     const base = isInSearchMode ? searchResults : allInboxEmails;

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { bulkMoveToMailbox } from "@/app/(inbox)/actions";
 import { useToast } from "@/components/ToastProvider";
+import { notifyMailboxMove } from "@/lib/mailboxMove";
 
 interface MoveEmail {
   id: string;
@@ -44,7 +45,15 @@ export default function useMailboxMove() {
 
       setMovingTo(targetMailboxId);
       onOptimistic?.();
+      const emailIds = emails.map((email) => email.id);
       const movePromise = bulkMoveToMailbox(emails, targetMailboxId);
+      notifyMailboxMove({
+        emailIds,
+        sourceMailboxId,
+        targetMailboxId,
+        phase: "move",
+      });
+      if (navigateTo) router.replace(navigateTo);
 
       showToast({
         message: successMessage,
@@ -60,6 +69,12 @@ export default function useMailboxMove() {
               sourceMailboxId,
             );
             onRevert?.();
+            notifyMailboxMove({
+              emailIds,
+              sourceMailboxId,
+              targetMailboxId,
+              phase: "revert",
+            });
             router.refresh();
           } catch {
             showToast({
@@ -72,11 +87,16 @@ export default function useMailboxMove() {
 
       try {
         await movePromise;
-        if (navigateTo) router.replace(navigateTo);
         router.refresh();
         return true;
       } catch {
         onRevert?.();
+        notifyMailboxMove({
+          emailIds,
+          sourceMailboxId,
+          targetMailboxId,
+          phase: "revert",
+        });
         showToast({ message: failureMessage, tone: "error" });
         return false;
       } finally {

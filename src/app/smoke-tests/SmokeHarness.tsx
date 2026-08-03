@@ -17,11 +17,13 @@ import {
 import { prepareHtml } from "@/lib/emailHtml";
 import { buildForwardedHtml } from "@/lib/composeHtml";
 import { dispatchUnreadCountEvent } from "@/lib/unreadCount";
+import { notifyMailboxMove } from "@/lib/mailboxMove";
 import type { Email, EmailBodyPart } from "@/lib/types";
 import type { MailPanelData } from "@/lib/jmap";
 
 export type SmokePanel =
   | "inbox"
+  | "mailbox-move"
   | "reply"
   | "forward"
   | "attachments"
@@ -260,6 +262,48 @@ function TabIndicatorSmokePanel() {
   );
 }
 
+function MailboxMoveSmokePanel() {
+  const notice = {
+    emailIds: ["email-maya"],
+    sourceMailboxId: "mailbox-inbox",
+    targetMailboxId: "mailbox-trash",
+  };
+
+  return (
+    <section className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 gap-2 border-b border-stone-200 bg-white px-4 py-2 dark:border-stone-800 dark:bg-stone-950">
+        <button
+          type="button"
+          onClick={() => notifyMailboxMove({ ...notice, phase: "move" })}
+          className="rounded-md bg-stone-900 px-3 py-2 text-xs font-medium text-white dark:bg-stone-100 dark:text-stone-900"
+        >
+          Move fixture to Trash
+        </button>
+        <button
+          type="button"
+          onClick={() => notifyMailboxMove({ ...notice, phase: "revert" })}
+          className="rounded-md border border-stone-300 px-3 py-2 text-xs text-stone-700 dark:border-stone-700 dark:text-stone-200"
+        >
+          Roll back fixture move
+        </button>
+      </div>
+      <div className="min-h-0 flex-1">
+        <EmailListPanel
+          initialData={makePanelData(fixtureEmails, "state-initial")}
+          mailboxIds={{
+            inbox: "mailbox-inbox",
+            archive: "mailbox-archive",
+            trash: "mailbox-trash",
+            spam: "mailbox-spam",
+          }}
+          threadHrefPrefix="/smoke-tests/thread"
+          autoSyncIntervalMs={0}
+        />
+      </div>
+    </section>
+  );
+}
+
 export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
   const [autoSyncEmails, setAutoSyncEmails] = useState(fixtureEmails);
   const runAutoSyncCheck = useCallback(async () => {
@@ -315,6 +359,8 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             autoSyncIntervalMs={0}
           />
         )}
+
+        {panel === "mailbox-move" && <MailboxMoveSmokePanel />}
 
         {panel === "auto-sync" && (
           <EmailListPanel
