@@ -128,20 +128,26 @@ test("removes a moved message from the list without a refresh", async ({
   await expect(page.getByText("Quarterly plan", { exact: true })).toBeVisible();
 });
 
-test("mail quick actions overlay text instead of reserving row space", async ({
+test("mail row actions form a clean overlay for pinned and selected rows", async ({
   page,
 }) => {
-  await page.goto("/smoke-tests");
+  await page.goto("/smoke-tests?panel=row-overlays");
 
   const conversation = page.locator(
     'a[href="/smoke-tests/thread/thread-maya"]',
   );
   const row = conversation.locator("xpath=..");
+  const staticPin = row.locator(
+    '[data-thread-static-pin="thread-maya"]',
+  );
   const quickActions = row.locator(
     '[data-thread-quick-actions="thread-maya"]',
   );
+  const unpinnedConversation = page.locator(
+    'a[href="/smoke-tests/thread/thread-release"]',
+  );
 
-  const defaultLayout = await conversation.evaluate((element) => {
+  const unpinnedLayout = await unpinnedConversation.evaluate((element) => {
     const rowElement = element.parentElement;
     const linkRect = element.getBoundingClientRect();
     const rowRect = rowElement?.getBoundingClientRect();
@@ -151,21 +157,42 @@ test("mail quick actions overlay text instead of reserving row space", async ({
     };
   });
 
-  expect(defaultLayout.rowRight - defaultLayout.linkRight).toBeLessThan(20);
+  expect(unpinnedLayout.rowRight - unpinnedLayout.linkRight).toBeLessThan(20);
+
+  const pinnedLayout = await conversation.evaluate((element) => {
+    const linkRect = element.getBoundingClientRect();
+    const pin = element.parentElement?.querySelector(
+      '[data-thread-static-pin="thread-maya"]',
+    );
+    const pinRect = pin?.getBoundingClientRect();
+    return {
+      linkRight: linkRect.right,
+      pinLeft: pinRect?.left ?? 0,
+    };
+  });
+  expect(pinnedLayout.pinLeft).toBeGreaterThanOrEqual(pinnedLayout.linkRight);
+  expect(pinnedLayout.pinLeft - pinnedLayout.linkRight).toBeLessThan(16);
+  await expect(staticPin).toBeVisible();
 
   await row.hover();
   await expect(
     quickActions.getByRole("button", { name: "Archive thread" }),
   ).toBeVisible();
+  await expect(
+    quickActions.getByRole("button", { name: "Unpin thread" }),
+  ).toBeVisible();
+  await expect(staticPin).toHaveCSS("opacity", "0");
 
-  const overlayColors = await quickActions.evaluate((element) => {
+  const overlayAppearance = await quickActions.evaluate((element) => {
     const rowElement = element.parentElement;
     return {
       actions: getComputedStyle(element).backgroundColor,
       row: rowElement ? getComputedStyle(rowElement).backgroundColor : "",
+      radius: getComputedStyle(element).borderRadius,
     };
   });
-  expect(overlayColors.actions).toBe(overlayColors.row);
+  expect(overlayAppearance.actions).toBe(overlayAppearance.row);
+  expect(overlayAppearance.radius).not.toBe("0px");
 
   await page.mouse.move(0, 0);
   await page.keyboard.press("j");
@@ -173,6 +200,15 @@ test("mail quick actions overlay text instead of reserving row space", async ({
   await expect(
     quickActions.getByRole("button", { name: "Archive thread" }),
   ).toBeVisible();
+
+  const focusAppearance = await conversation.evaluate((element) => ({
+    linkOutline: getComputedStyle(element).outlineStyle,
+    rowShadow: element.parentElement
+      ? getComputedStyle(element.parentElement).boxShadow
+      : "none",
+  }));
+  expect(focusAppearance.linkOutline).toBe("none");
+  expect(focusAppearance.rowShadow).not.toBe("none");
 
   const selectedOverlay = await quickActions.evaluate((element) => {
     const color = getComputedStyle(element).backgroundColor;

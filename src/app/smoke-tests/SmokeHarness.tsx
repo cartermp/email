@@ -33,7 +33,8 @@ export type SmokePanel =
   | "tab-indicator"
   | "message-actions"
   | "mobile-viewport"
-  | "reader-privacy";
+  | "reader-privacy"
+  | "row-overlays";
 
 const fixtureEmails: Email[] = [
   {
@@ -80,6 +81,12 @@ const fixtureEmails: Email[] = [
   },
 ];
 
+const overlayFixtureEmails = fixtureEmails.map((email) =>
+  email.id === "email-maya"
+    ? { ...email, keywords: { ...email.keywords, $flagged: true } }
+    : email,
+);
+
 function makePanelData(
   emails: Email[],
   emailState: string,
@@ -100,7 +107,7 @@ function makePanelData(
       readTotal: reads.length,
     },
     drafts: { emails: [], total: 0 },
-    pinned: [],
+    pinned: emails.filter((email) => email.keywords.$flagged),
     sent: { emails: [], total: 0 },
     spam: emptySplit,
     archive: emptySplit,
@@ -358,6 +365,25 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
             threadHrefPrefix="/smoke-tests/thread"
             autoSyncIntervalMs={0}
           />
+        )}
+
+        {panel === "row-overlays" && (
+          <div className="h-full w-[430px] max-w-full border-r border-stone-200 dark:border-stone-700">
+            <EmailListPanel
+              initialData={makePanelData(
+                overlayFixtureEmails,
+                "state-row-overlays",
+              )}
+              mailboxIds={{
+                inbox: "mailbox-inbox",
+                archive: "mailbox-archive",
+                trash: "mailbox-trash",
+                spam: "mailbox-spam",
+              }}
+              threadHrefPrefix="/smoke-tests/thread"
+              autoSyncIntervalMs={0}
+            />
+          </div>
         )}
 
         {panel === "mailbox-move" && <MailboxMoveSmokePanel />}

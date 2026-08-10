@@ -18,6 +18,7 @@ const smokePanels = new Set<SmokePanel>([
   "message-actions",
   "mobile-viewport",
   "reader-privacy",
+  "row-overlays",
 ]);
 
 export default async function SmokePage({ searchParams }: Props) {
