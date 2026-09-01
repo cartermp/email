@@ -175,7 +175,7 @@ export default function MobileNav() {
       )}
 
       <nav
-        className="relative z-40 flex shrink-0 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)] dark:border-stone-800 dark:bg-stone-950 lg:hidden"
+        className="mobile-nav-tray z-40 flex border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom,0px)] dark:border-stone-800 dark:bg-stone-950 lg:hidden"
         aria-label="Primary navigation"
       >
         {primary.map((item) => (

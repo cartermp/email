@@ -62,15 +62,36 @@ body {
 }
 
 /*
- * Keep the application attached to Safari's current visible viewport. A
- * percentage height can retain the old layout viewport after an iOS tab is
- * restored, leaving the normal-flow mobile navigation above the bottom edge.
+ * Pin the app shell to the live viewport. Percentage height can retain a
+ * stale layout viewport after iOS Safari restores a tab or toggles chrome,
+ * which leaves in-flow bottom navigation floating above the screen edge.
+ * Fixed inset tracking avoids that gap; 100dvh remains a fallback height.
  */
 .app-viewport {
+  position: fixed;
+  inset: 0;
+  width: 100%;
   height: 100vh;
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
+}
+
+/*
+ * Bottom tab bar is taken out of normal flow so it stays glued to the
+ * visible bottom edge even when the shell height lags the visual viewport.
+ * --mobile-nav-height reserves matching space in the layout (see layout.tsx).
+ */
+.mobile-nav-tray {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+}
+
+.mobile-nav-spacer {
+  height: var(--mobile-nav-height, calc(3.625rem + env(safe-area-inset-bottom, 0px)));
 }
 
 button,
@@ -142,6 +163,15 @@ html[data-reader-width="wide"] .mail-reader-container {
 }
 
 @media print {
-  html, body, .app-viewport { height: auto !important; overflow: visible !important; }
+  html, body, .app-viewport {
+    position: static !important;
+    height: auto !important;
+    overflow: visible !important;
+    inset: auto !important;
+  }
   body > div, main { height: auto !important; overflow: visible !important; }
+  .mobile-nav-tray,
+  .mobile-nav-spacer {
+    display: none !important;
+  }
 }
