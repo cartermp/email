@@ -84,10 +84,7 @@ body {
  */
 .mobile-nav-tray {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  width: 100%;
+  inset: auto 0 0;
 }
 
 .mobile-nav-spacer {
