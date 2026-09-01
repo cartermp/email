@@ -124,9 +124,11 @@ export default async function RootLayout({
                   </main>
                 </div>
 
-                {/* Mobile bottom nav — hidden on desktop */}
+                {/* Mobile bottom nav — fixed to the viewport bottom; spacer
+                    keeps main content from sitting underneath the tray. */}
                 {session && (
-                  <div className="shrink-0 print:hidden">
+                  <div className="shrink-0 print:hidden lg:hidden">
+                    <div className="mobile-nav-spacer" aria-hidden="true" />
                     <MobileNav />
                   </div>
                 )}

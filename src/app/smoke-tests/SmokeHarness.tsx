@@ -520,6 +520,7 @@ export default function SmokeHarness({ panel }: { panel: SmokePanel }) {
                 The navigation stays attached to the live mobile viewport.
               </p>
             </div>
+            <div className="mobile-nav-spacer shrink-0 lg:hidden" aria-hidden="true" />
             <MobileNav />
           </section>
         )}
